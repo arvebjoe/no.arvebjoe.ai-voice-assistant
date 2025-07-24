@@ -4,7 +4,7 @@ const Homey = require('homey');
 const { createLogger } = require('./logger');
 const { WebServer } = require('./webserver');
 const { EspVoiceClient } = require('./voice_assistant/esphome_home_assistant_pe');
-
+const { transcribe } = require('./speech_to_text/wyoming-whipser');
 const log = createLogger('APP');
 
 module.exports = class MyApp extends Homey.App {
@@ -36,9 +36,15 @@ module.exports = class MyApp extends Homey.App {
   // Use an underscore prefix for the handler method (common convention)
   async _onAudio(pcmBuf) {
 
-    this.espVoiceClient.sttEnd("bolle bolle");
+    const text = await transcribe('192.168.0.32', 10300, pcmBuf, { language: process.env.LANGUAGE || 'no' });
+    log.info(`Transcribed text: ${text}`, "APP");
+    this.espVoiceClient.sttEnd(text);
+
     this.espVoiceClient.intentStart();
+    // GPT Goes here
     this.espVoiceClient.intentEnd("rosin rosin");
+
+    
 
     log.info('Received audio buffer of size:', "APP", pcmBuf.length);
     
