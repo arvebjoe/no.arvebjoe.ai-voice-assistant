@@ -6,6 +6,7 @@ const { WebServer } = require('./webserver');
 const { EspVoiceClient } = require('./voice_assistant/esphome_home_assistant_pe');
 const { transcribe } = require('./speech_to_text/wyoming-whipser');
 const { chat } = require('./llm/gpt.js');
+const { synthesize } = require('./text_to_speech/wyoming-piper'); // Not used in this file, but available for TTS
 const log = createLogger('APP');
 
 module.exports = class MyApp extends Homey.App {
@@ -49,14 +50,11 @@ module.exports = class MyApp extends Homey.App {
     log.info(`Chat response: ${response}`, "APP");  
     this.espVoiceClient.intentEnd(response);
 
-    
+    const pcmReply = await synthesize('192.168.0.32', 10200, response);
 
-    log.info('Received audio buffer of size:', "APP", pcmBuf.length);
+    log.info('Received audio buffer of size:', "APP", pcmReply.length);
     
-    var url = this.webServer.buildStream({
-      data: pcmBuf,
-      rate: 16000  // Assuming 16kHz sample rate
-    });
+    var url = this.webServer.buildStream(pcmReply);
     log.info('Audio stream URL:', "APP", url);
 
     this.espVoiceClient.playAudioFromUrl(url);
