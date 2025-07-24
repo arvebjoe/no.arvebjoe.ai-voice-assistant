@@ -223,6 +223,11 @@ class EspVoiceClient extends EventEmitter {
       this.send('SubscribeVoiceAssistantRequest', { subscribe: true });
     }
 
+    else if (name === 'VoiceAssistantAnnounceFinished') {
+      log.info('VoiceAssistantAnnounceFinished received');
+      this.emit('end');  
+    }
+
     // 5) Voice-Assistant session
     else if (name === 'VoiceAssistantRequest' && message.start) {
       this.handleVoiceSession();
@@ -243,6 +248,7 @@ class EspVoiceClient extends EventEmitter {
   /*──────────────── voice-assistant round trip ────────────────*/
   handleVoiceSession() {
 
+    this.emit('begin');
     this.vaEvent(VA_EVENT.VOICE_ASSISTANT_RUN_START);
     this.vaEvent(VA_EVENT.VOICE_ASSISTANT_STT_VAD_START);
 
