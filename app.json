@@ -27,5 +27,46 @@
     "name": "Arve Bjørnerud",
     "email": "arvebjoe@hotmail.com"
   },
-  "support": "https://github.com/arvebjoe/no.arvebjoe.ai-voice-assistant"
+  "support": "https://github.com/arvebjoe/no.arvebjoe.ai-voice-assistant",
+  "drivers": [
+    {
+      "name": {
+        "en": "ESPHome voice box"
+      },
+      "class": "button",
+      "capabilities": [
+        "audio_output",
+        "button",
+        "speaker_playing",
+        "volume_set",
+        "measure_content_volume",
+        "volume_mute"
+      ],
+      "platforms": [
+        "local"
+      ],
+      "connectivity": [
+        "lan"
+      ],
+      "images": {
+        "small": "/drivers/esphome-voice-box/assets/images/small.png",
+        "large": "/drivers/esphome-voice-box/assets/images/large.png",
+        "xlarge": "/drivers/esphome-voice-box/assets/images/xlarge.png"
+      },
+      "pair": [
+        {
+          "id": "list_devices",
+          "template": "list_devices",
+          "navigation": {
+            "next": "add_devices"
+          }
+        },
+        {
+          "id": "add_devices",
+          "template": "add_devices"
+        }
+      ],
+      "id": "esphome-voice-box"
+    }
+  ]
 }
