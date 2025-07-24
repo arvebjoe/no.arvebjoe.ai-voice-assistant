@@ -24,7 +24,7 @@ class WebServer {
             res.send(`
                 <html>
                 <head>
-                    <title>Audio Stream Server</title>
+                    <title>AI voice assistant</title>
                     <style>
                         body { font-family: Arial, sans-serif; margin: 20px; }
                         h1 { color: #333; }
