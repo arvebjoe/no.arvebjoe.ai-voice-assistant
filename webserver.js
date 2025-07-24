@@ -7,19 +7,20 @@ const { pcmToWav } = require('./wav-helpers');
 
 const log = createLogger('WEB');
 
-class AudioStreamServer {
+class WebServer {
     constructor(port = 3100) {
         this.port = port;
         this.baseUrl = null;
         this.streams = new Map(); // Map of stream names to their PCM buffers
         this.sampleRate = 16000;  // Sample rate from Piper (16kHz)
+        this.app = null; // Express app instance
     }
 
     async start() {
-        const app = express();
+        this.app = express();
 
         // Root endpoint for debugging
-        app.get('/', (req, res) => {
+        this.app.get('/', (req, res) => {
             res.send(`
                 <html>
                 <head>
@@ -70,7 +71,7 @@ class AudioStreamServer {
         });
         
         // Create a test stream
-        app.post('/create-test-stream', (req, res) => {
+        this.app.post('/create-test-stream', (req, res) => {
             // Create a simple sine wave as test audio
             const sampleRate = 16000;
             const duration = 3; // seconds
@@ -92,7 +93,7 @@ class AudioStreamServer {
         });
 
         // Serve audio streams as WAV
-        app.get('/stream/:name', (req, res) => {
+        this.app.get('/stream/:name', (req, res) => {
             const { name } = req.params;
             const wavBuffer = this.streams.get(name);
             
@@ -117,25 +118,29 @@ class AudioStreamServer {
 
         // Create server
         const ip = this.getLanIP();
+        
+        this.baseUrl = `http://${ip}:${this.port}`;
+
         await new Promise(resolve => {
-            app.listen(this.port, '0.0.0.0', () => {
-                log.info(`HTTP server ready at http://${ip}:${this.port}/`, 'EXPRESS');
+            this.app.listen(this.port, '0.0.0.0', () => {
+                log.info(`HTTP server ready at ${this.baseUrl}/`, 'EXPRESS');
                 resolve();
             });
         });
         
-        // Use either the Homey's external IP (192.168.0.99) or the detected IP
-        // This ensures the URLs will be accessible from the local network
-        const externalIp = process.env.HOMEY_IP || ip || '192.168.0.99';
-        
-        // In development mode, include information about using localhost
-        this.baseUrl = `http://${externalIp}:${this.port}`;
-        log.info(`Server also accessible at: http://localhost:${this.port}/ (for development)`);
-        
-        // Try to determine if we're in a development environment
-        const isDev = process.env.NODE_ENV === 'development' || process.env.DEBUG || process.argv.includes('--debug');
     }
     
+    async stop() {
+        log.info('Stopping web server...'); 
+        if (this.app) {
+            this.app.close(() => {
+                log.info('Web server stopped successfully');
+            });
+        }
+        this.streams.clear();
+        this.baseUrl = null;
+    }
+
     buildStream(audioData) {
         const name = `stream-${Date.now()}.wav`;
         // Convert PCM to WAV (assuming 16kHz mono 16-bit PCM from Piper)
@@ -160,13 +165,9 @@ class AudioStreamServer {
     }
 
     getLanIP() {
-        // Check if there's a manually set IP address in environment variables
-        if (process.env.HOST_IP) {
-            log.info(`Using manually set HOST_IP: ${process.env.HOST_IP}`);
-            return process.env.HOST_IP;
-        }
-        
+       
         for (const ifc of Object.values(networkInterfaces())) {
+            
             for (const v of ifc) {
                 if (v.family === 'IPv4' && !v.internal) {
                     return v.address;
@@ -181,5 +182,5 @@ class AudioStreamServer {
 }
 
 module.exports = {
-    AudioStreamServer
+    WebServer: WebServer
 };
