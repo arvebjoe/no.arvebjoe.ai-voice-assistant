@@ -4,11 +4,8 @@
   },
   "class": "button",
   "capabilities": [
-    "audio_output",
-    "button",
-    "speaker_playing",
+    "onoff",
     "volume_set",
-    "measure_content_volume",
     "volume_mute"
   ],
   "platforms": [

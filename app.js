@@ -20,7 +20,7 @@ module.exports = class MyApp extends Homey.App {
     // Initialize and start WebServer
     this.webServer = new WebServer(7709);
     await this.webServer.start();
-    
+    /*
     // Initialize and start EspVoiceClient
     this.espVoiceClient = new EspVoiceClient({
       host: '192.168.0.50',
@@ -33,6 +33,7 @@ module.exports = class MyApp extends Homey.App {
 
     // Bind the event handler to this class instance
     this.espVoiceClient.on('audio', this._onAudio.bind(this));
+    */
   }
 
   // Use an underscore prefix for the handler method (common convention)

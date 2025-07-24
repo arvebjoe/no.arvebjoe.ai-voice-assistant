@@ -28,6 +28,14 @@ module.exports = class MyDevice extends Homey.Device {
    */
   async onSettings({ oldSettings, newSettings, changedKeys }) {
     this.log('MyDevice settings where changed');
+
+    this.registerCapabilityListener('onoff', async (value) => {
+      this.log('Capability onoff changed to:', value);
+      // Here you would typically send the command to the device
+      // await this.sendCommandToDevice(value);
+    });
+
+    //this.setCapabilityValue('onoff', true);
   }
 
   /**

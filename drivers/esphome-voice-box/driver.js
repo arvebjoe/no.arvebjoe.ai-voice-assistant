@@ -1,7 +1,12 @@
 'use strict';
 
 const Homey = require('homey');
-const { findEsphomeDevices } = require('../../voice_assistant/detect');
+const pkg = require('bonjour-service');
+const { createLogger } = require('../../logger');
+
+
+const log = createLogger('DRV.ESP');
+const bonjourInstance = new pkg.Bonjour();
 
 
 module.exports = class MyDriver extends Homey.Driver {
@@ -27,59 +32,66 @@ module.exports = class MyDriver extends Homey.Driver {
   }
 
   async onPair(session) {
-    // Store reference to any active discovery to clean up later
-    let emitter = null;
-    const discoveredDevices = new Map(); // Use Map to avoid duplicates (by ID)
-    
-    // Handle listing devices
+
+    const deviceList = [];
+
     session.setHandler('list_devices', async () => {
       this.log('Starting ESPHome device discovery...');
       
-      // Start discovery process with 20 second timeout
-      emitter = findEsphomeDevices(20000);
-      
-      // Handle discovered devices
-      emitter.on('device-found', (device) => {
-        this.log('Found ESPHome device during pairing:', device.name);
-            
-          // Create device data in Homey's expected format
-          const homeyDevice = {
-            name: device.name,
+
+      const browser = bonjourInstance.find(
+        { type: 'esphomelib', protocol: 'tcp' },
+        (service) => {
+          
+          const device = {
+            name: service.txt?.friendly_name || service.name || 'Unknown',
             data: {
-              id: device.id,
+              id: service.txt?.mac || service.name.replace(/[^a-zA-Z0-9_-]/g, '_'),
             },
             store: {
-              address: device.address,
-              port: device.port,
-              mac: device.mac,
-              project: device.project
+              address: service.addresses?.find(addr => addr.includes('.')) || 'Unknown',
+              port: service.port || 6053,
+              mac: service.txt?.mac || 'Unknown',
+              platform: service.txt?.platform || 'Unknown',
+              project: service.txt?.project_name || 'Unknown',
+              serviceName: service.name || 'Unknown'
             },
           };
-          
-          // Store device and emit to update the UI in real-time
-          discoveredDevices.set(device.id, homeyDevice);
+
+                // TODO: Add more filtering here
+          const isVoice = device.name.toLowerCase().includes('voice') 
+                          || device.store.project.toLowerCase().includes('voice') 
+                          || device.store.serviceName.toLowerCase().includes('voice');
+          if (!isVoice) {
+            log.log(`Skipping non-voice device: ${device.name}`, 'MDNS');
+            return; // Skip non-voice devices
+          }
+
+          deviceList.push(device);
           
           // Send updated device list to the frontend
-          session.emit('list_devices', Array.from(discoveredDevices.values()));
+          session.emit('list_devices', deviceList);            
+  
+        }
+      );
+
+      // Wait for 10 seconds to allow devices to be discovered
+      return new Promise(resolve => {
+        log.log('Waiting 10 seconds for device discovery to complete...');
         
-      });
+        // Set a timeout to resolve after 10 seconds
+        setTimeout(() => {
+          // Stop the browser/discovery process
+          browser.stop();
+          
+          log.log(`Device discovery complete. Found ${deviceList.length} devices.`);
+   
+          resolve(deviceList);
+        }, 10000); // 10 seconds
+      })
       
-      // Handle scan completion
-      emitter.on('scan-complete', () => {
-        this.log('ESPHome device discovery completed, found', discoveredDevices.size, 'compatible devices');
-      });
-      
-      // Return initially empty list - it will be updated via emit() as devices are found
-      return Array.from(discoveredDevices.values());
     });
     
-    // Clean up when the pairing session ends
-    session.setHandler('disconnect', async () => {
-      this.log('Pairing session ended, cleaning up...');
-      if (emitter) {
-        emitter.stopScanning();
-        emitter = null;
-      }
-    });
+
   }
 };
