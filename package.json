@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "express": "^5.1.0",
+    "openai": "^5.10.2",
     "protobufjs": "^7.5.3",
     "varint": "^6.0.0"
   }

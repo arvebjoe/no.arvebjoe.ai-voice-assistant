@@ -5,6 +5,7 @@ const { createLogger } = require('./logger');
 const { WebServer } = require('./webserver');
 const { EspVoiceClient } = require('./voice_assistant/esphome_home_assistant_pe');
 const { transcribe } = require('./speech_to_text/wyoming-whipser');
+const { chat } = require('./llm/gpt.js');
 const log = createLogger('APP');
 
 module.exports = class MyApp extends Homey.App {
@@ -40,9 +41,13 @@ module.exports = class MyApp extends Homey.App {
     log.info(`Transcribed text: ${text}`, "APP");
     this.espVoiceClient.sttEnd(text);
 
+    const apiKey = this.homey.settings.get('openai_api_key');
+    log.info('Using OpenAI API key', "APP", apiKey);
+
     this.espVoiceClient.intentStart();
-    // GPT Goes here
-    this.espVoiceClient.intentEnd("rosin rosin");
+    var response = await chat(text, apiKey);
+    log.info(`Chat response: ${response}`, "APP");  
+    this.espVoiceClient.intentEnd(response);
 
     
 
