@@ -66,10 +66,8 @@ module.exports = class MyDevice extends Homey.Device {
 
   async _onAudio(pcmBuf) {
 
-    
     const apiKey = this.homey.settings.get('openai_api_key');
-    log.info('Using OpenAI API key', "APP", apiKey);
-
+    
     //const text = await transcribe('192.168.0.32', 10300, pcmBuf, { language: process.env.LANGUAGE || 'no' });
     const text = await transcribe( pcmBuf, apiKey, { language: process.env.LANGUAGE || 'no' });
     log.info(`Transcribed text: ${text}`, "APP");
