@@ -3,7 +3,8 @@
 const Homey = require('homey');
 const { createLogger } = require('../../logger');
 const { EspVoiceClient } = require('../../voice_assistant/esphome_home_assistant_pe');
-const { transcribe } = require('../../speech_to_text/wyoming-whipser');
+//const { transcribe } = require('../../speech_to_text/wyoming-whipser');
+const { transcribe } = require('../../speech_to_text/openai-stt');
 const { chat } = require('../../llm/openai-chat.js');
 const { synthesize } = require('../../text_to_speech/wyoming-piper'); // Not used in this file, but available for TTS
 
@@ -65,13 +66,15 @@ module.exports = class MyDevice extends Homey.Device {
 
   async _onAudio(pcmBuf) {
 
+    
+    const apiKey = this.homey.settings.get('openai_api_key');
+    log.info('Using OpenAI API key', "APP", apiKey);
 
-    const text = await transcribe('192.168.0.32', 10300, pcmBuf, { language: process.env.LANGUAGE || 'no' });
+    //const text = await transcribe('192.168.0.32', 10300, pcmBuf, { language: process.env.LANGUAGE || 'no' });
+    const text = await transcribe( pcmBuf, apiKey, { language: process.env.LANGUAGE || 'no' });
     log.info(`Transcribed text: ${text}`, "APP");
     this.espVoiceClient.sttEnd(text);
 
-    const apiKey = this.homey.settings.get('openai_api_key');
-    log.info('Using OpenAI API key', "APP", apiKey);
 
     this.espVoiceClient.intentStart();
     var response = await chat(text, apiKey);
