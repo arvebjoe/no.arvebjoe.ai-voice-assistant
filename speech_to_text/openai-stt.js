@@ -1,8 +1,8 @@
 const OpenAI = require('openai');
-const { toFile } = OpenAI;
 const EventEmitter = require('events');
 const { createLogger } = require('../logger');
 const { pcmToWav } = require('../wav-helpers'); // Reusing your existing WAV encoder
+require('../polyfills'); // Load polyfills for File and Blob
 
 const log = createLogger('OPENAI-STT');
 
@@ -37,9 +37,8 @@ async function transcribe(audioBuffer, apiKey, opts = {}) {
         // Initialize OpenAI client
         const openai = new OpenAI({ apiKey });
         
-        // Convert WAV buffer to a File-like object using OpenAI's toFile helper
-        // This is the recommended approach for passing Buffer data to the API
-        const wavFile = await toFile(wavBuffer, 'audio.wav', { type: 'audio/wav' });
+        // Create a File object from the WAV buffer
+        const wavFile = new File([wavBuffer], 'audio.wav', { type: 'audio/wav' });
         
         if (opts.verbose) {
             log.info(`Created WAV file object (${wavBuffer.length} bytes)`);
@@ -49,7 +48,7 @@ async function transcribe(audioBuffer, apiKey, opts = {}) {
         const transcriptionOpts = {
             file: wavFile,
             model: opts.model || 'whisper-1',
-            response_format: 'text',
+            response_format: 'text'
         };
         
         // Add language if specified
