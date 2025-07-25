@@ -4,7 +4,7 @@ const Homey = require('homey');
 const { createLogger } = require('../../logger');
 const { EspVoiceClient } = require('../../voice_assistant/esphome_home_assistant_pe');
 const { transcribe } = require('../../speech_to_text/wyoming-whipser');
-const { chat } = require('../../llm/gpt.js');
+const { chat } = require('../../llm/openai-chat.js');
 const { synthesize } = require('../../text_to_speech/wyoming-piper'); // Not used in this file, but available for TTS
 
 
