@@ -1,5 +1,3 @@
-const { Buffer } = require('node:buffer');
-
 /**
  * Polyfills for Node.js features that might be missing in older versions
  * Used by components that require modern Node.js APIs
