@@ -1,78 +1,71 @@
 'use strict';
 
 const Homey = require('homey');
-const { createLogger } = require('./logger');
-const { WebServer } = require('./webserver');
-const { EspVoiceClient } = require('./voice_assistant/esphome_home_assistant_pe');
-const { transcribe } = require('./speech_to_text/wyoming-whipser');
-const { chat } = require('./llm/openai-chat.js');
-const { synthesize } = require('./text_to_speech/wyoming-piper'); // Not used in this file, but available for TTS
+const { HomeyAPI } = require('homey-api');
+const { createLogger } = require('./src/helpers/logger');
+const { WebServer } = require('./src/helpers/webserver');
+
 const log = createLogger('APP');
 
-module.exports = class MyApp extends Homey.App {
+module.exports = class AiVoiceAssistantApp extends Homey.App {
+
 
   /**
    * onInit is called when the app is initialized.
    */
   async onInit() {
-    log.info('App initialized successfully');
-          
+    log.info('AI voice assistant initialized successfully');
+      
+    await this.test();
+
     // Initialize and start WebServer
     this.webServer = new WebServer(7709);
     await this.webServer.start();
-    /*
-    // Initialize and start EspVoiceClient
-    this.espVoiceClient = new EspVoiceClient({
-      host: '192.168.0.50',
-      apiPort: 6053,
-      webServer: this.webServer
-    });
-    
-    await this.espVoiceClient.start();
-    log.info('ESP Voice Client initialized and connected');
 
-    // Bind the event handler to this class instance
-    this.espVoiceClient.on('audio', this._onAudio.bind(this));
-    */
+
   }
 
-  // Use an underscore prefix for the handler method (common convention)
-  async _onAudio(pcmBuf) {
+  async test(){
+    log.info('Testing started');
+ 
+    this.api = await HomeyAPI.createAppAPI({ homey: this.homey });
 
-    const text = await transcribe('192.168.0.32', 10300, pcmBuf, { language: process.env.LANGUAGE || 'no' });
-    log.info(`Transcribed text: ${text}`, "APP");
-    this.espVoiceClient.sttEnd(text);
+    // Fetch everything concurrently
+    const [devices, zones] = await Promise.all([
+      this.api.devices.getDevices(),     // Map<string, Device>
+      this.api.zones.getZones(),         // Map<string, Zone>
+    ]);
 
-    const apiKey = this.homey.settings.get('openai_api_key');
-    log.info('Using OpenAI API key', "APP", apiKey);
+    // Pretty-print: Zone → Device → Capabilities
+    Object.values(zones).forEach(zone => {
+      log.info(`📂  ${zone.name}  (id: ${zone.id})`);
+      const inZone = Object.values(devices).filter(d => d.zone === zone.id);
 
-    this.espVoiceClient.intentStart();
-    var response = await chat(text, apiKey);
-    log.info(`Chat response: ${response}`, "APP");  
-    this.espVoiceClient.intentEnd(response);
+      if (!inZone.length) {
+        log.info('   — no devices —');
+        return;
+      }
 
-    const pcmReply = await synthesize('192.168.0.32', 10200, response);
-
-    log.info('Received audio buffer of size:', "APP", pcmReply.length);
+      inZone.forEach(dev => {
+        // dev.capabilities   → [ 'onoff', 'measure_temperature', … ]
+        // dev.capabilitiesObj→ { onoff:{ value:true,… }, … } :contentReference[oaicite:1]{index=1}
+        log.info(`   • ${dev.name}`);
+        for (const capId of dev.capabilities) {
+          const val = dev.capabilitiesObj?.[capId]?.value;   // boolean | number | string
+          log.info(`       – ${capId}: ${val}`);
+        }        
+        //const val = device.capabilitiesObj?.[capId]?.value;   // boolean | number | string
+        //dev.capabilities.forEach(cap => log.info(`       – ${cap}`));
+      });
+    });
     
-    var url = this.webServer.buildStream(pcmReply);
-    log.info('Audio stream URL:', "APP", url);
 
-    this.espVoiceClient.playAudioFromUrl(url);
-    log.info('Playing audio from URL:', "APP", url);
-    //this.espVoiceClient.endRun();
+    log.info('Testing completed'); 
+  }
 
-  } 
 
   async onUninit() {
-    log.info('App is being uninitialized');
-    
-    // Clean up ESP Voice Client
-    if (this.espVoiceClient) {
-      this.espVoiceClient.stop();
-      this.espVoiceClient = null;
-      log.info('ESP Voice Client stopped');
-    }
+    log.info('AI voice assistant is being uninitialized');
     
     // Clean up WebServer
     if (this.webServer) {

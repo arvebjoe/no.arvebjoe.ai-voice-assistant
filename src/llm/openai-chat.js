@@ -1,5 +1,5 @@
 const OpenAI = require('openai');
-const { createLogger } = require('../logger');
+const { createLogger } = require('../helpers/logger');
 
 const log = createLogger('GPT');
 

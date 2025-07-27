@@ -1,5 +1,5 @@
 const pkg = require('bonjour-service');
-const { createLogger } = require('../logger');
+const { createLogger } = require('../helpers/logger');
 const EventEmitter = require('events');
 
 const log = createLogger('DETECT');

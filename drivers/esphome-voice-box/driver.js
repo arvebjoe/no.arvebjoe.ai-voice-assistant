@@ -2,7 +2,7 @@
 
 const Homey = require('homey');
 const pkg = require('bonjour-service');
-const { createLogger } = require('../../logger');
+const { createLogger } = require('../../src/helpers/logger');
 
 
 const log = createLogger('DRV.ESP');

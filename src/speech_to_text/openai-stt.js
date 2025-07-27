@@ -1,8 +1,8 @@
 const OpenAI = require('openai');
 const EventEmitter = require('events');
-const { createLogger } = require('../logger');
-const { pcmToWav } = require('../wav-helpers'); // Reusing your existing WAV encoder
-require('../polyfills'); // Load polyfills for File and Blob
+const { createLogger } = require('../helpers/logger');
+const { pcmToWav } = require('../helpers/wav-util'); // Reusing your existing WAV encoder
+require('../helpers/polyfills'); // Load polyfills for File and Blob
 
 const log = createLogger('OPENAI-STT');
 

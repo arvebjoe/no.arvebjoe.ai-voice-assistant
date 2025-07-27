@@ -1,6 +1,6 @@
 const net = require('net');
 const { WyomingParser } = require('./wyoming-parser');
-const { createLogger } = require('../logger');
+const { createLogger } = require('../helpers/logger');
 
 const log = createLogger('PIPER');
 

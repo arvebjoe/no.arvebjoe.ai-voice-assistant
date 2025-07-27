@@ -3,7 +3,7 @@
 const express = require('express');
 const { networkInterfaces } = require('os');
 const { createLogger } = require('./logger');
-const { pcmToWav } = require('./wav-helpers');
+const { pcmToWav } = require('./wav-util');
 
 const log = createLogger('WEB');
 

@@ -1,8 +1,9 @@
 const EventEmitter = require('node:events');
 const net = require('node:net');
 const dgram = require('node:dgram');
+
 const { encodeFrame, decodeFrame, VA_EVENT } = require('./esphome-messages');
-const { createLogger } = require('../logger');
+const { createLogger } = require('../helpers/logger');
 
 const log = createLogger('ESP');
 
@@ -11,6 +12,7 @@ class EspVoiceClient extends EventEmitter {
     super();
     this.host = host;
     this.apiPort = apiPort;
+
     this.webServer = webServer; 
     this.streamId = 1;
     this.lastWav = null;               // in-RAM buffer served at /echo.wav

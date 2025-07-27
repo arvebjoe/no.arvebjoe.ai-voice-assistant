@@ -1,12 +1,12 @@
 'use strict';
 
 const Homey = require('homey');
-const { createLogger } = require('../../logger');
-const { EspVoiceClient } = require('../../voice_assistant/esphome_home_assistant_pe');
+const { createLogger } = require('../../src/helpers/logger.js');
+const { EspVoiceClient } = require('../../src/voice_assistant/esphome_home_assistant_pe.js');
 //const { transcribe } = require('../../speech_to_text/wyoming-whipser');
-const { transcribe } = require('../../speech_to_text/openai-stt');
-const { chat } = require('../../llm/openai-chat.js');
-const { synthesize } = require('../../text_to_speech/wyoming-piper'); // Not used in this file, but available for TTS
+const { transcribe } = require('../../src/speech_to_text/openai-stt.js');
+const { chat } = require('../../src/llm/openai-chat.js');
+const { synthesize } = require('../../src/text_to_speech/wyoming-piper.js'); // Not used in this file, but available for TTS
 
 
 const log = createLogger('DEV.ESP');
