@@ -365,7 +365,7 @@ class EspVoiceClient extends EventEmitter {
       text: '',
       startConversation: false,
     });
-    log.info('Playing audio from URL:', url);
+    log.info('Playing audio from URL:', null, url);
   }
 
 

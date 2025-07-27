@@ -16,7 +16,7 @@ module.exports = class AiVoiceAssistantApp extends Homey.App {
   async onInit() {
     log.info('AI voice assistant initialized successfully');
       
-    await this.test();
+    //await this.test();
 
     // Initialize and start WebServer
     this.webServer = new WebServer(7709);
