@@ -16,7 +16,7 @@
     "internet"
   ],
   "brandColor": "#0E0B08",
-  "permissions": [],
+  "permissions": ["homey:manager:api"],
   "images": {
     "small": "/assets/images/small.png",
     "large": "/assets/images/large.png",
