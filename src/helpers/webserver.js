@@ -122,7 +122,7 @@ class WebServer {
         this.baseUrl = `http://${ip}:${this.port}`;
 
         await new Promise(resolve => {
-            this.app.listen(this.port, '0.0.0.0', () => {
+            this.app.listen(this.port, ip, () => {
                 log.info(`HTTP server ready at ${this.baseUrl}/`, 'EXPRESS');
                 resolve();
             });
@@ -165,19 +165,41 @@ class WebServer {
     }
 
     getLanIP() {
-       
-        for (const ifc of Object.values(networkInterfaces())) {
-            
-            for (const v of ifc) {
-                if (v.family === 'IPv4' && !v.internal) {
-                    return v.address;
-                }
+
+        log.info('Determining LAN IP address...', 'IP');
+        let bestChoice = { 
+            address: null, 
+            name: null 
+        };
+
+        const ifaces = networkInterfaces();
+
+        for (const [name, addrs] of Object.entries(ifaces)) {
+            const wired = (/^(eth|en|enx)/i.test(name));
+            const ip4 = addrs.find(a => a.family === 'IPv4' && !a.internal);
+
+            if (ip4 && ip4.address.startsWith('169.254.')) {
+                // Skip link-local addresses
+                continue;
             }
+
+            if(ip4 && wired){
+                log.info(`Using wired interface ${name} with IP ${ip4.address}`, 'IP');
+                return ip4.address;
+            } else if (ip4){
+                log.info(`Found IPv4 address on interface ${name} with IP ${ip4.address}`, 'IP');
+                bestChoice.address = ip4.address;
+                bestChoice.name = name;
+            }            
         }
-        
-        // Fallback to localhost if no suitable IP is found
+
+        if(bestChoice){
+            log.info(`Using best available interface ${bestChoice.name} with IP ${bestChoice.address}`, 'IP');
+            return bestChoice.address;
+        }
+
         log.warn('Could not determine LAN IP, defaulting to localhost');
-        return '127.0.0.1';
+        return '127.0.0.1';        
     }
 }
 
