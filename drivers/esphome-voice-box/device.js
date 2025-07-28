@@ -52,6 +52,7 @@ module.exports = class MyDevice extends Homey.Device {
     log.info('ESP Voice Client initialized and connected');
 
     this.espVoiceClient.on('begin', () => {
+      //this.deviceListPromise = this.homey.app.deviceManager.FetchAllDevices();
       this.setCapabilityValue('onoff', true);
     });
 
@@ -76,6 +77,9 @@ module.exports = class MyDevice extends Homey.Device {
 
 
     this.espVoiceClient.intentStart();
+
+    //const deviceList = await this.deviceListPromise;
+
     var response = await chat(text, apiKey);
     log.info(`Chat response:`, "OnAudio", response);  
     this.espVoiceClient.intentEnd(response);
