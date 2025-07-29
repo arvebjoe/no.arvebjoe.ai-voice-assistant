@@ -4,58 +4,71 @@ const { createLogger } = require('../helpers/logger');
 const log = createLogger('GPT');
 
 
-// Royal phrases with their probability weights (higher number = more likely)
-const royalPhrases = [  
-  { text: "Kronprinsen mener at", weight: 1 },
-  { text: "På slottet sier vi ofte at", weight: 1 },
-  { text: "Som monark må jeg si at", weight: 1 },
-  { text: "Den kongelige familie tror at", weight: 1 },
-  { text: "Både dronningen og jeg er enige i at", weight: 1 }
-];
-
-// Function to randomly select if we should include a royal phrase
-function shouldIncludeRoyalPhrase() {
-  // 40% chance to include a phrase
-  return Math.random() < 0.4;
-}
-
-// Function to select a random royal phrase
-function getRandomRoyalPhrase() {
-  // Calculate total weight
-  const totalWeight = royalPhrases.reduce((sum, phrase) => sum + phrase.weight, 0);
-  
-  // Generate random value between 0 and totalWeight
-  let random = Math.random() * totalWeight;
-  
-  // Find the phrase based on weights
-  for (const phrase of royalPhrases) {
-    random -= phrase.weight;
-    if (random <= 0) {
-      return phrase.text;
-    }
-  }
-  
-  // Fallback (should never happen unless array is empty)
-  return royalPhrases[0]?.text || "";
-}
-
-// Keep track of conversation history
-const conversationHistory = [];
+const conversationHistory = []; // Keep track of conversation history
 const MAX_HISTORY = 5; // Remember last 5 exchanges
 
-async function chat(text, apiKey) {
+async function chat(text, apiKey, deviceList) {
   
   try {
     const openai = new OpenAI({ apiKey });
-    
-    // Prepare messages array with system prompt and history
+        
     const messages = [
       {
         role: "system",
-        content: `Du er en Kong Harald av Norge som svarer på norsk. Ikke bruke engelsk eller andre språk.
+        content: `Du er en Kong Harald av Norge som svarer på Norsk. Ikke bruke Engelsk eller andre språk.
                   Du skal svare kort og konsist, på en meget dannet og høfelig måte.
                   Det er veldig viktig at du husker alle detaljer fra tidligere i samtalen eller ting som blir nevnt. 
-                  Bruk denne informasjonen når du svarer på oppfølgingsspørsmål.`
+                  Bruk denne informasjonen når du svarer på oppfølgingsspørsmål.
+                  
+                  Du er også i stand til å automatisere smarte hjem-enheter i hjemmet mitt.
+                  Du kan slå av og på lys, justere temperaturer, låse dører osv.
+                  Du kan også fortelle tilstanden til enheter i hjemmet mitt.
+
+                  Jeg vil gi deg tilstanden til hjemmet mitt i dette formatet:
+                  
+                  Linjeformater:              
+                  Z|Sonenavn|Sone-ID|ForeldreSone-ID # Zone - Definerer en sone og dens overordnede sone
+                  D|Enhetsnavn|Enhets-ID|Enhets-type|readonly_cap=verdi # Device - Enhet i forrige sone, forteller hvilen type enhet dette er. Med valgfri skrivebeskyttet kapasiteter (0 til mange)
+                  C|Kapasitet-ID|Verdi  # Capability - Skrivbar kapasitet for den forrige enheten
+
+                  Kapasiteter:
+                  - onoff: boolsk (true/false) for strømtilstand
+                  - dim: tall (0–1) for lysstyrke
+                  - light_temperature: tall (0–1) for varm/kald fargetemperatur
+                  - light_hue: tall (0–1) for fargetone
+                  - light_saturation: tall (0–1) for fargemetning
+                  - light_mode: tekststreng (color/temperature)
+                  - measure_battery: skrivebeskyttet tall (0–100)
+                  - measure_temperature: skrivebeskyttet tall
+                  - alarm_motion: skrivebeskyttet boolsk
+                  - locked: boolsk for låser
+                  - volume_set: tall (0–1)
+                  - volume_mute: boolsk                  
+
+                  Svarformat:
+                  Når du skal gi ditt svar tilbake gjør du dette på følgende måte:
+
+                  Svarformat (strengt JSON):
+                  {
+                    "speech": "<en høflig setning du kan leses høyt>",
+                    "actions": [
+                        {
+                            "deviceName": "enhets‑navn",
+                            "zoneName": "sone‑navn",
+                            "deviceId": "enhets‑id",
+                            "capability": "kapasitet‑id",
+                            "value": ny‑verdi
+                        }
+                    ]
+                  }
+                  Ingen andre felter, ingen kommentarer. 
+                  Merk at noen ganger kan du bli spurt om ting som ikke har med smart hjem å gjøre, da lar du feltet "actions" være tomt.
+                  Husk at det kan være flere enheter i samme sone, så se nøye igjennom alle enhenter i sone for å finne alle riktige enheter.
+                  `
+      },
+      { 
+        role: "system",           
+        content: deviceList 
       },
       ...conversationHistory,
       {
@@ -64,39 +77,34 @@ async function chat(text, apiKey) {
       }
     ];
 
-    if (shouldIncludeRoyalPhrase()) {
-      const royalPhrase = getRandomRoyalPhrase();
-      log.info(`Including royal phrase: "${royalPhrase}"`);
-      
-      // Modify the last message (user's message) to ask for including the phrase
-      messages[messages.length - 1].content += ` (I svaret ditt, vennligst inkluder frasen "${royalPhrase}" på et passende sted hvis det skulle passe.)`;
-    }
-
     const completion = await openai.chat.completions.create({
-      model: "gpt-3.5-turbo",
+      model: "gpt-4o-mini", // "gpt-3.5-turbo",
       messages,
       temperature: 0.7,
-      max_tokens: 150
+      max_tokens: 300,
+      response_format: { type: "json_object" } 
     });
 
-    const assistantResponse = completion.choices[0].message.content;
+    const raw = completion.choices[0].message.content;
+    log.info(`OpenAI raw:`, null, raw);
+
+
+    const response = JSON.parse(raw);
+    log.info(`OpenAI response:`, null, response);
+    
     
     // Add this exchange to the history
     conversationHistory.push(
       { role: "user", content: text },
-      { role: "assistant", content: assistantResponse }
+      { role: "assistant", content: response.speech  }
     );
 
     // Keep only the last N exchanges
     while (conversationHistory.length > MAX_HISTORY * 2) {
       conversationHistory.shift();
     }
-
-    // Debug: log the conversation history
-    // The debug method doesn't exist, use info with a DEBUG prefix instead
-    log.info('Conversation history', 'DEBUG', conversationHistory);
-
-    return assistantResponse;
+    
+    return response;
     
   } catch (error) {
     log.error('OpenAI API error', error);

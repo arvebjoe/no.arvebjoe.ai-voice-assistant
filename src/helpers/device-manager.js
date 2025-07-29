@@ -131,7 +131,7 @@ class DeviceManager {
                     .map(capId => `${capId}=${dev.capabilitiesObj[capId]?.value}`);
 
                 // Add device line with read-only capabilities
-                output.push(`D|${dev.name}|${dev.id}${readOnlyCaps.length ? '|' + readOnlyCaps.join('|') : ''}`);
+                output.push(`D|${dev.name}|${dev.id}|${dev.class}|${readOnlyCaps.length ? '|' + readOnlyCaps.join('|') : ''}`);
 
                 // Add writable capabilities
                 dev.capabilities
@@ -154,6 +154,34 @@ class DeviceManager {
             .forEach(zone => processZone(zone.id));
 
         return output.join('\n');
+    }
+
+    async PerformActions(actions) {
+        if (!this.api) {
+            throw new Error('Homey API not initialized. Call init() first.');
+        }
+
+        const results = [];
+        for (const action of actions) {
+            try {
+                //const device = await this.api.devices.getDevice({ id: action.deviceId });
+                //if (!device) {
+                //    throw new Error(`Device ${action.deviceId} not found`);
+                //}
+                //await device.setCapabilityValue(action.capability, action.value);
+                await this.api.devices.setCapabilityValue({
+                    deviceId: action.deviceId,
+                    capabilityId: action.capability,
+                    value: action.value,
+                }); 
+
+                results.push({ success: true, action });
+            } catch (error) {
+                log.error(`Failed to perform action ${JSON.stringify(action)}:`, error);
+                results.push({ success: false, action, error: error.message });
+            }
+        }
+        return results;
     }
 }
 

@@ -24,13 +24,8 @@ module.exports = class AiVoiceAssistantApp extends Homey.App {
     this.deviceManager = new DeviceManager(this.homey);
     await this.deviceManager.init();
 
-    var zones = await this.deviceManager.FetchAllDevices();
-
-    setTimeout(() => {    
-      // Pretty print the JSON with 2 spaces indentation
-      zones.split('\n').forEach(line => console.log(line));
-      //console.log('Fetched zones:', JSON.stringify(zones, null, 2));
-    },5000);
+    //const temp = await this.deviceManager.FetchAllDevices();
+    //log.info('Fetched devices:', JSON.stringify(temp, null, 2));
     
   }
 

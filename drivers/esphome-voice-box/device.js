@@ -4,8 +4,8 @@ const Homey = require('homey');
 const { createLogger } = require('../../src/helpers/logger.js');
 const { WebServer } = require('../../src/helpers/webserver.js');
 const { EspVoiceClient } = require('../../src/voice_assistant/esphome_home_assistant_pe.js');
-//const { transcribe } = require('../../speech_to_text/wyoming-whipser');
-const { transcribe } = require('../../src/speech_to_text/openai-stt.js');
+const { transcribe } = require('../../src/speech_to_text/wyoming-whipser');
+//const { transcribe } = require('../../src/speech_to_text/openai-stt.js');
 const { chat } = require('../../src/llm/openai-chat.js');
 const { synthesize } = require('../../src/text_to_speech/wyoming-piper.js'); // Not used in this file, but available for TTS
 
@@ -52,7 +52,7 @@ module.exports = class MyDevice extends Homey.Device {
     log.info('ESP Voice Client initialized and connected');
 
     this.espVoiceClient.on('begin', () => {
-      //this.deviceListPromise = this.homey.app.deviceManager.FetchAllDevices();
+      this.deviceListPromise = this.homey.app.deviceManager.FetchAllDevices();
       this.setCapabilityValue('onoff', true);
     });
 
@@ -70,28 +70,36 @@ module.exports = class MyDevice extends Homey.Device {
 
     const apiKey = this.homey.settings.get('openai_api_key');
     
-    //const text = await transcribe('192.168.0.32', 10300, pcmBuf, { language: process.env.LANGUAGE || 'no' });
-    const text = await transcribe( pcmBuf, apiKey, { language: process.env.LANGUAGE || 'no' });
+    const text = await transcribe('192.168.0.32', 10300, pcmBuf, { language: 'no' });
+    //const text = await transcribe( pcmBuf, apiKey, { language: 'no' });
     log.info(`Transcribed text:`, "OnAudio", text);
     this.espVoiceClient.sttEnd(text);
 
 
     this.espVoiceClient.intentStart();
 
-    //const deviceList = await this.deviceListPromise;
+    const deviceList = await this.deviceListPromise;
 
-    var response = await chat(text, apiKey);
-    log.info(`Chat response:`, "OnAudio", response);  
-    this.espVoiceClient.intentEnd(response);
+    const { speech, actions } = await chat(text, apiKey, deviceList);
+    const actionPromise = this.homey.app.deviceManager.PerformActions(actions);
+    
+    
+    log.info(`speech:`, "OnAudio", speech);  
+    log.info(`Actions:`, "OnAudio", actions);
+    
+    this.espVoiceClient.intentEnd(speech);
 
-    const pcmReply = await synthesize('192.168.0.32', 10200, response);
+    const pcmReply = await synthesize('192.168.0.32', 10200, speech);
     log.info('Received audio', "OnAudio", pcmReply );
     
     var url = this.homey.app.webServer.buildStream(pcmReply);
     log.info('Audio stream URL:',"OnAudio", url);
-
+    
     this.espVoiceClient.playAudioFromUrl(url);
     log.info('Playing audio from URL', "OnAudio", url);
+
+    const actionResults = await actionPromise;
+    log.info('Action results:', "OnAudio", actionResults);
 
 
   } 
