@@ -24,8 +24,12 @@ module.exports = class AiVoiceAssistantApp extends Homey.App {
     this.deviceManager = new DeviceManager(this.homey);
     await this.deviceManager.init();
 
-    //const temp = await this.deviceManager.FetchAllDevices();
-    //log.info('Fetched devices:', JSON.stringify(temp, null, 2));
+    /*
+    const temp = await this.deviceManager.FetchAllDevices();
+    setTimeout(() => {
+      console.log(temp);
+    }, 5000); // Delay to ensure devices are fetched before logging   
+    */
     
   }
 

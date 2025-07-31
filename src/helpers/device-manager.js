@@ -30,51 +30,6 @@ const CAPABILITIES_OF_INTEREST = [
     'volume_mute'
 ];
 
-/*
-PROMT:
-
-# Home Automation Data Format
-
-I will provide you with my home's current state in this format:
-
-## Line Formats
-Z|ZoneName|ZoneId|ParentZoneId         # Defines a zone and its parent
-D|DeviceName|DeviceId|readonly_cap=val  # Device with optional readonly capabilities
-C|CapabilityId|Value                    # Writable capability of the previous device
-
-## Capabilities
-- onoff: boolean (true/false) for power state
-- dim: number (0-1) for brightness
-- light_temperature: number (0-1) for warm/cold
-- light_hue: number (0-1) for color
-- light_saturation: number (0-1) for color intensity
-- light_mode: string (color/temperature)
-- measure_battery: readonly number (0-100)
-- measure_temperature: readonly number
-- alarm_motion: readonly boolean
-- locked: boolean for locks
-- volume_set: number (0-1)
-- volume_mute: boolean
-
-## Response Format
-When I ask you to make changes, respond with a JSON array of actions:
-```json
-{
-    "actions": [
-        {
-            "deviceId": "device-guid-here",
-            "capability": "capability-name",
-            "value": new-value
-        }
-    ]
-}
-```
-
-Example: "Turn off all lights in the kitchen" should return a JSON with actions for each light device in the kitchen zone.
-
-
-*/
-
 
 class DeviceManager {
 
@@ -113,45 +68,59 @@ class DeviceManager {
         this.zoneIdMap.clear();
         this.nextZoneId = 1;
 
-        const processZone = (zoneId) => {
+        // First, output all zones
+        const processZoneHierarchy = (zoneId) => {
             const zone = zones[zoneId];
             const simpleId = this.getSimpleZoneId(zone.id);
             const parentId = zone.parent ? this.getSimpleZoneId(zone.parent) : '';
             
-            // Add zone line with simplified IDs
             output.push(`Z|${zone.name}|${simpleId}|${parentId}`);
-
-            // Process devices (unchanged)
-            const zoneDevices = Object.values(devices).filter(d => d.zone === zoneId);
-            for (const dev of zoneDevices) {
-                // Get read-only capabilities first
-                const readOnlyCaps = dev.capabilities
-                    .filter(capId => CAPABILITIES_OF_INTEREST.includes(capId))
-                    .filter(capId => dev.capabilitiesObj[capId]?.setable === false)
-                    .map(capId => `${capId}=${dev.capabilitiesObj[capId]?.value}`);
-
-                // Add device line with read-only capabilities
-                output.push(`D|${dev.name}|${dev.id}|${dev.class}|${readOnlyCaps.length ? '|' + readOnlyCaps.join('|') : ''}`);
-
-                // Add writable capabilities
-                dev.capabilities
-                    .filter(capId => CAPABILITIES_OF_INTEREST.includes(capId))
-                    .filter(capId => dev.capabilitiesObj[capId]?.setable !== false)
-                    .forEach(capId => {
-                        output.push(`C|${capId}|${dev.capabilitiesObj[capId]?.value}`);
-                    });
-            }
 
             // Process child zones
             Object.values(zones)
                 .filter(z => z.parent === zoneId)
-				.forEach(childZone => processZone(childZone.id));
+                .forEach(childZone => processZoneHierarchy(childZone.id));
         };
 
-        // Start with root zones
+        // Output all zones first
         Object.values(zones)
             .filter(zone => !zone.parent)
-            .forEach(zone => processZone(zone.id));
+            .forEach(zone => processZoneHierarchy(zone.id));
+
+        // Then output all devices with their capabilities
+        const deviceList = Object.values(devices).map(dev => {
+            const zoneId = this.getSimpleZoneId(dev.zone);
+            const capabilities = dev.capabilities
+                .filter(capId => CAPABILITIES_OF_INTEREST.includes(capId))
+                .map(capId => {
+                    const capObj = dev.capabilitiesObj[capId];
+                    return `${capId}=${capObj?.value}`;
+                })
+                .filter(cap => cap);
+
+            return {
+                name: dev.name,
+                id: dev.id,
+                type: dev.class,
+                zoneId,
+                capabilities
+            };
+        }).filter(dev => dev.capabilities.length > 0);
+
+        // Sort devices by zoneId then by name
+        deviceList.sort((a, b) => {
+            // First sort by zoneId
+            if (a.zoneId !== b.zoneId) {
+                return parseInt(a.zoneId) - parseInt(b.zoneId);
+            }
+            // Then by device name
+            return a.name.localeCompare(b.name);
+        });
+
+        // Add sorted devices to output
+        deviceList.forEach(dev => {
+            output.push(`D|${dev.name}|${dev.id}|${dev.type}|${dev.zoneId}|${dev.capabilities.join('|')}`);
+        });
 
         return output.join('\n');
     }
