@@ -1,0 +1,9 @@
+{
+  "version": "1",
+  "name": "Homey AI Voice Assistant",
+  "type": "collection",
+  "ignore": [
+    "node_modules",
+    ".git"
+  ]
+}
