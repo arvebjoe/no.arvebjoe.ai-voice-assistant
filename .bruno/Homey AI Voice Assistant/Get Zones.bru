@@ -1,0 +1,15 @@
+meta {
+  name: Get Zones
+  type: http
+  seq: 3
+}
+
+get {
+  url: 192.168.0.99:7709/devices
+  body: none
+  auth: inherit
+}
+
+settings {
+  encodeUrl: true
+}

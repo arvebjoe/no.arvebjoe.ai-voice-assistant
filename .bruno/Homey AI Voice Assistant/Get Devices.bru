@@ -1,0 +1,15 @@
+meta {
+  name: Get Devices
+  type: http
+  seq: 1
+}
+
+get {
+  url: 192.168.0.99/devices
+  body: none
+  auth: inherit
+}
+
+settings {
+  encodeUrl: true
+}
