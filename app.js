@@ -17,19 +17,13 @@ module.exports = class AiVoiceAssistantApp extends Homey.App {
     log.info('AI voice assistant initialized successfully');
 
     // Initialize and start WebServer
-    this.webServer = new WebServer(7709);
+    this.webServer = new WebServer(7709, this.homey);
     await this.webServer.start();
 
     // Initialize DeviceManager
     this.deviceManager = new DeviceManager(this.homey);
     await this.deviceManager.init();
 
-    /*
-    const temp = await this.deviceManager.FetchAllDevices();
-    setTimeout(() => {
-      console.log(temp);
-    }, 5000); // Delay to ensure devices are fetched before logging   
-    */
     
   }
 

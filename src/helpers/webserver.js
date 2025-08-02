@@ -4,12 +4,15 @@ const express = require('express');
 const { networkInterfaces } = require('os');
 const { createLogger } = require('./logger');
 const { pcmToWav } = require('./wav-util');
+const { HomeyAPI } = require('homey-api');
 
 const log = createLogger('WEB');
 
 class WebServer {
-    constructor(port = 3100) {
+    constructor(port, homey) {
         this.port = port;
+        this.homey = homey;
+        this.api = null;
         this.baseUrl = null;
         this.streams = new Map(); // Map of stream names to their PCM buffers
         this.sampleRate = 16000;  // Sample rate from Piper (16kHz)
@@ -17,6 +20,7 @@ class WebServer {
     }
 
     async start() {
+        this.api = await HomeyAPI.createAppAPI({ homey: this.homey });
         this.app = express();
 
         // Root endpoint for debugging
@@ -70,6 +74,33 @@ class WebServer {
             `);
         });
         
+
+        this.app.get('/devices', async (req, res) => {
+            try {
+                if (!this.api) {
+                    throw new Error('Homey API not initialized. Call init() first.');
+                }            
+                const devices = await this.api.devices.getDevices();
+                res.json(devices);
+            } catch (error) {
+                log.error('Error fetching devices:', error);
+                res.status(500).json({ error: error.message });
+            }
+        });
+
+        this.app.get('/zones', async (req, res) => {
+            try {
+                if (!this.api) {
+                    throw new Error('Homey API not initialized. Call init() first.');
+                }
+                const zones = await this.api.zones.getZones();
+                res.json(zones);
+            } catch (error) {
+                log.error('Error fetching zones:', error);
+                res.status(500).json({ error: error.message });
+            }
+        });
+
         // Create a test stream
         this.app.post('/create-test-stream', (req, res) => {
             // Create a simple sine wave as test audio
