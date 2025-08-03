@@ -316,6 +316,6 @@ async function main() {
 }
 
 // Uncomment to run the example
-main();
+//main();
 
 module.exports = HomeyClient;
