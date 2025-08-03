@@ -1,10 +1,8 @@
 'use strict';
-const HomeyClient = require('./homey-client');
-const {Agent, tool, setDefaultOpenAIKey } = require('@openai/agents');
+//const HomeyClient = require('./homey-client');
+const {Agent, tool, setDefaultOpenAIKey, run } = require('@openai/agents');
 const z = require('zod');
 require('dotenv').config();
-
-const fetch = require('node-fetch');
 
 class OpenAIAgent {
     constructor(homeyClient) {
@@ -18,11 +16,13 @@ class OpenAIAgent {
     }    
 }
 
-async function main() {
+async function main2() {
 
-    const client = new HomeyClient('192.168.0.99', 7709);
-    await client.initialize();
+  console.log('OpenAI Agent starting...');
+    //const client = new HomeyClient('192.168.0.99', 7709);
+    //await client.initialize();
 
+    
     setDefaultOpenAIKey(process.env.OPENAI_API_KEY); 
 
     const getWeatherTool = tool({
@@ -30,6 +30,7 @@ async function main() {
         description: 'Get the weather for a given city',
         parameters: z.object({ city: z.string() }),
         async execute({ city }) {
+            console.log(`Executing get_weather tool for city: ${city}`);
             return `The weather in ${city} is sunny.`;
         },
     });
@@ -42,6 +43,7 @@ async function main() {
         // This tool takes no parameters, so we provide an empty Zod Object.
         parameters: z.object({}),
         execute: async () => {
+            console.log('Executing history fun fact tool...');
             // The output will be returned back to the Agent to use
             return 'Sharks are older than trees.';
         },
@@ -53,7 +55,11 @@ async function main() {
         // Adding the tool to the agent
         tools: [getWeatherTool, historyFunFact],
     });    
-
+    
+    console.log('Running agent...');
+    const result = await run(agent, 'How is the weather in Paris?');
+    console.log(result.finalOutput);
+    console.log('Agent run completed.');
 /*
     const agent = new OpenAIAgent(client);
     await agent.initialize();
@@ -62,7 +68,7 @@ async function main() {
 }
 
 
-main();
+main2();
 
 module.exports = OpenAIAgent;
 
