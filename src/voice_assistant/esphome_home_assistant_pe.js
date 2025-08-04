@@ -252,7 +252,7 @@ class EspVoiceClient extends EventEmitter {
 
     this.emit('begin');
     this.vaEvent(VA_EVENT.VOICE_ASSISTANT_RUN_START);
-    this.vaEvent(VA_EVENT.VOICE_ASSISTANT_STT_VAD_START);
+    
 
     const mic = dgram.createSocket('udp4');
     mic.bind(() => {
@@ -335,6 +335,10 @@ class EspVoiceClient extends EventEmitter {
     //console.log('🔊  playback done');
 
     this.emit('audio', pcm);
+  }
+
+  sttStart(){
+    this.vaEvent(VA_EVENT.VOICE_ASSISTANT_STT_VAD_START);
   }
 
   sttEnd(text) {
