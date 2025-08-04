@@ -20,4 +20,14 @@ module.exports = class MyApp extends Homey.App {
     await this.webServer.start();
   }
 
+  async onUninit() {
+    log.info('AI voice assistant is being uninitialized');
+    
+    // Clean up WebServer
+    if (this.webServer) {
+      await this.webServer.stop();
+      this.webServer = null;
+    }
+  }  
+
 }
