@@ -1,56 +1,17 @@
 // Using require for HomeyAPI as it might not have TypeScript typings
-const { HomeyAPI } = require('homey-api');
+import { HomeyAPI } from 'homey-api';
+import { Device, DevicesCollection, Zone, ZonesCollection, PaginatedDevices } from './interfaces';
 import { createLogger } from './logger';
 
-// Type definitions
-interface Device {
-    id: string;
-    name: string;
-    zone: string;
-    class: string;
-    capabilities: string[];
-    capabilitiesObj: {
-        [key: string]: {
-            value: any;
-            [key: string]: any;
-        };
-    };
-    [key: string]: any;
-}
-
-interface Zone {
-    id: string;
-    name: string;
-    parent: string | null;
-    [key: string]: any;
-}
-
-interface DevicesCollection {
-    [deviceId: string]: Device;
-}
-
-interface ZonesCollection {
-    [zoneId: string]: Zone;
-}
-
-interface SimplifiedDevice {
-    id: string;
-    name: string;
-    zone: string[];
-    type: string;
-    capabilities: string[];
-}
-
-interface PaginatedDevices {
-    devices: SimplifiedDevice[];
-    next_page_token: string | null;
-}
 
 const log = createLogger('DeviceManager');
 
+export declare interface IDeviceManager {
+    init(): Promise<void>;
+    fetchData(): Promise<void>;
+}
 
-
-class DeviceManager {
+export class DeviceManager implements IDeviceManager {
     private homey: any;
     private api: any;
     private devices: DevicesCollection | null;
@@ -292,8 +253,3 @@ class DeviceManager {
 
 
 }
-
-// Use CommonJS exports for compatibility with Homey
-module.exports = {
-    DeviceManager
-};
