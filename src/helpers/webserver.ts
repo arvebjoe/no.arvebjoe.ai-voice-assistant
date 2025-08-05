@@ -20,9 +20,15 @@ interface StreamInfo {
     appendChunk: (chunk: Buffer) => void;
 }
 
+
+export declare interface IWebServer {
+    start(): Promise<void>;
+    stop(): Promise<void>;
+}
+
 const log = createLogger('WEB');
 
-class WebServer {
+export class WebServer {
     private port: number;
     private homey: any;
     private api: any;
@@ -278,7 +284,3 @@ class WebServer {
     }
 }
 
-// Use CommonJS export for compatibility with Homey
-module.exports = {
-    WebServer
-};

@@ -2,14 +2,14 @@
 
 import Homey from 'homey';
 import { createLogger } from './src/helpers/logger';
-const { WebServer } = require('./src/helpers/webserver');
+import { WebServer, IWebServer } from './src/helpers/webserver';
 const { DeviceManager } = require('./src/helpers/device-manager');
 
 const log = createLogger('APP');
 
 module.exports = class MyApp extends Homey.App {
   // Define class properties
-  private webServer: any; // Type as 'any' for compatibility
+  private webServer: IWebServer | undefined; 
   private deviceManager: any; 
 
   /**
@@ -31,8 +31,7 @@ module.exports = class MyApp extends Homey.App {
     
     // Clean up WebServer
     if (this.webServer) {
-      await this.webServer.stop();
-      this.webServer = null;
+      await this.webServer.stop();      
     }
   }  
 
