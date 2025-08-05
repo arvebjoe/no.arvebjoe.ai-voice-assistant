@@ -7,7 +7,7 @@ import { DeviceManager, IDeviceManager } from './src/helpers/device-manager';
 
 const log = createLogger('APP');
 
-module.exports = class MyApp extends Homey.App {
+module.exports = class AiVoiceAssistantApp extends Homey.App {
   // Define class properties
   private webServer: IWebServer | undefined;
   private deviceManager: IDeviceManager | undefined;
