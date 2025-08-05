@@ -2,24 +2,10 @@
 
 import { networkInterfaces } from 'os';
 import { createLogger } from './logger';
-// Use require for compatibility with modules that don't have TypeScript declarations
-const express = require('express');
-const { pcmToWav } = require('./wav-util');
-const { HomeyAPI } = require('homey-api');
-
-// Type definitions
-interface AudioData {
-    data: Buffer;
-    rate: number;
-}
-
-interface StreamInfo {
-    name: string;
-    audioFormat: any;
-    url: string;
-    appendChunk: (chunk: Buffer) => void;
-}
-
+import { AudioData, StreamInfo } from './interfaces';
+import express from 'express' ;
+import { pcmToWav } from './wav-util';
+import { HomeyAPI } from 'homey-api';
 
 export declare interface IWebServer {
     start(): Promise<void>;
@@ -28,7 +14,7 @@ export declare interface IWebServer {
 
 const log = createLogger('WEB');
 
-export class WebServer {
+export class WebServer implements IWebServer {
     private port: number;
     private homey: any;
     private api: any;

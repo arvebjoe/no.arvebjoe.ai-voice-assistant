@@ -4,7 +4,7 @@
  * @param sr - Sample rate (default: 16kHz)
  * @returns Buffer containing WAV formatted audio data
  */
-function pcmToWav(pcm: Buffer, sr: number = 16_000): Buffer {
+export function pcmToWav(pcm: Buffer, sr: number = 16_000): Buffer {
   const hdr = Buffer.alloc(44);
   const ch: number = 1; 
   const bps: number = 16;
@@ -26,8 +26,3 @@ function pcmToWav(pcm: Buffer, sr: number = 16_000): Buffer {
 
   return Buffer.concat([hdr, pcm]);
 }
-
-// Export using CommonJS for compatibility with Homey
-module.exports = {
-  pcmToWav
-};
