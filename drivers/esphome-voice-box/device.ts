@@ -99,13 +99,12 @@ class MyDevice extends Homey.Device {
     this.espVoiceClient.intentStart();
 
     await this.devicePromise;
-    //const speech = this.smartAgent.run(text)  
-    
-    //log.info(`speech:`, "OnAudio", speech);  
-    
-    this.espVoiceClient.intentEnd("eosin");
+    const speech = await this.smartAgent.run(text);
+    log.info(`speech:`, "OnAudio", speech);
 
-    const flacBuffer = await synthesize( text, apiKey, {  });
+    this.espVoiceClient.intentEnd(speech);
+
+    const flacBuffer = await synthesize( speech, apiKey, {  });
     //const pcmReply = await synthesize('192.168.0.32', 10200, speech);
     //log.info('Received audio', "OnAudio", pcmReply );
     /*
