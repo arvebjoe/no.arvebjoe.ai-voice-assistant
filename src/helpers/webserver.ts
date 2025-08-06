@@ -148,7 +148,8 @@ export class WebServer implements IWebServer {
             
             const testStreamUrl = this.buildStream({
                 data: buffer,
-                rate: sampleRate
+                rate: sampleRate,
+                extension: 'wav' // Use 'wav' for the test stream
             });
             
             res.redirect('/');
@@ -157,23 +158,27 @@ export class WebServer implements IWebServer {
         // Serve audio streams as WAV
         this.app.get('/stream/:name', (req: Request, res: Response) => {
             const { name } = req.params;
-            const wavBuffer = this.streams.get(name);
-            
-            if (!wavBuffer || wavBuffer.length === 0) {
+            const audioBuffer = this.streams.get(name);
+            if (!audioBuffer || audioBuffer.length === 0) {
                 return res.sendStatus(404);
             }
-            
-            log.info(`Serving WAV stream ${name}:`, '', {                 
-                wavBytes: wavBuffer.length
+            // Determine content type from extension
+            let contentType = 'application/octet-stream';
+            if (name.endsWith('.wav')) {
+                contentType = 'audio/wav';
+            } else if (name.endsWith('.flac')) {
+                contentType = 'audio/flac';
+            }
+            log.info(`Serving audio stream ${name}:`, '', {                 
+                bytes: audioBuffer.length,
+                contentType
             });
-
             res.set({
-                'Content-Type': 'audio/wav',
+                'Content-Type': contentType,
                 'Cache-Control': 'no-cache',
-                'Content-Length': wavBuffer.length,
+                'Content-Length': audioBuffer.length,
             });
-            res.send(wavBuffer);
-
+            res.send(audioBuffer);
             // Clean up the stream after serving
             //this.streams.delete(name);
         });
@@ -204,10 +209,12 @@ export class WebServer implements IWebServer {
     }
 
     buildStream(audioData: AudioData): string {
-        const name = `stream-${Date.now()}.wav`;
+
+        const name = `stream-${Date.now()}.${audioData.extension}`;
         // Convert PCM to WAV (assuming 16kHz mono 16-bit PCM from Piper)
-        const wavBuffer = pcmToWav(audioData.data, audioData.rate);
-        this.streams.set(name, wavBuffer);
+
+        
+        this.streams.set(name, audioData.data);
         return `${this.baseUrl}/stream/${name}`;
     }
 

@@ -2,6 +2,7 @@
 export declare interface AudioData {
     data: Buffer;
     rate: number;
+    extension: string; // File extension, e.g., 'wav', 'flac'
 }
 
 export declare interface StreamInfo {

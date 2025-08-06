@@ -4,6 +4,7 @@ import { WebServer } from '../../src/helpers/webserver';
 import { EspVoiceClient } from '../../src/voice_assistant/esphome_home_assistant_pe';
 import { DeviceManager } from '../../src/helpers/device-manager';
 import { transcribe } from '../../src/speech_to_text/openai_stt';
+import { synthesize } from '../../src/text_to_speech/openai-tts';
 
 const log = createLogger('DEV.ESP');
 
@@ -85,7 +86,7 @@ class MyDevice extends Homey.Device {
     //const text = await transcribe('192.168.0.32', 10300, pcmBuf, { language: 'no' });
     const text = await transcribe( pcmBuf, apiKey, { language: 'no', verbose: false });
     log.info(`Transcribed text:`, "OnAudio", text);
-    this.espVoiceClient.sttEnd("bolle bolle");
+    this.espVoiceClient.sttEnd(text);
 
 
     this.espVoiceClient.intentStart();
@@ -97,12 +98,19 @@ class MyDevice extends Homey.Device {
     
     this.espVoiceClient.intentEnd("eosin");
 
+    const flacBuffer = await synthesize( text, apiKey, {  });
     //const pcmReply = await synthesize('192.168.0.32', 10200, speech);
     //log.info('Received audio', "OnAudio", pcmReply );
-    
+    /*
+        if( audioData.extension === 'audio/pcm') {
+              rate: 16_000,
+            audioData.data = pcmToWav(audioData.data, audioData.rate);
+        }
+    */
     const audioData ={
-      data: pcmBuf,
-      rate: 16_000
+      data: flacBuffer,
+      rate: 16_000,
+      extension: 'flac'
     };
 
     var url = this.webServer.buildStream(audioData);
