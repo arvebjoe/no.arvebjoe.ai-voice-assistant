@@ -9,8 +9,8 @@ const log = createLogger('APP');
 
 module.exports = class AiVoiceAssistantApp extends Homey.App {
   // Define class properties
-  private webServer: IWebServer | undefined;
-  private deviceManager: IDeviceManager | undefined;
+  private webServer: WebServer | undefined;
+  private deviceManager: DeviceManager | undefined;
 
   /**
    * onInit is called when the app is initialized.
