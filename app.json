@@ -30,6 +30,7 @@
     "email": "arvebjoe@hotmail.com"
   },
   "support": "https://github.com/arvebjoe/no.arvebjoe.ai-voice-assistant",
+  "esm": true,
   "drivers": [
     {
       "name": {

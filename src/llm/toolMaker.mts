@@ -1,6 +1,6 @@
 import { tool } from '@openai/agents';
 import * as z from 'zod';
-import { DeviceManager } from '../helpers/device-manager';
+import { DeviceManager } from '../helpers/device-manager.mjs';
 
 // Define an interface for the tools collection
 interface ToolCollection {
@@ -13,7 +13,7 @@ interface ToolCollection {
     getTime: ReturnType<typeof tool>;
 }
 
-export class Toolmaker {
+export class ToolMaker {
     private deviceManager: DeviceManager;
 
     constructor(deviceManager: DeviceManager) {

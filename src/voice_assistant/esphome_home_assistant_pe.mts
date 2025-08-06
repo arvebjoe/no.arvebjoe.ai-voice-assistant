@@ -1,9 +1,9 @@
 import EventEmitter from 'node:events';
 import net from 'node:net';
 import dgram from 'node:dgram';
-import { encodeFrame, decodeFrame, VA_EVENT } from './esphome-messages';
-import { createLogger } from '../helpers/logger';
-import { WebServer } from '../helpers/webserver';
+import { encodeFrame, decodeFrame, VA_EVENT } from './esphome-messages.mjs';
+import { createLogger } from '../helpers/logger.mjs';
+import { WebServer } from '../helpers/webserver.mjs';
 
 const log = createLogger('ESP');
 
@@ -82,6 +82,7 @@ class EspVoiceClient extends EventEmitter {
       this.healthCheckTimer = null;
     }
     this.connected = false;
+    this.emit('disconnected');
   }
 
   async connectApi(): Promise<void> {
@@ -140,6 +141,7 @@ class EspVoiceClient extends EventEmitter {
 
   handleDisconnect(): void {
     this.connected = false;
+    this.emit('disconnected');
     if (this.healthCheckTimer) {
       clearInterval(this.healthCheckTimer);
       this.healthCheckTimer = null;
@@ -160,6 +162,7 @@ class EspVoiceClient extends EventEmitter {
       this.reconnectTimer = null;
     }
     this.connected = false;
+    this.emit('disconnected');
     if (this.healthCheckTimer) {
       clearInterval(this.healthCheckTimer);
       this.healthCheckTimer = null;
@@ -168,6 +171,7 @@ class EspVoiceClient extends EventEmitter {
       this.tcp.destroy();
       this.tcp = null;
     }
+    
     log.info('ESP Voice Client disconnected');
     return true;
   }
@@ -191,6 +195,7 @@ class EspVoiceClient extends EventEmitter {
       this.send('ConnectRequest', { password: '' });
     } else if (name === 'ConnectResponse') {
       this.connected = true;
+      this.emit('connected');
       // Fix: add empty object for ListEntitiesRequest
       this.send('ListEntitiesRequest', {});
     } else if (name === 'ListEntitiesDoneResponse') {
@@ -232,8 +237,7 @@ class EspVoiceClient extends EventEmitter {
         if (firstChunk) {
           firstChunk = false;
           this.sttStart();
-        }
-        log.info('Received audio chunk', undefined, { bytes: buf.length });
+        }        
         chunks.push(buf);
         let sum = 0;
         for (let i = 0; i < SAMPLES; i++) {

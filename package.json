@@ -1,6 +1,7 @@
 {
   "name": "no.arvebjoe.ai-voice-assistant",
   "version": "1.0.0",
+  "type": "module",
   "scripts": {
     "build": "tsc",
     "lint": "eslint --ext .js,.ts --ignore-path .gitignore ."

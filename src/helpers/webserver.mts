@@ -1,10 +1,10 @@
 'use strict';
 
 import { networkInterfaces } from 'os';
-import { createLogger } from './logger';
-import { AudioData, StreamInfo } from './interfaces';
+import { createLogger } from './logger.mjs';
+import { AudioData, StreamInfo } from './interfaces.mjs';
 import express from 'express' ;
-import { pcmToWav } from './wav-util';
+//import { pcmToWav } from './wav-util';
 import { HomeyAPI } from 'homey-api';
 
 export declare interface IWebServer {

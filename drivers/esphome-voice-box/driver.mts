@@ -1,10 +1,10 @@
 import Homey from 'homey';
-import Bonjour from 'bonjour-service';
-import { createLogger } from '../../src/helpers/logger';
+import * as Bonjour from 'bonjour-service';
+import { createLogger } from '../../src/helpers/logger.mjs';
 
 
 const log = createLogger('DRV.ESP');
-const bonjourInstance = new Bonjour();
+const bonjourInstance = new Bonjour.Bonjour();
 
 interface Device {
   name: string;
@@ -21,7 +21,7 @@ interface Device {
   };
 }
 
-class MyDriver extends Homey.Driver {
+export default class MyDriver extends Homey.Driver {
 
   /**
    * onInit is called when the driver is initialized.
@@ -94,5 +94,3 @@ class MyDriver extends Homey.Driver {
   }
 
 }
-
-export = MyDriver;

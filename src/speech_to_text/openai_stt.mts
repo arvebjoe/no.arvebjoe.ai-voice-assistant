@@ -1,8 +1,8 @@
 import OpenAI from 'openai';
 import EventEmitter from 'events';
-import { createLogger } from '../helpers/logger';
-import { pcmToWav } from '../helpers/wav-util';
-import '../helpers/polyfills';
+import { createLogger } from '../helpers/logger.mjs';
+import { pcmToWav } from '../helpers/wav-util.mjs';
+import '../helpers/polyfills.mjs';
 
 const log = createLogger('OPENAI-STT');
 

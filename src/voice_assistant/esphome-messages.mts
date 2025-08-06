@@ -2,6 +2,11 @@ import fs from 'node:fs';
 import protobuf from 'protobufjs';
 import varint from 'varint';
 import path from 'path';
+import { dirname } from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 const root = protobuf.parse(
     fs.readFileSync(path.join(__dirname, 'api.proto'), 'utf8')

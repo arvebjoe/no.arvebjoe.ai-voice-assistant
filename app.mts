@@ -1,13 +1,13 @@
 'use strict';
 
 import Homey from 'homey';
-import { createLogger } from './src/helpers/logger';
-import { WebServer, IWebServer } from './src/helpers/webserver';
-import { DeviceManager, IDeviceManager } from './src/helpers/device-manager';
+import { createLogger } from './src/helpers/logger.mjs';
+import { WebServer, IWebServer } from './src/helpers/webserver.mjs';
+import { DeviceManager, IDeviceManager } from './src/helpers/device-manager.mjs';
 
 const log = createLogger('APP');
 
-module.exports = class AiVoiceAssistantApp extends Homey.App {
+export default class AiVoiceAssistantApp extends Homey.App {
   // Define class properties
   private webServer: WebServer | undefined;
   private deviceManager: DeviceManager | undefined;

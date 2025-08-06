@@ -1,7 +1,7 @@
 // Using require for HomeyAPI as it might not have TypeScript typings
 import { HomeyAPI } from 'homey-api';
-import { Device, DevicesCollection, Zone, ZonesCollection, PaginatedDevices } from './interfaces';
-import { createLogger } from './logger';
+import { Device, DevicesCollection, Zone, ZonesCollection, PaginatedDevices } from './interfaces.mjs';
+import { createLogger } from './logger.mjs';
 
 
 const log = createLogger('DeviceManager');
@@ -235,7 +235,8 @@ export class DeviceManager implements IDeviceManager {
                     type: device.class, // We use "type" in our API but it's "class" in the original data
                     capabilities: formattedCapabilities
                 };
-                
+            
+
                 devicesList.push(simplifiedDevice);
             }
         }
@@ -245,6 +246,10 @@ export class DeviceManager implements IDeviceManager {
         const slice = devicesList.slice(start, start + page_size);
         const next_page_token = start + page_size < devicesList.length ? String(start + page_size) : null;
         
+        for (const device of slice) {
+            log.info(`Device: ${device.name} (${device.id}) - Zone: ${device.zone.join(' > ')} - Type: ${device.type} - Capabilities: ${device.capabilities.join(', ')}`);
+        }
+
         return {
             devices: slice,
             next_page_token: next_page_token

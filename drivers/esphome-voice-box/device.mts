@@ -1,10 +1,12 @@
 import Homey from 'homey';
-import { createLogger } from '../../src/helpers/logger';
-import { WebServer } from '../../src/helpers/webserver';
-import { EspVoiceClient } from '../../src/voice_assistant/esphome_home_assistant_pe';
-import { DeviceManager } from '../../src/helpers/device-manager';
-import { transcribe } from '../../src/speech_to_text/openai_stt';
-import { synthesize } from '../../src/text_to_speech/openai-tts';
+import { createLogger } from '../../src/helpers/logger.mjs';
+import { WebServer } from '../../src/helpers/webserver.mjs';
+import { EspVoiceClient } from '../../src/voice_assistant/esphome_home_assistant_pe.mjs';
+import { DeviceManager } from '../../src/helpers/device-manager.mjs';
+import { transcribe } from '../../src/speech_to_text/openai_stt.mjs';
+import { synthesize } from '../../src/text_to_speech/openai-tts.mjs';
+import { SmartAgent } from '../../src/llm/smartAgent.mjs';
+import { ToolMaker } from '../../src/llm/toolMaker.mjs';
 
 const log = createLogger('DEV.ESP');
 
@@ -14,18 +16,21 @@ interface DeviceStore {
   [key: string]: any;
 }
 
-class MyDevice extends Homey.Device {
+export default class MyDevice extends Homey.Device {
   private espVoiceClient!: EspVoiceClient;
   private webServer!: WebServer;
   private deviceManager!: DeviceManager;
   private devicePromise!: Promise<void>;
+  private toolMaker!: ToolMaker;
+  private smartAgent!: SmartAgent;  
 
   /**
    * onInit is called when the device is initialized.
    */
   async onInit(): Promise<void> {
-    this.log('MyDevice has been initialized');
-
+    this.log('MyDevice is initializing...');
+    // TODO:
+    this.setUnavailable();
 
     this.registerCapabilityListener('onoff', async (value: boolean) => {
       this.log('Capability onoff changed to:', value);
@@ -80,6 +85,18 @@ class MyDevice extends Homey.Device {
 
     // Bind the event handler to this class instance
     this.espVoiceClient.on('audio', this._onAudio.bind(this));    
+    
+    this.espVoiceClient.on('connected', async () => {
+      log.info('ESP Voice Client connected')  ;     
+      this.setAvailable();
+    });
+
+    this.espVoiceClient.on('disconnected', () => {
+      log.info('ESP Voice Client disconnected');
+      this.setUnavailable('Disconnected from ESP Voice Client');
+    });
+
+    this.log('MyDevice has initialized');
   }
 
 
@@ -176,5 +193,3 @@ class MyDevice extends Homey.Device {
     this.log('MyDevice has been deleted');
   }
 }
-
-export = MyDevice;
