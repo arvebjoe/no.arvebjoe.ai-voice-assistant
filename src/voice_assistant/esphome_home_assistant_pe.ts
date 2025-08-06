@@ -227,7 +227,13 @@ class EspVoiceClient extends EventEmitter {
       const chunks: Buffer[] = [];
       let lastVoice = Date.now();
       let isCurrentlyVoice = false;
+      let firstChunk = true;
       mic.on('message', (buf: Buffer) => {
+        if (firstChunk) {
+          firstChunk = false;
+          this.sttStart();
+        }
+        log.info('Received audio chunk', undefined, { bytes: buf.length });
         chunks.push(buf);
         let sum = 0;
         for (let i = 0; i < SAMPLES; i++) {
@@ -253,7 +259,7 @@ class EspVoiceClient extends EventEmitter {
       return;
     }
     // Fix: use undefined instead of null
-    log.info(`Received audio data`, undefined, { bytes: pcm.length });
+    log.info(`Received audio data`, undefined, { bytes: pcm.length });  
     const bytesToTrim = Math.min(pcm.length, Math.round(this.SAMPLE_RATE * this.TRIM_MS / 1000) * this.BYTES_PER_SAMPLE);
     if (bytesToTrim) {
       pcm = pcm.slice(bytesToTrim);
