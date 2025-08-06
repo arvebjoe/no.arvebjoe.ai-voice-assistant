@@ -3,7 +3,7 @@ import { createLogger } from '../../src/helpers/logger';
 import { WebServer } from '../../src/helpers/webserver';
 import { EspVoiceClient } from '../../src/voice_assistant/esphome_home_assistant_pe';
 import { DeviceManager } from '../../src/helpers/device-manager';
-import { transcribe } from '../../src/speech_to_test/openai_stt';
+import { transcribe } from '../../src/speech_to_text/openai_stt';
 
 const log = createLogger('DEV.ESP');
 
