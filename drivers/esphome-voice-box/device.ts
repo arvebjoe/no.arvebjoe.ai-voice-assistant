@@ -3,6 +3,7 @@ import { createLogger } from '../../src/helpers/logger';
 import { WebServer } from '../../src/helpers/webserver';
 import { EspVoiceClient } from '../../src/voice_assistant/esphome_home_assistant_pe';
 import { DeviceManager } from '../../src/helpers/device-manager';
+import { transcribe } from '../../src/speech_to_test/openai_stt';
 
 const log = createLogger('DEV.ESP');
 
@@ -76,11 +77,14 @@ class MyDevice extends Homey.Device {
 
   async _onAudio(pcmBuf: Buffer) {
 
+
+    const apiKey = this.homey.settings.get('openai_api_key');
+
     log.info('Received audio data', "OnAudio", { bytes: pcmBuf.length });
     //this.espVoiceClient.sttStart();
     //const text = await transcribe('192.168.0.32', 10300, pcmBuf, { language: 'no' });
-    //const text = await transcribe( pcmBuf, apiKey, { language: 'no' });
-    //log.info(`Transcribed text:`, "OnAudio", text);
+    const text = await transcribe( pcmBuf, apiKey, { language: 'no', verbose: false });
+    log.info(`Transcribed text:`, "OnAudio", text);
     this.espVoiceClient.sttEnd("bolle bolle");
 
 
