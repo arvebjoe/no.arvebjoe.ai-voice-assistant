@@ -45,8 +45,15 @@ class MyDevice extends Homey.Device {
       // await this.muteVolumeOnDevice(value);
     });
 
+
     this.webServer = (this.homey as any).app.webServer as InstanceType<typeof WebServer>;
     this.deviceManager = (this.homey as any).app.deviceManager as InstanceType<typeof DeviceManager>;
+
+    const apiKey = this.homey.settings.get('openai_api_key');
+    
+    this.toolMaker = new ToolMaker(this.deviceManager);
+    this.smartAgent = new SmartAgent(this.toolMaker, apiKey);
+    log.info('Agent initialized with tools');        
 
     const store = this.getStore() as DeviceStore;
     log.info('Device store:', 'INIT', store);
