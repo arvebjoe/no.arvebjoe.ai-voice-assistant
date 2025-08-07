@@ -1,20 +1,24 @@
-Adds support for MyBrand devices.
+# Devices compatibility
+    - What
+    - How to flash
 
 
-# TODO:
+# Supported AI providers
+    - OpenAI
+    - Locally hosted (wyoming, ollama)
 
-## Agent tools
-    - Start flow by name, "start <flow name>"
-    - Start flow by synonym, "i'm going to bed" -> starts flow "night mode" - Need some way of letting user create connections between synonym and flow name
-    
 
-## Settings
-    - Debug mode (on/off). Will show live logging. Saves both rx and tx wav files for a while.
 
+# TODO before release:
+
+## Agent system prompt
+    - Need to tell agent what language is should answer in i.e. "norwegian", "english" or "pirate"
 
 ## Voice Box
     - Needs to know where it is (zone). So it can controll devices within it's own zone if the user didn't specify the zone.
 
+## Agent still makes a lot of errors
+    - But why?!
 
 ## Flow cards
 
@@ -37,6 +41,23 @@ Adds support for MyBrand devices.
 
     - App trigger Agent with text prompt. Output as wav or text
 
+
+
+# TODO after release
+
+## Locally hosted AI
+    - Whipsper
+    - Piper
+    - Ollama
+
+## Settings
+    - Debug mode (on/off). Will show live logging. Saves both rx and tx wav files for a while.
+
+
+## Agent tools
+    - Start flow by name, "start <flow name>"
+    - Start flow by synonym, "i'm going to bed" -> starts flow "night mode" - Need some way of letting user create connections between synonym and flow name
+
 ## Alarm or count down
     - This would be really nice to have
     - Looks like i can create alarm in the homey api:
@@ -51,8 +72,7 @@ Adds support for MyBrand devices.
     - Then delete the alarm
 
 
-
-## Next fase
+# Phase 2
 
 ## Image analysis?
     - Use AI agent to analyze an image together with a prompt? "Can you se any persons in the surveillance image?", "Is it dark out", "Who is at the door?"
