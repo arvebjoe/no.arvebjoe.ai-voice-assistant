@@ -1,9 +1,7 @@
-'use strict';
-
 import Homey from 'homey';
 import { createLogger } from './src/helpers/logger.mjs';
-import { WebServer, IWebServer } from './src/helpers/webserver.mjs';
-import { DeviceManager, IDeviceManager } from './src/helpers/device-manager.mjs';
+import { WebServer } from './src/helpers/webserver.mjs';
+import { DeviceManager } from './src/helpers/device-manager.mjs';
 
 const log = createLogger('APP');
 
@@ -18,12 +16,13 @@ export default class AiVoiceAssistantApp extends Homey.App {
   async onInit() {
     log.info('AI voice assistant initializing...');
 
-    this.webServer = new WebServer(7709, this.homey);
+    this.webServer = new WebServer(this.homey);
     await this.webServer.start();
 
     // Initialize DeviceManager
     this.deviceManager = new DeviceManager(this.homey);
     await this.deviceManager.init();
+
     log.info('AI voice assistant initialized successfully');
 
   }

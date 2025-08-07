@@ -136,7 +136,7 @@ export default class MyDevice extends Homey.Device {
       extension: 'flac'
     };
 
-    var url = this.webServer.buildStream(audioData);
+    var url = await this.webServer.buildStream(audioData);
     log.info('Audio stream URL:',"OnAudio", url);
     
     this.espVoiceClient.playAudioFromUrl(url);

@@ -1,4 +1,3 @@
-'use strict';
 import { Agent, AgentInputItem, run, setDefaultOpenAIKey } from '@openai/agents';
 import { OpenAI } from 'openai';
 import { ToolMaker } from './toolMaker.mjs';
