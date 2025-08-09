@@ -201,7 +201,7 @@ class EspVoiceClient extends EventEmitter {
     } else if (name === 'ListEntitiesDoneResponse') {
       this.send('SubscribeVoiceAssistantRequest', { subscribe: true });
     } else if (name === 'VoiceAssistantAnnounceFinished') {
-      log.info('VoiceAssistantAnnounceFinished received');
+      //log.info('VoiceAssistantAnnounceFinished received');
       this.emit('end');
     } else if (name === 'VoiceAssistantRequest' && message.start) {
       this.handleVoiceSession();
@@ -262,8 +262,7 @@ class EspVoiceClient extends EventEmitter {
     if (!pcm.length) {
       return;
     }
-    // Fix: use undefined instead of null
-    log.info(`Received audio data`, undefined, { bytes: pcm.length });  
+    // Fix: use undefined instead of null    
     const bytesToTrim = Math.min(pcm.length, Math.round(this.SAMPLE_RATE * this.TRIM_MS / 1000) * this.BYTES_PER_SAMPLE);
     if (bytesToTrim) {
       pcm = pcm.slice(bytesToTrim);
@@ -311,12 +310,12 @@ class EspVoiceClient extends EventEmitter {
   }
 
   send(name: string, payload: any): void {
-    log.info(name, 'TX', payload);
+    //log.info(name, 'TX', payload);
     this.tcp?.write(encodeFrame(name, payload));
   }
 
   logRx(f: any): void {
-    log.info(f.name || `unknown#${f.id}`, 'RX', f.message || { length: f.payload.length });
+    //log.info(f.name || `unknown#${f.id}`, 'RX', f.message || { length: f.payload.length });
   }
 }
 

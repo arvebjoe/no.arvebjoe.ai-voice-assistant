@@ -105,11 +105,11 @@ export default class MyDevice extends Homey.Device {
 
     const apiKey = this.homey.settings.get('openai_api_key');
 
-    log.info('Received audio data', "OnAudio", { bytes: pcmBuf.length });
+    //log.info('Received audio data', "OnAudio", { bytes: pcmBuf.length });
     //this.espVoiceClient.sttStart();
     //const text = await transcribe('192.168.0.32', 10300, pcmBuf, { language: 'no' });
     const text = await transcribe( pcmBuf, apiKey, { language: 'no', verbose: false });
-    log.info(`Transcribed text:`, "OnAudio", text);
+    log.info(`User: ${text}`, "OnAudio");
     this.espVoiceClient.sttEnd(text);
 
 
@@ -117,7 +117,7 @@ export default class MyDevice extends Homey.Device {
 
     await this.devicePromise;
     const speech = await this.smartAgent.run(text);
-    log.info(`speech:`, "OnAudio", speech);
+    log.info(`AGENT: ${speech}`, "OnAudio");
 
     this.espVoiceClient.intentEnd(speech);
 
@@ -137,10 +137,10 @@ export default class MyDevice extends Homey.Device {
     };
 
     var url = await this.webServer.buildStream(audioData);
-    log.info('Audio stream URL:',"OnAudio", url);
+    //log.info('Audio stream URL:',"OnAudio", url);
     
     this.espVoiceClient.playAudioFromUrl(url);
-    log.info('Playing audio from URL', "OnAudio", url);
+    //log.info('Playing audio from URL', "OnAudio", url);
 
     this.espVoiceClient.endRun();
 
