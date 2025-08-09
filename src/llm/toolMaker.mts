@@ -63,15 +63,14 @@ export class ToolMaker {
 
         const setDeviceCapabilityBulk = tool({
             name: 'set_device_capability_bulk',
-            description: 'Set a capability value for multiple devices',
+            description:  "Set a capability value for MANY devices at once. Use this when the user says 'all', 'every', or when 2+ devices need the same change.",
             parameters: z.object({
                 deviceIds: z.array(z.string()),
                 capabilityId: z.string(),
                 newValue: z.union([z.string(), z.number(), z.boolean()]),
             }),
             execute: async ({ deviceIds, capabilityId, newValue }) => {
-                log.info(`Executing setDeviceCapabilityBulk tool for devices ${deviceIds.join(', ')}.`);
-                log.info(`Capability ${capabilityId} = value ${newValue}`);
+                log.info(`Executing setDeviceCapabilityBulk tool for ${deviceIds.length} devices. Capability ${capabilityId} = value ${newValue}`);
                 return this.deviceManager.setDeviceCapabilityBulk(deviceIds, capabilityId, newValue);
             },
         });

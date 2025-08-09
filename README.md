@@ -13,13 +13,9 @@
 
 ## Agent system prompt
     - Need to tell agent what language is should answer in i.e. "norwegian", "english" or "pirate". 
+    - Needs to come from app-settings 
     - Just write it in for release 1.0.0
     - Perhaps pulldown with auto complete in the future?
-
-## Agent still makes a lot of errors
-    - Hide ESP home logging -> Noise
-    - Update tool def
-    - Update system prompt
 
 ## Voice Box
     - Needs to know where it is (zone). So it can controll devices within it's own zone if the user didn't specify the zone.
