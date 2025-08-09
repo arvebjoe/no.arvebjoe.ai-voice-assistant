@@ -51,7 +51,7 @@ function formatTime(): string {
     return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
 }
 
-type Details = Record<string, any> | string | null;
+type Details = Record<string, any> | string | any | null;
 
 class Logger {
     private from: string;

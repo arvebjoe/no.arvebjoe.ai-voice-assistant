@@ -1,8 +1,8 @@
 import { networkInterfaces } from 'os';
 import { createLogger } from './logger.mjs';
 import { AudioData } from './interfaces.mjs';
-import { promises as fs } from 'fs';
-import { v4 as uuidv4 } from 'uuid';
+import { emptyAudioFolder, saveAudioData } from './file-helper.mjs';
+
 
 const log = createLogger('WEB');
 
@@ -19,9 +19,7 @@ export class WebServer {
         this.ip = this.getLanIP();
 
         // Empty and remove audio subfolder
-        await fs.rmdir('/userdata/audio', { recursive: true }).catch(err => log.error('Error emptying userdata folder:', err));
-        // Create the audio subdirectory
-        await fs.mkdir('/userdata/audio').catch(err => log.error('Error creating audio subfolder:', err));
+        emptyAudioFolder();
     }
 
     async stop(): Promise<void> {
@@ -30,21 +28,13 @@ export class WebServer {
 
     async buildStream(audioData: AudioData): Promise<string> {
 
-        const uniqueFilename = `${uuidv4()}.${audioData.extension}`;
+        const { filename } = await saveAudioData(this.homey, 'tx', audioData);
 
-        // Store in the audio subdirectory
-        const filePath = '/userdata/audio/' + uniqueFilename;
-
-        await fs.writeFile(filePath, audioData.data);
-
-        this.homey.setTimeout(() => {
-            log.info(`Deleting temporary file: ${filePath}`);
-            fs.unlink(filePath).catch(err => log.error('Error deleting temporary file:', err));
-        }, 30_000);
-
-        const publicUrl = `http://${this.ip}/app/${this.homey.manifest.id}/userdata/audio/${uniqueFilename}`;
+        const publicUrl = `http://${this.ip}/app/${this.homey.manifest.id}/userdata/audio/${filename}`;
         return publicUrl;
     }
+
+
 
     getLanIP(): string {
 

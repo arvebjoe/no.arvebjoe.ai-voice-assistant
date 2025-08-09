@@ -16,6 +16,8 @@ export default class AiVoiceAssistantApp extends Homey.App {
   async onInit() {
     log.info('AI voice assistant initializing...');
 
+    process.env.OPENAI_API_KEY = this.homey.settings.get('openai_api_key');
+
     this.webServer = new WebServer(this.homey);
     await this.webServer.start();
 

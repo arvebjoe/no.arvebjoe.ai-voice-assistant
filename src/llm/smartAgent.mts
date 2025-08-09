@@ -11,7 +11,7 @@ export class SmartAgent {
     private toolMaker: ToolMaker;
     private apiKey: string;
     private tools: ReturnType<ToolMaker['createTools']>;
-    private openai: OpenAI;
+    //private openai: OpenAI;
     private agent: Agent | null;
     private thread: AgentInputItem[] = [];
 
@@ -21,12 +21,13 @@ export class SmartAgent {
 
         this.tools = this.toolMaker.createTools();	
         
+        /*
         this.openai = new OpenAI({
             apiKey: this.apiKey,
         });
 
         setDefaultOpenAIKey(this.apiKey);
-
+        */
         this.agent = null;
         this.thread = []; 
     }
@@ -41,7 +42,7 @@ export class SmartAgent {
             this.agent = new Agent({
                 // Correct Agent construction parameters based on @openai/agents library
                 name: 'Smart Home Assistant',
-                model: 'gpt-4.1-nano', // 'gpt-3.5-turbo',
+                model: 'gpt-5-mini', // 'gpt-3.5-turbo',
                 instructions: `
                     You are a helpful smart home assistant. You can control devices in the user's home using the tools provided.
                     When the user asks to control a device:
@@ -67,7 +68,7 @@ export class SmartAgent {
                     Always start by determining whether the request involves smart home control or is just a general question.
                 `,
                 // Adding the tools to the agent
-                tools: Object.values(this.tools),
+                tools: Object.values(this.tools),                
             } as any); // Using 'as any' temporarily until we have the correct type definitions
         }
 
@@ -79,7 +80,7 @@ export class SmartAgent {
             
             // Based on @openai/agents v0.0.15, let's try the correct method
             //const result = await (this.agent as any).submitMessage(input);
-            const result = await run(this.agent, this.thread );            
+            const result = await run(this.agent, this.thread);
             
             this.thread = result.history;
 

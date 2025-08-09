@@ -277,7 +277,7 @@ class EspVoiceClient extends EventEmitter {
       startConversation: false,
     });
     // Fix: use undefined instead of null
-    log.info('Playing audio from URL:', undefined, url);
+    //log.info('Playing audio from URL:', undefined, url);
   }
 
   sttStart(): void {

@@ -8,7 +8,7 @@ import { synthesize } from '../../src/text_to_speech/openai-tts.mjs';
 import { SmartAgent } from '../../src/llm/smartAgent.mjs';
 import { ToolMaker } from '../../src/llm/toolMaker.mjs';
 
-const log = createLogger('DEV.ESP');
+const log = createLogger('ESPHOME');
 
 interface DeviceStore {
   address: string;
@@ -108,8 +108,8 @@ export default class MyDevice extends Homey.Device {
     //log.info('Received audio data', "OnAudio", { bytes: pcmBuf.length });
     //this.espVoiceClient.sttStart();
     //const text = await transcribe('192.168.0.32', 10300, pcmBuf, { language: 'no' });
-    const text = await transcribe( pcmBuf, apiKey, { language: 'no', verbose: false });
-    log.info(`User: ${text}`, "OnAudio");
+    const text = await transcribe( pcmBuf, apiKey, { language: 'no', verbose: false }, this.homey);
+    log.info(`USER: ${text}`);
     this.espVoiceClient.sttEnd(text);
 
 
@@ -117,7 +117,7 @@ export default class MyDevice extends Homey.Device {
 
     await this.devicePromise;
     const speech = await this.smartAgent.run(text);
-    log.info(`AGENT: ${speech}`, "OnAudio");
+    log.info(`AGENT: ${speech}`);
 
     this.espVoiceClient.intentEnd(speech);
 
@@ -143,6 +143,7 @@ export default class MyDevice extends Homey.Device {
     //log.info('Playing audio from URL', "OnAudio", url);
 
     this.espVoiceClient.endRun();
+    log.info('----------------------');
 
   } 
 

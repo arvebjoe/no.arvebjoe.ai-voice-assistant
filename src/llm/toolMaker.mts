@@ -1,6 +1,9 @@
 import { tool } from '@openai/agents';
 import * as z from 'zod';
 import { DeviceManager } from '../helpers/device-manager.mjs';
+import { createLogger } from '../helpers/logger.mjs';
+
+const log = createLogger('TOOL_MAKER');
 
 // Define an interface for the tools collection
 interface ToolCollection {
@@ -17,7 +20,7 @@ export class ToolMaker {
     private deviceManager: DeviceManager;
 
     constructor(deviceManager: DeviceManager) {
-        this.deviceManager = deviceManager;     
+        this.deviceManager = deviceManager;
     }
 
     createTools(): ToolCollection {
@@ -27,7 +30,7 @@ export class ToolMaker {
             description: 'Get a list of all zones',
             parameters: z.object({}),
             execute: async () => {
-                console.log('Executing getZones tool...');
+                log.info('Executing getZones tool...');
                 return this.deviceManager.getZones();
             },
         });
@@ -37,7 +40,7 @@ export class ToolMaker {
             description: 'Get all device types available',
             parameters: z.object({}),
             execute: async () => {
-                console.log('Executing getAllDeviceTypes tool...');
+                log.info('Executing getAllDeviceTypes tool...');
                 return this.deviceManager.getAllDeviceTypes();
             },
         });
@@ -48,14 +51,14 @@ export class ToolMaker {
             parameters: z.object({
                 deviceId: z.string(),
                 capabilityId: z.string(),
-                newValue: z.union([z.string(), z.number(), z.boolean()]), 
+                newValue: z.union([z.string(), z.number(), z.boolean()]),
             }),
             execute: async ({ deviceId, capabilityId, newValue }) => {
-                console.log(`Executing setDeviceCapability tool for device ${deviceId}, capability ${capabilityId}, value ${newValue}`);
-                
+                log.info(`Executing setDeviceCapability tool for device ${deviceId}, capability ${capabilityId}, value ${newValue}`);
+
                 // Convert the value to the appropriate type if necessary
                 let processedValue: string | number | boolean = newValue;
-                
+
                 // If newValue is a string, try to parse it as a number or boolean
                 if (typeof newValue === 'string') {
                     if (newValue.toLowerCase() === 'true') {
@@ -70,7 +73,7 @@ export class ToolMaker {
                         }
                     }
                 }
-                
+
                 return this.deviceManager.setDeviceCapability(deviceId, capabilityId, processedValue);
             },
         });
@@ -85,26 +88,26 @@ export class ToolMaker {
                 page_token: z.string().optional().nullable(),
             }),
             execute: async ({ zone, type, page_size, page_token }) => {
-                console.log(`Executing getSmartHomeDevices tool for zone ${zone}, type ${type}, page_size ${page_size}, page_token ${page_token}`);
+                log.info(`Executing getSmartHomeDevices tool for zone ${zone}, type ${type}, page_size ${page_size}, page_token ${page_token}`);
                 // Handle nullable values properly to match DeviceManager's interface
                 const zoneSafe = zone || undefined;
                 const typeSafe = type || undefined;
                 const pageSizeSafe = page_size || undefined;
                 const pageTokenSafe = page_token || null;
-                
+
                 return this.deviceManager.getSmartHomeDevices(zoneSafe, typeSafe, pageSizeSafe, pageTokenSafe);
             },
         });
 
         const getTime = tool({
-            name: 'get_time',   
+            name: 'get_time',
             description: 'Get the current time in a specific timezone',
             parameters: z.object({
                 timezone: z.string().optional().default('Europe/Oslo'),
             }),
             execute: async ({ timezone }) => {
                 const now = new Date().toLocaleString('no-NO', { timeZone: timezone });
-                console.log(`Executing get_time tool for timezone: ${timezone}`);
+                log.info(`Executing get_time tool for timezone: ${timezone}`);
                 return `The current time in ${timezone} is ${now}.`;
             },
         });
@@ -114,7 +117,7 @@ export class ToolMaker {
             description: 'Get the weather for a given city',
             parameters: z.object({ city: z.string() }),
             async execute({ city }) {
-                console.log(`Executing get_weather tool for city: ${city}`);
+                log.info(`Executing get_weather tool for city: ${city}`);
                 return `The weather in ${city} is sunny.`;
             },
         });
@@ -127,7 +130,7 @@ export class ToolMaker {
             // This tool takes no parameters, so we provide an empty Zod Object.
             parameters: z.object({}),
             execute: async () => {
-                console.log('Executing history fun fact tool...');
+                log.info('Executing history fun fact tool...');
                 // The output will be returned back to the Agent to use
                 return 'Sharks are older than trees.';
             },

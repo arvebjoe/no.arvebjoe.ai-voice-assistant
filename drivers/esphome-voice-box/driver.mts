@@ -3,7 +3,7 @@ import * as Bonjour from 'bonjour-service';
 import { createLogger } from '../../src/helpers/logger.mjs';
 
 
-const log = createLogger('DRV.ESP');
+const log = createLogger('ESPHOME-DRIVER');
 const bonjourInstance = new Bonjour.Bonjour();
 
 interface Device {
