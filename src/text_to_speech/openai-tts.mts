@@ -22,7 +22,8 @@ export async function synthesize(
   const openai = new OpenAI({ apiKey });
   const response = await openai.audio.speech.create({
     model: opts.model || 'gpt-4o-mini-tts',
-    voice: opts.voice || 'alloy',
+    voice: opts.voice || 'shimmer',
+    instructions: "Speak in a cheerful and positive tone.",
     response_format: opts.response_format || 'flac',
     input: text,
   });
