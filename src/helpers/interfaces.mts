@@ -19,16 +19,9 @@ export declare interface StreamInfo {
 export declare interface Device {
     id: string;
     name: string;
-    zone: string;
-    class: string;
+    zones: string[];
+    type: string;
     capabilities: string[];
-    capabilitiesObj: {
-        [key: string]: {
-            value: any;
-            [key: string]: any;
-        };
-    };
-    [key: string]: any;
 }
 
 export declare interface Zone {
@@ -46,15 +39,9 @@ export declare interface ZonesCollection {
     [zoneId: string]: Zone;
 }
 
-export declare interface SimplifiedDevice {
-    id: string;
-    name: string;
-    zone: string[];
-    type: string;
-    capabilities: string[];
-}
+
 
 export declare interface PaginatedDevices {
-    devices: SimplifiedDevice[];
+    devices: Device[];
     next_page_token: string | null;
 }
