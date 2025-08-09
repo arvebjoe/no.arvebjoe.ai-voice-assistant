@@ -12,6 +12,7 @@ interface ToolCollection {
     getZones: ReturnType<typeof tool>;
     getAllDeviceTypes: ReturnType<typeof tool>;
     setDeviceCapability: ReturnType<typeof tool>;
+    setDeviceCapabilityBulk: ReturnType<typeof tool>;
     getSmartHomeDevices: ReturnType<typeof tool>;
     getTime: ReturnType<typeof tool>;
 }
@@ -55,26 +56,23 @@ export class ToolMaker {
             }),
             execute: async ({ deviceId, capabilityId, newValue }) => {
                 log.info(`Executing setDeviceCapability tool for device ${deviceId}, capability ${capabilityId}, value ${newValue}`);
+                return this.deviceManager.setDeviceCapability(deviceId, capabilityId, newValue);
+            },
+        });
 
-                // Convert the value to the appropriate type if necessary
-                let processedValue: string | number | boolean = newValue;
 
-                // If newValue is a string, try to parse it as a number or boolean
-                if (typeof newValue === 'string') {
-                    if (newValue.toLowerCase() === 'true') {
-                        processedValue = true;
-                    } else if (newValue.toLowerCase() === 'false') {
-                        processedValue = false;
-                    } else {
-                        // Try to parse as number if it looks like a number
-                        const parsedNumber = parseFloat(newValue);
-                        if (!isNaN(parsedNumber) && /^-?\d*\.?\d+$/.test(newValue)) {
-                            processedValue = parsedNumber;
-                        }
-                    }
-                }
-
-                return this.deviceManager.setDeviceCapability(deviceId, capabilityId, processedValue);
+        const setDeviceCapabilityBulk = tool({
+            name: 'set_device_capability_bulk',
+            description: 'Set a capability value for multiple devices',
+            parameters: z.object({
+                deviceIds: z.array(z.string()),
+                capabilityId: z.string(),
+                newValue: z.union([z.string(), z.number(), z.boolean()]),
+            }),
+            execute: async ({ deviceIds, capabilityId, newValue }) => {
+                log.info(`Executing setDeviceCapabilityBulk tool for devices ${deviceIds.join(', ')}.`);
+                log.info(`Capability ${capabilityId} = value ${newValue}`);
+                return this.deviceManager.setDeviceCapabilityBulk(deviceIds, capabilityId, newValue);
             },
         });
 
@@ -144,6 +142,7 @@ export class ToolMaker {
             getZones,
             getAllDeviceTypes,
             setDeviceCapability,
+            setDeviceCapabilityBulk,
             getSmartHomeDevices,
             getTime
         };

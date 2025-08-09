@@ -27,7 +27,7 @@ export class DeviceManager implements IDeviceManager {
     async init(): Promise<void> {
         this.api = await HomeyAPI.createAppAPI({ homey: this.homey });
         log.info('DeviceManager initialized');
-        
+
     }
 
     async fetchData(): Promise<void> {
@@ -37,9 +37,13 @@ export class DeviceManager implements IDeviceManager {
             this.api.zones.getZones(),
         ]);
 
+
         // Todo: simplify devices and zones data
+
+
+        
         this.devices = devices;
-        this.zones = zones; 
+        this.zones = zones;
     }
 
     /**
@@ -68,7 +72,7 @@ export class DeviceManager implements IDeviceManager {
      */
     getZones(): string[] {
         if (!this.zones) return [];
-        
+
         const zonesList: string[] = [];
         for (const zoneId in this.zones) {
             if (this.zones.hasOwnProperty(zoneId)) {
@@ -78,7 +82,7 @@ export class DeviceManager implements IDeviceManager {
                 }
             }
         }
-        
+
         return zonesList;
     }
 
@@ -88,10 +92,10 @@ export class DeviceManager implements IDeviceManager {
      */
     getAllDeviceTypes(): string[] {
         if (!this.devices) return [];
-        
+
         // Use a Set to automatically keep track of unique values
         const deviceTypes = new Set<string>();
-        
+
         // Iterate through all devices and collect unique types
         for (const deviceId in this.devices) {
             if (this.devices.hasOwnProperty(deviceId)) {
@@ -101,7 +105,7 @@ export class DeviceManager implements IDeviceManager {
                 }
             }
         }
-        
+
         // Convert Set to Array and sort alphabetically
         return Array.from(deviceTypes).sort();
     }
@@ -115,32 +119,32 @@ export class DeviceManager implements IDeviceManager {
      */
     private _getZoneHierarchy(zoneId: string): string[] {
         const zoneNames: string[] = [];
-        
+
         // If no zones data or invalid zoneId, return empty array
         if (!this.zones || !zoneId || !this.zones[zoneId]) {
             return zoneNames;
         }
-        
+
         let currentZoneId: string | null = zoneId;
-        
+
         // Prevent infinite loops due to circular references
         const visitedZones = new Set<string>();
-        
+
         // Traverse up the zone hierarchy
         while (currentZoneId && !visitedZones.has(currentZoneId) && this.zones[currentZoneId]) {
             const currentZone: Zone = this.zones[currentZoneId];
             visitedZones.add(currentZoneId);
-            
+
             // Skip the root zone (zone without a parent)
             if (currentZone.parent || zoneNames.length === 0) {
                 // Only add non-root zones or at least the immediate zone
                 zoneNames.push(currentZone.name);
             }
-            
+
             // Move up to the parent zone
             currentZoneId = currentZone.parent;
         }
-        
+
         return zoneNames;
     }
 
@@ -153,17 +157,28 @@ export class DeviceManager implements IDeviceManager {
      * @returns Promise resolving when the capability is set
      */
     async setDeviceCapability(deviceId: string, capabilityId: string, newValue: any): Promise<void> {
-        console.log(`Setting capability for device ${deviceId}: ${capabilityId} = ${newValue}`);
-        
+
         await this.api.devices.setCapabilityValue({
             deviceId: deviceId,
             capabilityId: capabilityId,
             value: newValue,
-        }); 
+        });
 
-    }    
+    }
 
-    
+    async setDeviceCapabilityBulk(deviceIds: string[], capabilityId: string, newValue: any): Promise<void> {
+
+        await Promise.all(deviceIds.map(deviceId => 
+            this.api.devices.setCapabilityValue({
+                deviceId: deviceId,
+                capabilityId: capabilityId,
+                value: newValue,
+            })
+        ));
+    }
+
+
+
     /**
      * Get a list of smart home devices with selected properties
      * @param zone - Optional filter for devices by zone name (case-insensitive)
@@ -173,37 +188,37 @@ export class DeviceManager implements IDeviceManager {
      * @returns Object containing devices array and next_page_token
      */
     getSmartHomeDevices(
-        zone?: string, 
-        type?: string, 
-        page_size: number = 25, 
+        zone?: string,
+        type?: string,
+        page_size: number = 25,
         page_token: string | null = null
     ): PaginatedDevices {
         if (!this.devices) return { devices: [], next_page_token: null };
-        
+
         // Validate page_size
         page_size = Math.max(1, Math.min(100, typeof page_size === 'string' ? parseInt(page_size) || 25 : page_size));
-        
+
         const devicesList = [];
-        
+
         // First, build the filtered list
         for (const deviceId in this.devices) {
             if (this.devices.hasOwnProperty(deviceId)) {
                 const device = this.devices[deviceId];
-                
+
                 // Get the zone hierarchy for this device
                 let zoneHierarchy = ["Unknown Zone"];
                 if (device.zone && this.zones && this.zones[device.zone]) {
                     zoneHierarchy = this._getZoneHierarchy(device.zone);
                 }
-                
+
                 // Apply zone filter if specified
                 if (zone && zoneHierarchy.length > 0) {
                     // Check if any zone in the hierarchy matches the filter
                     const zoneMatch = zoneHierarchy.some(zoneName => zoneName.toLowerCase() === zone.toLowerCase());
-                    
+
                     if (!zoneMatch) continue; // Skip this device if zone doesn't match
                 }
-                
+
                 // Apply type filter if specified
                 // Note: In the source device object, the property is called "class"
                 // but we're exposing it as "type" in our API
@@ -212,12 +227,12 @@ export class DeviceManager implements IDeviceManager {
                         continue; // Skip this device if class/type doesn't match
                     }
                 }
-                
+
                 // Format capabilities with their values
                 const formattedCapabilities = [];
                 if (device.capabilities && device.capabilitiesObj) {
                     for (const capability of device.capabilities) {
-                        if (device.capabilitiesObj[capability] && 
+                        if (device.capabilitiesObj[capability] &&
                             device.capabilitiesObj[capability].hasOwnProperty('value')) {
                             formattedCapabilities.push(`${capability}=${device.capabilitiesObj[capability].value}`);
                         } else {
@@ -226,7 +241,7 @@ export class DeviceManager implements IDeviceManager {
                         }
                     }
                 }
-                
+
                 // Create a simplified device object with only the requested properties
                 const simplifiedDevice = {
                     id: device.id,
@@ -235,17 +250,17 @@ export class DeviceManager implements IDeviceManager {
                     type: device.class, // We use "type" in our API but it's "class" in the original data
                     capabilities: formattedCapabilities
                 };
-            
+
 
                 devicesList.push(simplifiedDevice);
             }
         }
-        
+
         // Apply pagination
         const start = page_token ? parseInt(page_token, 10) : 0;
         const slice = devicesList.slice(start, start + page_size);
         const next_page_token = start + page_size < devicesList.length ? String(start + page_size) : null;
-        
+
         for (const device of slice) {
             log.info(`Device: ${device.name} (${device.id}) - Zone: ${device.zone.join(' > ')} - Type: ${device.type} - Capabilities: ${device.capabilities.join(', ')}`);
         }
