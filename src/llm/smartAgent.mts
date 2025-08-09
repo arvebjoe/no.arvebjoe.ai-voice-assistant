@@ -42,7 +42,7 @@ export class SmartAgent {
             this.agent = new Agent({
                 // Correct Agent construction parameters based on @openai/agents library
                 name: 'Smart Home Assistant',
-                model: 'gpt-5-mini', // 'gpt-3.5-turbo',
+                model: 'o4-mini', // 'gpt-3.5-turbo', 'gpt-5-mini', 'o4-mini', 'gpt-5-nano'
                 instructions: `
 You are a smart-home operator. You control devices ONLY via the provided tools. Be precise, conservative, and state-aware.
 
