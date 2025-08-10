@@ -57,10 +57,14 @@ export default class MyDriver extends Homey.Driver {
             },
           };
 
+          const isX = device.name.toLocaleLowerCase().includes('xiaozhi');
+
           const isVoice = device.name.toLowerCase().includes('voice')
             || device.store.project.toLowerCase().includes('voice')
             || device.store.serviceName.toLowerCase().includes('voice');
-          if (!isVoice) {
+          const isDevice = isVoice || isX
+
+          if (!isDevice) {
             log.log(`Skipping non-voice device: ${device.name}`, 'MDNS');
             return; // Skip non-voice devices
           }

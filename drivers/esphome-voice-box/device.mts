@@ -8,6 +8,10 @@ import { synthesize } from '../../src/text_to_speech/openai-tts.mjs';
 import { SmartAgent } from '../../src/llm/smartAgent.mjs';
 import { ToolMaker } from '../../src/llm/toolMaker.mjs';
 import { settingsManager } from '../../src/settings/settings-manager.mjs';
+import { singleHopSpeech } from '../../src/llm/aioAgent.mjs';
+import { pcmToWav } from '../../src/helpers/wav-util.mjs';
+import { Audio } from 'openai/resources';
+import { AudioData } from '../../src/helpers/interfaces.mjs';
 
 const log = createLogger('ESPHOME');
 
@@ -93,7 +97,7 @@ export default class MyDevice extends Homey.Device {
     });
 
     // Bind the event handler to this class instance
-    this.espVoiceClient.on('audio', this._onAudio.bind(this));
+    this.espVoiceClient.on('audio', this._onAudioAio.bind(this));
 
     this.espVoiceClient.on('connected', async () => {
       log.info('ESP Voice Client connected');
@@ -106,6 +110,38 @@ export default class MyDevice extends Homey.Device {
     });
 
     this.log('MyDevice has initialized');
+  }
+
+  async _onAudioAio(pcmBuf: Buffer) {
+    this.espVoiceClient.sttEnd("bolle");
+
+
+    this.espVoiceClient.intentStart();
+
+    const audioOut = await singleHopSpeech({
+      apiKey: process.env.OPENAI_API_KEY!,
+      systemPrompt: "You are a helpful voice agent. Be concise. If you need the current time, call get_time.",
+      inputPcm16: pcmBuf,
+    });
+
+    log.info('Received audio response from singleHopSpeech', "OnAudio", { bytes: audioOut.length });
+
+    this.espVoiceClient.intentEnd("rosin");
+
+    const audioData : AudioData = {
+      data: pcmToWav(audioOut,22_500), // Convert PCM to WAV format
+      extension: 'wav'
+    };
+
+    var url = await this.webServer.buildStream(audioData);
+    log.info('Audio stream URL:',"OnAudio", url);
+
+    this.espVoiceClient.playAudioFromUrl(url);
+    log.info('Playing audio from URL', "OnAudio", url);
+
+    this.espVoiceClient.endRun();
+    log.info('----------------------');
+
   }
 
 
