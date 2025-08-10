@@ -2,6 +2,7 @@ import Homey from 'homey';
 import { createLogger } from './src/helpers/logger.mjs';
 import { WebServer } from './src/helpers/webserver.mjs';
 import { DeviceManager } from './src/helpers/device-manager.mjs';
+import { settingsManager } from './src/settings/settings-manager.mjs';
 
 const log = createLogger('APP');
 
@@ -17,6 +18,9 @@ export default class AiVoiceAssistantApp extends Homey.App {
     log.info('AI voice assistant initializing...');
 
     process.env.OPENAI_API_KEY = this.homey.settings.get('openai_api_key');
+
+  // Centralized settings manager (makes global settings accessible without this.homey)
+  settingsManager.init(this.homey);
 
     this.webServer = new WebServer(this.homey);
     await this.webServer.start();

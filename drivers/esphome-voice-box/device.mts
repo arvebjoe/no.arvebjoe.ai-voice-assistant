@@ -7,6 +7,7 @@ import { transcribe } from '../../src/speech_to_text/openai_stt.mjs';
 import { synthesize } from '../../src/text_to_speech/openai-tts.mjs';
 import { SmartAgent } from '../../src/llm/smartAgent.mjs';
 import { ToolMaker } from '../../src/llm/toolMaker.mjs';
+import { settingsManager } from '../../src/settings/settings-manager.mjs';
 
 const log = createLogger('ESPHOME');
 
@@ -22,7 +23,7 @@ export default class MyDevice extends Homey.Device {
   private deviceManager!: DeviceManager;
   private devicePromise!: Promise<void>;
   private toolMaker!: ToolMaker;
-  private smartAgent!: SmartAgent;  
+  private smartAgent!: SmartAgent;
 
   /**
    * onInit is called when the device is initialized.
@@ -55,10 +56,18 @@ export default class MyDevice extends Homey.Device {
     this.deviceManager = (this.homey as any).app.deviceManager as InstanceType<typeof DeviceManager>;
 
     const apiKey = this.homey.settings.get('openai_api_key');
-    
+    // Register device-specific settings snapshot so utilities without this.homey can reference it
+    try {
+      const deviceId = (this.getData() as any)?.id || (this as any).id || this.getName();
+      const store = this.getStore() as DeviceStore;
+      settingsManager.registerDevice(deviceId, store);
+    } catch (e) {
+      log.warn('Failed to register device settings');
+    }
+
     this.toolMaker = new ToolMaker(this.deviceManager);
     this.smartAgent = new SmartAgent(this.toolMaker, apiKey);
-    log.info('Agent initialized with tools');        
+    log.info('Agent initialized with tools');
 
     const store = this.getStore() as DeviceStore;
     log.info('Device store:', 'INIT', store);
@@ -71,9 +80,9 @@ export default class MyDevice extends Homey.Device {
     });
 
     await this.espVoiceClient.start();
-    log.info('ESP Voice Client initialized and connected');  
-    
-    
+    log.info('ESP Voice Client initialized and connected');
+
+
     this.espVoiceClient.on('begin', () => {
       this.devicePromise = this.deviceManager.fetchData();
       this.setCapabilityValue('onoff', true);
@@ -84,10 +93,10 @@ export default class MyDevice extends Homey.Device {
     });
 
     // Bind the event handler to this class instance
-    this.espVoiceClient.on('audio', this._onAudio.bind(this));    
-    
+    this.espVoiceClient.on('audio', this._onAudio.bind(this));
+
     this.espVoiceClient.on('connected', async () => {
-      log.info('ESP Voice Client connected')  ;     
+      log.info('ESP Voice Client connected');
       this.setAvailable();
     });
 
@@ -103,12 +112,12 @@ export default class MyDevice extends Homey.Device {
   async _onAudio(pcmBuf: Buffer) {
 
 
-    const apiKey = this.homey.settings.get('openai_api_key');
+    const apiKey = settingsManager.getGlobal<string>('openai_api_key') || this.homey.settings.get('openai_api_key');
 
     //log.info('Received audio data', "OnAudio", { bytes: pcmBuf.length });
     //this.espVoiceClient.sttStart();
     //const text = await transcribe('192.168.0.32', 10300, pcmBuf, { language: 'no' });
-    const text = await transcribe( pcmBuf, apiKey, { language: 'no', verbose: false }, this.homey);
+    const text = await transcribe(pcmBuf, apiKey, { language: 'no', verbose: false }, this.homey);
     log.info(`USER: ${text}`);
     this.espVoiceClient.sttEnd(text);
 
@@ -121,7 +130,7 @@ export default class MyDevice extends Homey.Device {
 
     this.espVoiceClient.intentEnd(speech);
 
-    const flacBuffer = await synthesize( speech, apiKey, {  });
+    const flacBuffer = await synthesize(speech, apiKey, {});
     //const pcmReply = await synthesize('192.168.0.32', 10200, speech);
     //log.info('Received audio', "OnAudio", pcmReply );
     /*
@@ -130,7 +139,7 @@ export default class MyDevice extends Homey.Device {
             audioData.data = pcmToWav(audioData.data, audioData.rate);
         }
     */
-    const audioData ={
+    const audioData = {
       data: flacBuffer,
       rate: 16_000,
       extension: 'flac'
@@ -138,19 +147,19 @@ export default class MyDevice extends Homey.Device {
 
     var url = await this.webServer.buildStream(audioData);
     //log.info('Audio stream URL:',"OnAudio", url);
-    
+
     this.espVoiceClient.playAudioFromUrl(url);
     //log.info('Playing audio from URL', "OnAudio", url);
 
     this.espVoiceClient.endRun();
     log.info('----------------------');
 
-  } 
+  }
 
 
 
 
-  
+
   /**
    * onAdded is called when the user adds the device, called just after pairing.
    */
@@ -176,6 +185,13 @@ export default class MyDevice extends Homey.Device {
     changedKeys: string[];
   }): Promise<string | void> {
     this.log("MyDevice settings where changed");
+    try {
+      const deviceId = (this.getData() as any)?.id || (this as any).id || this.getName();
+      const store = this.getStore() as DeviceStore;
+      settingsManager.registerDevice(deviceId, store);
+    } catch (e) {
+      log.warn('Failed to update device settings in manager');
+    }
   }
 
   /**
