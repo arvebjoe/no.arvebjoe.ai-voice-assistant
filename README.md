@@ -1,45 +1,49 @@
-# Devices compatibility
+# AI Voice Assistant
+
+
+
+## Devices compatibility
     - What
     - How to flash
 
 
-# Supported AI providers
+## Supported AI providers
     - OpenAI
     - Locally hosted (wyoming, ollama)
 
 
 
-# TODO before release:
+## TODO before release:
 
-## Agent system prompt
+### Agent system prompt
     - Need to tell agent what language is should answer in i.e. "norwegian", "english" or "pirate". 
     - Needs to come from app-settings 
     - Just write it in for release 1.0.0
     - Perhaps pulldown with auto complete in the future?
 
-## Voice Box
+### Voice Box
     - Needs to know where it is (zone). So it can controll devices within it's own zone if the user didn't specify the zone.
 
-## Homey-log
+### Homey-log
     - What is it?
     - Do we need it?
     - https://www.npmjs.com/package/homey-log
 
 
-## Flow cards
+### Flow cards
 
-### WHEN
+#### WHEN
     - Device starts listening
     - Device stops listening
     - Device starts playback (of wav file)
     - Device ends playback (of wav file)
     
-### AND
+#### AND
     - Device is listening
     - Device is playing
     - Device is muted
 
-### THEN
+#### THEN
     - Device start listening. Output as wav or text
     - Device begin playback for wav or text
     - Device set volume
@@ -49,22 +53,22 @@
 
 
 
-# TODO after release
+## TODO after release
 
-## Locally hosted AI
+### Locally hosted AI
     - Whipsper
     - Piper
     - Ollama
 
-## Settings
+### Settings
     - Debug mode (on/off). Will show live logging. Saves both rx and tx wav files for a while.
 
 
-## Agent tools
+### Agent tools
     - Start flow by name, "start <flow name>"
     - Start flow by synonym, "i'm going to bed" -> starts flow "night mode" - Need some way of letting user create connections between synonym and flow name
 
-## Alarm or count down
+### Alarm or count down
     - This would be really nice to have
     - Looks like i can create alarm in the homey api:
         https://athombv.github.io/node-homey-api/HomeyAPIV3Local.ManagerAlarms.html
@@ -78,13 +82,13 @@
     - Then delete the alarm
 
 
-# Phase 2
+## Phase 2
 
-## Image analysis?
+### Image analysis?
     - Use AI agent to analyze an image together with a prompt? "Can you se any persons in the surveillance image?", "Is it dark out", "Who is at the door?"
 
-## Sound effects?
+### Sound effects?
     - Host some wav files on github, that can be played by the voice box (just push an wav url at it.) Would need some index to read..
 
-## Tools?
+### Tools?
     - Web search tool, have the Agent do a web search for some information. "What movies are in the cinema today?" (with geo location it could find the nearest one)
