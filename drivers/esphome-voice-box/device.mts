@@ -90,10 +90,6 @@ export default class EspVoiceDevice extends Homey.Device {
     this.segmenter = new PcmSegmenter();
     log.info('PCM Segmenter initialized');
 
-    // TODO: Need to implement emit 'end'
-    this.esp.on('end', () => {
-      this.setCapabilityValue('onoff', false);
-    });
 
     this.esp.on('start', () => {
       log.info("Voice session started");
@@ -166,6 +162,7 @@ export default class EspVoiceDevice extends Homey.Device {
       this.esp.tts_end();
       this.esp.closeMic();
       this.esp.end_run();
+      this.setCapabilityValue('onoff', false);
     });
 
     this.agent.on('error', (error: Error) => {

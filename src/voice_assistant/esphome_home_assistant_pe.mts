@@ -1,6 +1,7 @@
 import EventEmitter from 'node:events';
 import net from 'node:net';
 import dgram from 'node:dgram';
+import { TypedEmitter } from "tiny-typed-emitter";
 import { encodeFrame, decodeFrame, VA_EVENT } from './esphome-messages.mjs';
 import { createLogger } from '../helpers/logger.mjs';
 
@@ -11,7 +12,17 @@ interface EspVoiceClientOptions {
   apiPort?: number;
 }
 
-class EspVoiceClient extends EventEmitter {
+type EspVoiceEvents = {
+    connected: () => void;
+    disconnected: () => void;
+    announce_finished: () => void;
+    start: () => void;
+    chunk: (data: Buffer) => void;
+  }
+
+
+
+class EspVoiceClient  extends (EventEmitter as new () => TypedEmitter<EspVoiceEvents>) {
   private host: string;
   private apiPort: number;
   private streamId: number;
