@@ -56,13 +56,16 @@ type Details = Record<string, any> | string | any | null;
 class Logger {
     private from: string;
     private useColors: boolean;
+    private disabled: boolean;
     
-    constructor(from: string) {
+    constructor(from: string, disabled: boolean = false) {
         this.from = from.toUpperCase();
         this.useColors = true; // Set to false to disable colors
+        this.disabled = disabled;
     }
 
     info(message: string, subFrom: string = '', details: Details = null) {
+        if (this.disabled) return;
         const time = formatTime();
         const subFromStr = subFrom ? `[${subFrom}]` : '';
         
@@ -133,6 +136,6 @@ class Logger {
 }
 
 // Export the createLogger function using ES modules
-export function createLogger(from: string): Logger {
-    return new Logger(from);
+export function createLogger(from: string, disabled: boolean = false): Logger {
+    return new Logger(from, disabled);
 }
