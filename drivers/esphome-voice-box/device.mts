@@ -12,6 +12,7 @@ import { pcmToWavBuffer } from '../../src/helpers/wav-util.mjs';
 //import { AudioData } from '../../src/helpers/interfaces.mjs';
 import { PcmSegmenter } from '../../src/helpers/pcm-segmenter.mjs';
 import { AudioData } from '../../src/helpers/interfaces.mjs';
+import { ToolManager } from '../../src/llm/ToolManager.mjs';
 
 const log = createLogger('ESPHOME');
 
@@ -26,7 +27,7 @@ export default class EspVoiceDevice extends Homey.Device {
   private webServer!: WebServer;
   private deviceManager!: DeviceManager;
   private devicePromise!: Promise<void>;
-  //private toolMaker!: ToolMaker;
+  private toolManager!: ToolManager;
   private agent!: OpenAIRealtimeWS;
   private segmenter!: PcmSegmenter;
 
@@ -56,7 +57,6 @@ export default class EspVoiceDevice extends Homey.Device {
       log.warn('Failed to register device settings');
     }
 
-    //this.toolMaker = new ToolMaker(this.deviceManager);
 
     const agentOptions: RealtimeOptions = {
       apiKey: apiKey,
@@ -71,8 +71,10 @@ export default class EspVoiceDevice extends Homey.Device {
       verbose: true,
     };
 
+    this.toolManager = new ToolManager(this.deviceManager);
+
     // TODO: Pass this.homey and this.toolMaker to the agent
-    this.agent = new OpenAIRealtimeWS(agentOptions);
+    this.agent = new OpenAIRealtimeWS(this.toolManager, agentOptions);
     log.info('Agent initialized with tools');
 
 
@@ -93,6 +95,7 @@ export default class EspVoiceDevice extends Homey.Device {
 
     this.esp.on('start', () => {
       log.info("Voice session started");
+      this.devicePromise = this.deviceManager.fetchData();
       this.setCapabilityValue('onoff', true);
       this.esp.run_start();
       this.esp.stt_vad_start();
@@ -148,13 +151,18 @@ export default class EspVoiceDevice extends Homey.Device {
       const audioData: AudioData = {
         data: wav,
         extension: 'wav'
-      }      
+      }
 
       const url = await this.webServer.buildStream(audioData);
 
       this.esp.playAudioFromUrl(url, false);
     });
 
+
+    this.agent.on('tool.called', async (d: { callId: string; name: string; args: any }) => {
+      log.info(`Tool called: ${d.name}`, d.args);
+      await this.devicePromise;
+    });
 
     this.agent.on('response.done', () => {
       log.info("Conversation completed");

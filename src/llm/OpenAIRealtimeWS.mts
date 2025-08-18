@@ -2,6 +2,7 @@ import WebSocket from "ws";
 import { EventEmitter } from "events";
 import { TypedEmitter } from "tiny-typed-emitter";
 import { createLogger } from '../helpers/logger.mjs';
+import { ToolManager } from './ToolManager.mjs';
 
 /**
  * Minimal shape of Realtime events we care about.
@@ -114,7 +115,7 @@ export class OpenAIRealtimeWS extends (EventEmitter as new () => TypedEmitter<Re
     private logger = createLogger("AGENT", false);
     private resample_prev: number | null = null; // last input sample from previous chunk
     private resample_frac: number = 0;           // fractional read position into the source for next call
-    private hasRegisteredDefaultTools = false;
+    private toolManager: ToolManager;
 
     private options: Required<
         Pick<
@@ -142,11 +143,10 @@ export class OpenAIRealtimeWS extends (EventEmitter as new () => TypedEmitter<Re
     // keep your existing maps, but store full records keyed by callId
     private pendingToolCalls: Map<string, PendingToolCall> = new Map();
 
-    // tool handlers
-    private toolHandlers: Record<string, ToolHandler> = {};
-
-    constructor(opts: RealtimeOptions) {
+    constructor(toolManager: ToolManager, opts: RealtimeOptions) {
         super();
+
+        this.toolManager = toolManager;
 
         this.options = {
             apiKey: opts.apiKey,
@@ -322,21 +322,7 @@ export class OpenAIRealtimeWS extends (EventEmitter as new () => TypedEmitter<Re
         this.sendSessionUpdate();
     }
 
-    /**
-     * Register a function tool the model can call.
-     * Provide a JSONSchema-like parameters object to help the model.
-     */
-    registerTool(name: string, description: string, parameters: Record<string, any>, handler: ToolHandler) {
-        this.logger.info(name, "REGISTER TOOL");
-        this.toolHandlers[name] = handler;
-        // Attach to session
-        this.send({
-            type: "session.update",
-            session: {
-                tools: this.sessionToolsArray(),
-            },
-        });
-    }
+
 
     /* ----------------- Internals ----------------- */
 
@@ -361,7 +347,6 @@ export class OpenAIRealtimeWS extends (EventEmitter as new () => TypedEmitter<Re
             /* ---------- Session & rate-limits ---------- */
             case "session.updated":
                 this.emit("session.updated", msg);
-                this.registerDefaultTools();
                 break;
 
             case "rate_limits.updated":
@@ -585,7 +570,8 @@ export class OpenAIRealtimeWS extends (EventEmitter as new () => TypedEmitter<Re
     }
 
     private async handleTool(callId: string, name: string, args: any) {
-        const fn = this.toolHandlers[name];
+        const toolHandlers = this.toolManager.getToolHandlers();
+        const fn = toolHandlers[name];
         if (!fn) {
             return { error: `Unknown tool: ${name}` };
         }
@@ -617,12 +603,8 @@ export class OpenAIRealtimeWS extends (EventEmitter as new () => TypedEmitter<Re
     }
 
     private sessionToolsArray() {
-        // Build tool definitions from handlers (simple function tools)
-        const defs = Object.keys(this.toolHandlers).map((name) => {
-            const def = toolDefinitions[name];
-            return def;
-        });
-        return defs;
+        // Get tool definitions from the tool manager
+        return this.toolManager.getToolDefinitions();
     }
 
     private send(obj: any) {
@@ -665,105 +647,6 @@ export class OpenAIRealtimeWS extends (EventEmitter as new () => TypedEmitter<Re
 
 
     /* ----------------- Built-in tools ----------------- */
-
-    private registerDefaultTools() {
-
-        if (this.hasRegisteredDefaultTools) {
-            return; // Already registered
-        }
-
-        this.hasRegisteredDefaultTools = true;
-
-        // get_local_time
-        this.registerTool(
-            "get_local_time",
-            "Get the local time for a given IANA timezone or city name (default Europe/Oslo). Respond in concise Norwegian.",
-            {
-                type: "object",
-                properties: {
-                    timezone: {
-                        type: "string",
-                        description:
-                            "IANA timezone like 'Europe/Oslo'. If omitted, use Europe/Oslo.",
-                    },
-                    locale: {
-                        type: "string",
-                        description: "BCP-47 locale, default 'nb-NO'.",
-                    },
-                },
-                required: [],
-                additionalProperties: false,
-            },
-            ({ timezone, locale }) => {
-                const tz = (timezone as string) || "Europe/Oslo";
-                const loc = (locale as string) || "nb-NO";
-                const now = new Date();
-                try {
-                    const fmt = new Intl.DateTimeFormat(loc, {
-                        timeZone: tz,
-                        hour: "2-digit",
-                        minute: "2-digit",
-                        second: "2-digit",
-                        weekday: "long",
-                        day: "2-digit",
-                        month: "long",
-                        year: "numeric",
-                    });
-                    const s = fmt.format(now);
-                    this.logger.info('get_local_time', 'TOOL', `Klokken er ${s} i ${tz}.`);
-                    return { text: `Klokken er ${s} i ${tz}.` };
-                } catch {
-                    const s = now.toLocaleString("nb-NO", { timeZone: "Europe/Oslo" });
-
-                    this.logger.info('get_local_time', 'TOOL', `Klarte ikke å tolke tidssone '${tz}'. I Norge er klokken nå ${s}.`);
-                    return {
-                        text: `Klarte ikke å tolke tidssone '${tz}'. I Norge er klokken nå ${s}.`,
-                    };
-                }
-            }
-        );
-
-        // ping_simple
-        this.registerTool(
-            "ping_simple",
-            "Enkel test: returnerer bare strengen 'pong'. Bruk når brukeren sier 'ping'.",
-            {
-                type: "object",
-                properties: {},
-                required: [],
-                additionalProperties: false,
-            },
-            () => {
-                const out = "pong";
-                this.logger.info("ping_simple", "TOOL", out);
-                // Return *string* (not an object) to exercise the string path
-                return out;
-            }
-        );
-
-        // demo_list_kv
-        this.registerTool(
-            "demo_list_kv",
-            "Testverktøy: returnerer en kort liste med nøkkel=verdi-objekter.",
-            {
-                type: "object",
-                properties: {},
-                required: [],
-                additionalProperties: false,
-            },
-            () => {
-                // Example static list. You can randomize if you want.
-                const items = [
-                    { key: "build", value: "ok" },
-                    { key: "version", value: "1.2.3" },
-                    { key: "uptime", value: "42m" },
-                ];
-                this.logger.info("demo_list_kv", "TOOL");
-                // Return an array of objects (will be JSON-stringified by sendFunctionResult)
-                return items;
-            }
-        );
-    }
 
     /**
      * Upsample PCM16 mono 16 kHz -> 24 kHz (little-endian) using linear interpolation.
@@ -825,59 +708,6 @@ export class OpenAIRealtimeWS extends (EventEmitter as new () => TypedEmitter<Re
 }
 
 /* ----------------- Tool definitions (JSON Schemas) ----------------- */
-
-const toolDefinitions: Record<string, any> = {
-    get_local_time: {
-        type: "function",
-        name: "get_local_time",
-        description:
-            "Get the local time for a given IANA timezone or city name (default Europe/Oslo). Respond in concise Norwegian.",
-        parameters: {
-            type: "object",
-            properties: {
-                timezone: {
-                    type: "string",
-                    description:
-                        "IANA timezone like 'Europe/Oslo'. If omitted, use Europe/Oslo.",
-                },
-                locale: {
-                    type: "string",
-                    description: "BCP-47 locale, default 'nb-NO'.",
-                },
-            },
-            required: [],
-            additionalProperties: false,
-        },
-    },
-
-    // NEW: simple tool, no params, returns a single string
-    ping_simple: {
-        type: "function",
-        name: "ping_simple",
-        description:
-            "Enkel test: returnerer bare strengen 'pong'. Bruk når brukeren sier 'ping'.",
-        parameters: {
-            type: "object",
-            properties: {},
-            required: [],
-            additionalProperties: false,
-        },
-    },
-
-    // NEW: returns an array of { key, value } objects for testing
-    demo_list_kv: {
-        type: "function",
-        name: "demo_list_kv",
-        description:
-            "Testverktøy: returnerer en kort liste med nøkkel=verdi-objekter. Bruk når brukeren spør om en testliste.",
-        parameters: {
-            type: "object",
-            properties: {},
-            required: [],
-            additionalProperties: false,
-        },
-    },
-};
 
 /* ----------------- Helpers ----------------- */
 
