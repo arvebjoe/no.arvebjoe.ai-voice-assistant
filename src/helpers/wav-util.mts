@@ -1,28 +1,25 @@
-/**
- * Converts PCM audio data to WAV format
- * @param pcm - The PCM audio data buffer
- * @param sr - Sample rate (default: 16kHz)
- * @returns Buffer containing WAV formatted audio data
- */
-export function pcmToWav(pcm: Buffer, sr: number = 16_000): Buffer {
-  const hdr = Buffer.alloc(44);
-  const ch: number = 1; 
-  const bps: number = 16;
-  const blk: number = ch * bps / 8;
+import { WavOptions } from './interfaces.mjs';
 
-  hdr.write('RIFF', 0);
-  hdr.writeUInt32LE(36 + pcm.length, 4);
-  hdr.write('WAVE', 8);
-  hdr.write('fmt ', 12);
-  hdr.writeUInt32LE(16, 16); 
-  hdr.writeUInt16LE(1, 20);
-  hdr.writeUInt16LE(ch, 22); 
-  hdr.writeUInt32LE(sr, 24);
-  hdr.writeUInt32LE(sr * blk, 28); 
-  hdr.writeUInt16LE(blk, 32);
-  hdr.writeUInt16LE(bps, 34); 
-  hdr.write('data', 36);
-  hdr.writeUInt32LE(pcm.length, 40);
+// Add RIFF/WAVE header to a PCM Buffer
+export function pcmToWavBuffer(pcmBuf: Buffer, { sampleRate, channels, bitsPerSample }: WavOptions): Buffer {
+    const dataSize = pcmBuf.length;
+    const blockAlign = (channels * bitsPerSample) >> 3;
+    const byteRate = sampleRate * blockAlign;
+    const header = Buffer.alloc(44);
 
-  return Buffer.concat([hdr, pcm]);
+    header.write('RIFF', 0);
+    header.writeUInt32LE(36 + dataSize, 4);
+    header.write('WAVE', 8);
+    header.write('fmt ', 12);
+    header.writeUInt32LE(16, 16);                 // PCM fmt chunk size
+    header.writeUInt16LE(1, 20);                  // AudioFormat=PCM
+    header.writeUInt16LE(channels, 22);
+    header.writeUInt32LE(sampleRate, 24);
+    header.writeUInt32LE(byteRate, 28);
+    header.writeUInt16LE(blockAlign, 32);
+    header.writeUInt16LE(bitsPerSample, 34);
+    header.write('data', 36);
+    header.writeUInt32LE(dataSize, 40);
+
+    return Buffer.concat([header, pcmBuf]);
 }

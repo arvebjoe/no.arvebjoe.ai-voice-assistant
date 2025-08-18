@@ -44,3 +44,9 @@ export declare interface PaginatedDevices {
     devices: Device[];
     next_page_token: string | null;
 }
+
+export declare interface WavOptions {
+    sampleRate: number;
+    channels: number;
+    bitsPerSample: number;
+}
