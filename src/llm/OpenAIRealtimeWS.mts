@@ -1,11 +1,52 @@
 import WebSocket from "ws";
 import { EventEmitter } from "events";
+import { TypedEmitter } from "tiny-typed-emitter";
 import { createLogger } from '../helpers/logger.mjs';
 
 /**
  * Minimal shape of Realtime events we care about.
  * We keep them loose to stay forward-compatible with the evolving Realtime API.
  */
+
+
+type RealtimeEvents = {
+    connected: () => void;
+    open: () => void;
+    close: (code: number, reason: string) => void;
+    event: (message: any) => void;
+    silence: (src: { source: "server" | "local" }) => void;
+    error: (err: Error) => void;
+
+    "input_audio_buffer.committed": () => void;
+
+    "session.updated": (msg: any) => void;
+
+    "audio.delta": (chunk: Buffer) => void;
+    "audio.done": () => void;
+
+    "text.delta": (delta: string) => void;
+    "text.done": (msg: any) => void;
+
+    "transcript.delta": (delta: string) => void;
+
+    "response.output_item.added": () => void;
+    "response.progress": () => void;
+    "response.output_item.done": () => void;
+    "response.done": () => void;
+
+    "conversation.item.created": () => void;
+
+
+    "tool.arguments.delta": (d: { callId: string; name?: string; delta: string }) => void;
+    "tool.arguments.done": (d: { callId: string; name?: string; args: any }) => void;
+    "tool.called": (d: { callId: string; name: string; args: any }) => void;
+    "tool.call.started": (d: { callId: string; name?: string; itemId?: string }) => void;
+
+    "rate_limits.updated": (msg: any) => void;
+};
+
+
+
 type RealtimeEvent = {
     type: string;
     [k: string]: any;
@@ -67,7 +108,7 @@ type PendingToolCall = {
     executed?: boolean;        // to avoid double-runs
 };
 
-export class OpenAIRealtimeWS extends EventEmitter {
+export class OpenAIRealtimeWS extends (EventEmitter as new () => TypedEmitter<RealtimeEvents>) {
     private ws?: WebSocket;
     private logger = createLogger("AGENT", false);
     private resample_prev: number | null = null; // last input sample from previous chunk
@@ -202,7 +243,8 @@ export class OpenAIRealtimeWS extends EventEmitter {
                 if (silent && diff >= this.options.localVADSilenceMs) {
                     // We've been silent long enough
                     this.logger.info("Local silence detected, emitting 'silence' event", "VAD", { rms, diff });
-                    this.emit("silence"); // consumer can mute mic / stop feeding audio
+                    this.emit("silence", { source: "local" });
+
                     // To avoid repeated emits during a long silence:
                     this.lastNonSilentTs = now + 1e9;
                 }
@@ -317,7 +359,7 @@ export class OpenAIRealtimeWS extends EventEmitter {
         switch (t) {
             /* ---------- Session & rate-limits ---------- */
             case "session.updated":
-                this.emit("session.updated", msg.session);
+                this.emit("session.updated", msg);
                 this.registerDefaultTools();
                 break;
 
@@ -352,7 +394,7 @@ export class OpenAIRealtimeWS extends EventEmitter {
                 break;
             }
             case "response.audio.done":
-                this.emit("audio.done", msg);
+                this.emit("audio.done");
                 break;
 
             /* ---------- Transcription of input audio ---------- */
@@ -368,16 +410,22 @@ export class OpenAIRealtimeWS extends EventEmitter {
             // A function_call item shows up in the response stream:
             case "response.output_item.added": {
                 const { item, output_index } = msg;
-                if (item?.type === "function_call") this.seedToolCallFromItem(item, output_index);
-                this.emit("response.output_item.added", msg);
+
+                if (item?.type === "function_call") {
+                    this.seedToolCallFromItem(item, output_index);
+                }
+
+                this.emit("response.output_item.added");
                 break;
             }
 
             // The same function_call item also appears as a conversation item:
             case "conversation.item.created": {
                 const { item } = msg;
-                if (item?.type === "function_call") this.seedToolCallFromItem(item);
-                this.emit("conversation.item.created", msg);
+                if (item?.type === "function_call") {
+                    this.seedToolCallFromItem(item);
+                }
+                this.emit("conversation.item.created");
                 break;
             }
 
@@ -409,7 +457,7 @@ export class OpenAIRealtimeWS extends EventEmitter {
                 if (hint.name && !rec.name) rec.name = hint.name;
                 this.pendingToolCalls.set(callId, rec);
 
-                //await this.maybeExecuteTool(callId, hint);
+                this.emit("tool.arguments.done", { callId, name: rec.name, args: rec.argsText });
                 break;
             }
 
@@ -420,19 +468,19 @@ export class OpenAIRealtimeWS extends EventEmitter {
                     const hint = { name: item.name as string | undefined, args: item.arguments as string | undefined };
                     await this.maybeExecuteTool(item.call_id, hint);
                 }
-                this.emit("response.output_item.done", msg);
+                this.emit("response.output_item.done");
                 break;
             }
 
             /* ---------- Response lifecycle + errors ---------- */
             case "response.created":
             case "response.in_progress":
-                this.emit("response.progress", msg);
+                this.emit("response.progress");
                 break;
 
             case "response.completed":
             case "response.done":
-                this.emit("response.done", msg);
+                this.emit("response.done");
                 break;
 
             case "error":
