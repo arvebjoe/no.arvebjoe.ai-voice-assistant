@@ -1,6 +1,6 @@
 import OpenAI from 'openai';
 import { createLogger } from '../helpers/logger.mjs';
-import { pcmToWav } from '../helpers/wav-util.mjs';
+import { pcmToWavBuffer } from '../../src/helpers/wav-util.mjs';
 import '../helpers/polyfills.mjs';
 
 const log = createLogger('STT');
@@ -24,7 +24,7 @@ async function transcribe(audioBuffer: Buffer, apiKey: string, opts: TranscribeO
 
 
         const sampleRate = opts.sampleRate || 16000;
-        const wavBuffer = pcmToWav(audioBuffer, sampleRate);
+        const wavBuffer = pcmToWavBuffer(audioBuffer, { sampleRate, bitsPerSample: 16, channels: 1 });
 
         if (opts.verbose) {
             log.info(`Converted ${audioBuffer.length} bytes of PCM data to ${wavBuffer.length} bytes WAV`);

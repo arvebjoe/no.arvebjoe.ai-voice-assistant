@@ -1,7 +1,5 @@
 import EventEmitter from 'node:events';
-import { saveAudioData } from './file-helper.mjs';
-import { AudioData } from './interfaces.mjs';
-import { pcmToWavBuffer } from './wav-util.mjs';
+import { TypedEmitter } from "tiny-typed-emitter";
 
 // ---- CONFIG ----
 const SAMPLE_RATE = 24_000;       // Hz
@@ -22,9 +20,13 @@ const MIN_SILENCE_FRAMES = Math.ceil(MIN_SILENCE_MS / FRAME_MS);
 const MIN_CHUNK_BYTES = Math.round(SAMPLE_RATE * (MIN_CHUNK_MS / 1000) * CHANNELS * BYTES_PER_SAMPLE);
 
 
+type SegmenterEvents = {
+    chunk: (data: Buffer) => void;
+}
+
+
 // Main segmenter
-export class PcmSegmenter extends EventEmitter {
-    private homey: any;
+export class PcmSegmenter extends (EventEmitter as new () => TypedEmitter<SegmenterEvents>) {    
     private remainder: Buffer;
     private current: Buffer[];           // array of Buffers for current segment
     private bytesInCurrent: number;
@@ -32,10 +34,9 @@ export class PcmSegmenter extends EventEmitter {
     private trailingBuffer: Buffer; // for post-pad
 
 
-    constructor(homey: any) {
+    constructor() {
         super();
-
-        this.homey = homey;
+        
         this.remainder = Buffer.alloc(0);
         this.current = [];           // array of Buffers for current segment
         this.bytesInCurrent = 0;
@@ -46,7 +47,7 @@ export class PcmSegmenter extends EventEmitter {
 
     flush(): void {
         if (this.bytesInCurrent > 0) {
-            this.save_segment(Buffer.concat(this.current));
+            this.emit_segment(Buffer.concat(this.current));
             this.current = [];
             this.bytesInCurrent = 0;
             this.remainder = Buffer.alloc(0);
@@ -98,10 +99,10 @@ export class PcmSegmenter extends EventEmitter {
                 const postEnd = Math.min(segment.length, segment.length - this.silenceFrames * FRAME_BYTES + POST_PAD_BYTES);
 
                 // Cut the segment at postEnd, emit that; keep remainder (after postEnd) for next start
-                const toEmit = segment.subarray(0, postEnd);
+                const current_chunk = segment.subarray(0, postEnd);
                 const remainderForNext = segment.subarray(postEnd); // this contains the early part of the long silence
 
-                await this.save_segment(toEmit);
+                this.emit_segment(current_chunk);
 
                 // Reset state with leftover (so next chunk starts "after" the split)
                 this.current = [remainderForNext];
@@ -117,25 +118,14 @@ export class PcmSegmenter extends EventEmitter {
 
 
 
-    private async save_segment(pcmBuf: Buffer): Promise<void> {
+    private emit_segment(pcmBuf: Buffer) {
 
         // Ignore near-empty chunks
-        if (pcmBuf.length < MIN_CHUNK_BYTES) return;
-
-        const wav = pcmToWavBuffer(pcmBuf, {
-            sampleRate: SAMPLE_RATE,
-            channels: CHANNELS,
-            bitsPerSample: BYTES_PER_SAMPLE * 8
-        });
-
-        const audioData: AudioData = {
-            data: wav,
-            extension: 'wav'
+        if (pcmBuf.length < MIN_CHUNK_BYTES) {
+            return;
         }
 
-        const fileInfo = await saveAudioData(this.homey, 'tx', audioData);
-
-        this.emit('segment', { fileInfo });
+        this.emit('chunk', pcmBuf);
     }
 
     

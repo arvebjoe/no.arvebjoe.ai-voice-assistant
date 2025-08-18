@@ -1,7 +1,7 @@
 import { networkInterfaces } from 'os';
 import { createLogger } from './logger.mjs';
 import { AudioData } from './interfaces.mjs';
-import { emptyAudioFolder, saveAudioData } from './file-helper.mjs';
+import { initAudioFolder, saveAudioData } from './file-helper.mjs';
 
 
 const log = createLogger('WEB');
@@ -19,7 +19,7 @@ export class WebServer {
         this.ip = this.getLanIP();
 
         // Empty and remove audio subfolder
-        emptyAudioFolder();
+        initAudioFolder();
     }
 
     async stop(): Promise<void> {

@@ -33,6 +33,7 @@ type RealtimeEvents = {
     "response.progress": () => void;
     "response.output_item.done": () => void;
     "response.done": () => void;
+    "response.error": (msg: any) => void;
 
     "conversation.item.created": () => void;
 
@@ -485,7 +486,7 @@ export class OpenAIRealtimeWS extends (EventEmitter as new () => TypedEmitter<Re
 
             case "error":
             case "response.error":
-                this.emit("error", msg);
+                this.emit("response.error", msg);
                 break;
 
             default:
@@ -639,7 +640,7 @@ export class OpenAIRealtimeWS extends (EventEmitter as new () => TypedEmitter<Re
 
     private logMessage(msg: any, direction: string) {
 
-        /*
+        
         if (msg.type === "input_audio_buffer.append" && msg.audio) {
             this.logger.info(msg.type, direction);
             return;
@@ -648,7 +649,7 @@ export class OpenAIRealtimeWS extends (EventEmitter as new () => TypedEmitter<Re
             this.logger.info(msg.type, direction);
             return;
         }
-        */
+        
         this.logger.info(msg.type, direction, msg);
     }
 

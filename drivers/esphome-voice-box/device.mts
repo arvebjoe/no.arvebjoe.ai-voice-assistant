@@ -3,14 +3,15 @@ import { createLogger } from '../../src/helpers/logger.mjs';
 import { WebServer } from '../../src/helpers/webserver.mjs';
 import { EspVoiceClient } from '../../src/voice_assistant/esphome_home_assistant_pe.mjs';
 import { DeviceManager } from '../../src/helpers/device-manager.mjs';
-import { transcribe } from '../../src/speech_to_text/openai_stt.mjs';
-import { synthesize } from '../../src/text_to_speech/openai-tts.mjs';
+//import { transcribe } from '../../src/speech_to_text/openai_stt.mjs';
+//import { synthesize } from '../../src/text_to_speech/openai-tts.mjs';
 import { ToolMaker } from '../../src/llm/toolMaker.mjs';
 import { settingsManager } from '../../src/settings/settings-manager.mjs';
 import { OpenAIRealtimeWS, RealtimeOptions } from '../../src/llm/OpenAIRealtimeWS.mjs';
 import { pcmToWavBuffer } from '../../src/helpers/wav-util.mjs';
-import { AudioData } from '../../src/helpers/interfaces.mjs';
+//import { AudioData } from '../../src/helpers/interfaces.mjs';
 import { PcmSegmenter } from '../../src/helpers/pcm-segmenter.mjs';
+import { AudioData } from '../../src/helpers/interfaces.mjs';
 
 const log = createLogger('ESPHOME');
 
@@ -20,7 +21,7 @@ interface DeviceStore {
   [key: string]: any;
 }
 
-export default class MyDevice extends Homey.Device {
+export default class EspVoiceDevice extends Homey.Device {
   private esp!: EspVoiceClient;
   private webServer!: WebServer;
   private deviceManager!: DeviceManager;
@@ -33,7 +34,7 @@ export default class MyDevice extends Homey.Device {
    * onInit is called when the device is initialized.
    */
   async onInit(): Promise<void> {
-    this.log('MyDevice is initializing...');
+    this.log('EspVoiceDevice is initializing...');
     // TODO:
     this.setUnavailable();
 
@@ -77,14 +78,17 @@ export default class MyDevice extends Homey.Device {
 
     const store = this.getStore() as DeviceStore;
     // Initialize and start EspVoiceClient
+
     this.esp = new EspVoiceClient({
       host: store.address,
       apiPort: store.port
     });
 
+    log.info('ESP Voice Client initialized');
 
 
-
+    this.segmenter = new PcmSegmenter();
+    log.info('PCM Segmenter initialized');
 
     // TODO: Need to implement emit 'end'
     this.esp.on('end', () => {
@@ -117,7 +121,6 @@ export default class MyDevice extends Homey.Device {
       this.setAvailable();
     });
 
-
     this.agent.on('silence', () => {
       log.info("Silence detected by agent, closing microphone");
 
@@ -136,10 +139,26 @@ export default class MyDevice extends Homey.Device {
       this.segmenter.feed(audioBuffer);
     });
 
-    this.segmenter.on('segment', (filename: string) => {
-      log.info(`New TX segment: ${filename}`);
-      this.esp.playAudioFromUrl(`http://192.168.0.32:${port}/${filename}`, false);
+    this.segmenter.on('chunk', async (chunk: Buffer) => {
+      log.info(`New TX chunk: ${chunk.length} bytes`);
+
+      // TODO: Do not store sample rate, channels, and bits per sample here!
+      const wav = pcmToWavBuffer(chunk, {
+        sampleRate: 24_000,
+        channels: 1,
+        bitsPerSample: 16
+      });
+
+      const audioData: AudioData = {
+        data: wav,
+        extension: 'wav'
+      }      
+
+      const url = await this.webServer.buildStream(audioData);
+
+      this.esp.playAudioFromUrl(url, false);
     });
+
 
     this.agent.on('response.done', () => {
       log.info("Conversation completed");
@@ -162,28 +181,12 @@ export default class MyDevice extends Homey.Device {
       log.info("Realtime agent connection opened");
     });
 
-    this.esp.on('connected', () => {
-      log.info("ESP Voice Client connected");
-    });
 
     await this.esp.start();
     await this.agent.start();
 
-    this.log('MyDevice has initialized');
+    this.log('EspVoiceDevice has initialized');
   }
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -208,94 +211,8 @@ export default class MyDevice extends Homey.Device {
     });
   }
 
-  async _onAudioAio(pcmBuf: Buffer) {
-    this.esp.sttEnd("bolle");
 
 
-    this.esp.intentStart();
-
-    const audioOut = await singleHopSpeech({
-      apiKey: process.env.OPENAI_API_KEY!,
-      systemPrompt: "You are a helpful voice agent. Be concise. If you need the current time, call get_time.",
-      inputPcm16: pcmBuf,
-    });
-
-    log.info('Received audio response from singleHopSpeech', "OnAudio", { bytes: audioOut.length });
-
-    this.esp.intentEnd("rosin");
-
-    const audioData: AudioData = {
-      data: pcmToWav(audioOut, 22_500), // Convert PCM to WAV format
-      extension: 'wav'
-    };
-
-    var url = await this.webServer.buildStream(audioData);
-    log.info('Audio stream URL:', "OnAudio", url);
-
-    this.esp.playAudioFromUrl(url);
-    log.info('Playing audio from URL', "OnAudio", url);
-
-    this.esp.endRun();
-    log.info('----------------------');
-
-
-
-
-    await this.esp.start();
-    log.info('ESP Voice Client started');
-
-    await this.agent.start();
-    log.info('Realtime agent started');
-
-  }
-
-
-  async _onAudio(pcmBuf: Buffer) {
-
-
-    const apiKey = settingsManager.getGlobal<string>('openai_api_key') || this.homey.settings.get('openai_api_key');
-
-    //log.info('Received audio data', "OnAudio", { bytes: pcmBuf.length });
-    //this.espVoiceClient.sttStart();
-    //const text = await transcribe('192.168.0.32', 10300, pcmBuf, { language: 'no' });
-    const text = await transcribe(pcmBuf, apiKey, { language: 'no', verbose: false }, this.homey);
-    log.info(`USER: ${text}`);
-    this.esp.sttEnd(text);
-
-
-    this.esp.intentStart();
-
-    await this.devicePromise;
-    const speech = await this.smartAgent.run(text);
-    log.info(`AGENT: ${speech}`);
-
-    this.esp.intentEnd(speech);
-
-    const flacBuffer = await synthesize(speech, apiKey, {});
-    //const pcmReply = await synthesize('192.168.0.32', 10200, speech);
-    //log.info('Received audio', "OnAudio", pcmReply );
-    /*
-        if( audioData.extension === 'audio/pcm') {
-              rate: 16_000,
-            audioData.data = pcmToWav(audioData.data, audioData.rate);
-        }
-    */
-    const audioData = {
-      data: flacBuffer,
-      rate: 16_000,
-      extension: 'flac'
-    };
-
-    var url = await this.webServer.buildStream(audioData);
-    //log.info('Audio stream URL:',"OnAudio", url);
-
-    this.esp.playAudioFromUrl(url);
-    //log.info('Playing audio from URL', "OnAudio", url);
-
-    this.esp.endRun();
-    log.info('----------------------');
-
-  }
 
 
 
@@ -305,7 +222,7 @@ export default class MyDevice extends Homey.Device {
    * onAdded is called when the user adds the device, called just after pairing.
    */
   async onAdded(): Promise<void> {
-    this.log('MyDevice has been added');
+    this.log('EspVoiceDevice has been added');
   }
 
   /**
@@ -325,7 +242,7 @@ export default class MyDevice extends Homey.Device {
     newSettings: { [key: string]: boolean | string | number | undefined | null };
     changedKeys: string[];
   }): Promise<string | void> {
-    this.log("MyDevice settings where changed");
+    this.log("EspVoiceDevice settings where changed");
     try {
       const deviceId = (this.getData() as any)?.id || (this as any).id || this.getName();
       const store = this.getStore() as DeviceStore;
@@ -341,13 +258,13 @@ export default class MyDevice extends Homey.Device {
    * @param {string} name The new name
    */
   async onRenamed(name: string): Promise<void> {
-    this.log('MyDevice was renamed');
+    this.log('EspVoiceDevice was renamed');
   }
 
   /**
    * onDeleted is called when the user deleted the device.
    */
   async onDeleted(): Promise<void> {
-    this.log('MyDevice has been deleted');
+    this.log('EspVoiceDevice has been deleted');
   }
 }
