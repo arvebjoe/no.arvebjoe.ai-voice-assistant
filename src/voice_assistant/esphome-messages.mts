@@ -18,6 +18,7 @@ interface MessageTypeEntry {
     type: any;
 }
 const TYPES: Record<string, MessageTypeEntry> = {};
+
 (root.nestedArray as any[]).forEach((msg: any) => {
     const msgId = msg.options?.['(id)'];
     if (msgId !== undefined) {
@@ -25,7 +26,9 @@ const TYPES: Record<string, MessageTypeEntry> = {};
     }
 });
 
+
 // Stub for MediaPlayerPlayMediaRequest (ID 145)
+/*
 if (!TYPES['MediaPlayerPlayMediaRequest']) {
     const stubRoot = protobuf.parse(`
     syntax = "proto3";
@@ -40,8 +43,10 @@ if (!TYPES['MediaPlayerPlayMediaRequest']) {
         type: stubRoot.lookupType('MediaPlayerPlayMediaRequest'),
     };
 }
+*/
 
 // VoiceAssistantAnnounceRequest (id 119)
+/*
 if (!TYPES['VoiceAssistantAnnounceRequest']) {
     const stub = protobuf.parse(`
     syntax = "proto3";
@@ -55,6 +60,7 @@ if (!TYPES['VoiceAssistantAnnounceRequest']) {
 
     TYPES['VoiceAssistantAnnounceRequest'] = { id: 119, type: stub };
 }
+*/
 
 const PLAINTEXT = 0x00;
 const VA_EVENT = (root.lookupEnum('VoiceAssistantEvent') as any).values;
@@ -63,6 +69,7 @@ const VA_EVENT = (root.lookupEnum('VoiceAssistantEvent') as any).values;
 interface EncodePayload {
     [key: string]: any;
 }
+
 interface DecodeResult {
     name: string | null;
     id: number;
