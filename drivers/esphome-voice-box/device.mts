@@ -5,7 +5,7 @@ import { EspVoiceClient } from '../../src/voice_assistant/esphome_home_assistant
 import { DeviceManager } from '../../src/helpers/device-manager.mjs';
 //import { transcribe } from '../../src/speech_to_text/openai_stt.mjs';
 //import { synthesize } from '../../src/text_to_speech/openai-tts.mjs';
-import { ToolMaker } from '../../src/llm/toolMaker.mjs';
+//import { ToolMaker } from '../../src/llm/toolMaker.mjs';
 import { settingsManager } from '../../src/settings/settings-manager.mjs';
 import { OpenAIRealtimeWS, RealtimeOptions } from '../../src/llm/OpenAIRealtimeWS.mjs';
 import { pcmToWavBuffer } from '../../src/helpers/wav-util.mjs';
@@ -26,7 +26,7 @@ export default class EspVoiceDevice extends Homey.Device {
   private webServer!: WebServer;
   private deviceManager!: DeviceManager;
   private devicePromise!: Promise<void>;
-  private toolMaker!: ToolMaker;
+  //private toolMaker!: ToolMaker;
   private agent!: OpenAIRealtimeWS;
   private segmenter!: PcmSegmenter;
 
@@ -56,7 +56,7 @@ export default class EspVoiceDevice extends Homey.Device {
       log.warn('Failed to register device settings');
     }
 
-    this.toolMaker = new ToolMaker(this.deviceManager);
+    //this.toolMaker = new ToolMaker(this.deviceManager);
 
     const agentOptions: RealtimeOptions = {
       apiKey: apiKey,
