@@ -137,7 +137,7 @@ export class OpenAIRealtimeWS extends EventEmitter {
      * Connect to OpenAI Realtime WebSocket and configure the session
      * (voice, output format, STT language, server VAD, tools, instructions).
      */
-    async connect(): Promise<void> {
+    async start(): Promise<void> {
         if (this.ws && this.ws.readyState === WebSocket.OPEN) return;
 
         this.log("Connecting WS:", this.options.url);
