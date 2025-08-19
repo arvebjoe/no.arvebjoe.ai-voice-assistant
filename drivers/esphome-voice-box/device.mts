@@ -8,7 +8,7 @@ import { DeviceManager } from '../../src/helpers/device-manager.mjs';
 //import { ToolMaker } from '../../src/llm/toolMaker.mjs';
 import { settingsManager } from '../../src/settings/settings-manager.mjs';
 import { OpenAIRealtimeWS, RealtimeOptions } from '../../src/llm/OpenAIRealtimeWS.mjs';
-import { pcmToWavBuffer, pcmToFlacBuffer } from '../../src/helpers/wav-util.mjs';
+import { pcmToWavBuffer, pcmToFlacBuffer } from '../../src/helpers/audio-encoders.mjs';
 //import { AudioData } from '../../src/helpers/interfaces.mjs';
 import { PcmSegmenter } from '../../src/helpers/pcm-segmenter.mjs';
 import { AudioData } from '../../src/helpers/interfaces.mjs';
