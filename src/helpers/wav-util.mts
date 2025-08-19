@@ -1,41 +1,34 @@
 import { WavOptions } from './interfaces.mjs';
 
+// Import libflacjs (pure JavaScript FLAC encoder) - using createRequire for CommonJS modules
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
 
-// Import libflacjs (pure JavaScript FLAC encoder)
-let Flac: any;
+const FlacFactory = require('libflacjs');
+const Flac = FlacFactory();
+const { Encoder } = require('libflacjs/lib/encoder');
+
+// Track initialization state
 let isFlacReady = false;
 let initializationPromise: Promise<void> | null = null;
 
-// Initialize libflacjs using dynamic imports
-async function initializeFlac(): Promise<void> {
+// Initialize FLAC library
+function initializeFlac(): Promise<void> {
     if (initializationPromise) {
         return initializationPromise;
     }
 
-    initializationPromise = (async () => {
-        try {
-            // Use dynamic import for ES modules
-            const FlacFactory = await import('libflacjs');
-            Flac = (FlacFactory as any).default();
-            
-            if (Flac.isReady && Flac.isReady()) {
+    initializationPromise = new Promise<void>((resolve) => {
+        if (Flac.isReady()) {
+            isFlacReady = true;
+            resolve();
+        } else {
+            Flac.on('ready', () => {
                 isFlacReady = true;
-                console.log('✅ libflacjs loaded and ready');
-            } else {
-                // Wait for async initialization
-                await new Promise<void>((resolve) => {
-                    Flac.on('ready', () => {
-                        isFlacReady = true;
-                        console.log('✅ libflacjs initialized and ready');
-                        resolve();
-                    });
-                });
-            }
-        } catch (error: any) {
-            console.error('❌ libflacjs failed to load:', error?.message || error);
-            throw error;
+                resolve();
+            });
         }
-    })();
+    });
 
     return initializationPromise;
 }
@@ -90,8 +83,8 @@ export async function pcmToFlacBuffer(pcmData: Buffer | Uint8Array,
     }: FlacOptions = {}
 ): Promise<Buffer> {
 
-    // Initialize FLAC if not ready
-    if (!isFlacReady || !Flac) {
+    // Ensure FLAC is ready before proceeding
+    if (!isFlacReady) {
         await initializeFlac();
     }
 
@@ -123,68 +116,46 @@ export async function pcmToFlacBuffer(pcmData: Buffer | Uint8Array,
                 return;
             }
 
-            // Use the manual encoding approach with low-level libflac API
-            const flacData: Buffer[] = [];
-            let encoder: any;
+            // Create encoder with configuration - Encoder needs Flac instance as first parameter
+            const encoder = new Encoder(Flac, {
+                sampleRate: sampleRate,
+                channels: channels,
+                bitsPerSample: bitsPerSample,
+                compression: compressionLevel,
+                verify: verify
+            });
 
-            try {
-                // Create encoder using low-level API
-                encoder = Flac.create_libflac_encoder(sampleRate, channels, bitsPerSample, compressionLevel, 0);
-                
-                if (!encoder) {
-                    throw new Error('Failed to create FLAC encoder');
-                }
-
-                // Set up write callback to collect encoded data
-                const writeCallback = (data: Uint8Array, bytes: number, samples: number, current_frame: number) => {
-                    if (data && bytes > 0) {
-                        flacData.push(Buffer.from(data.slice(0, bytes)));
+            // Prepare samples for encoding
+            const samplesPerChannel = samples.length / channels;
+            
+            // Deinterleave channels if needed
+            const channelData: Int32Array[] = [];
+            if (channels === 1) {
+                channelData.push(samples);
+            } else {
+                // Deinterleave stereo data
+                for (let ch = 0; ch < channels; ch++) {
+                    const channelSamples = new Int32Array(samplesPerChannel);
+                    for (let i = 0; i < samplesPerChannel; i++) {
+                        channelSamples[i] = samples[i * channels + ch];
                     }
-                    return 0; // Success
-                };
-
-                // Initialize encoder with callback
-                const status = Flac.init_encoder_stream(
-                    encoder,
-                    writeCallback,
-                    null, // seek callback
-                    null, // tell callback
-                    null  // metadata callback
-                );
-
-                if (status !== 0) {
-                    throw new Error(`Failed to initialize FLAC encoder: ${status}`);
+                    channelData.push(channelSamples);
                 }
-
-                // Encode the audio data
-                const samplesPerChannel = samples.length / channels;
-                const processed = Flac.FLAC__stream_encoder_process_interleaved(
-                    encoder,
-                    samples,
-                    samplesPerChannel
-                );
-
-                if (!processed) {
-                    throw new Error('Failed to process audio data');
-                }
-
-                // Finish encoding
-                const finished = Flac.FLAC__stream_encoder_finish(encoder);
-                if (!finished) {
-                    console.warn('FLAC encoder finish returned false');
-                }
-
-                // Clean up
-                Flac.FLAC__stream_encoder_delete(encoder);
-
-                resolve(Buffer.concat(flacData));
-
-            } catch (error) {
-                if (encoder) {
-                    Flac.FLAC__stream_encoder_delete(encoder);
-                }
-                reject(error);
             }
+
+            // Encode the audio data
+            const encodeResult = encoder.encode(channelData);
+            if (!encodeResult) {
+                reject(new Error('Failed to encode FLAC data'));
+                return;
+            }
+
+            // Finish encoding
+            encoder.encode(); // Call without parameters to finish
+
+            // Get the encoded FLAC data
+            const flacData = encoder.getSamples();
+            resolve(Buffer.from(flacData));
 
         } catch (error) {
             reject(error);
