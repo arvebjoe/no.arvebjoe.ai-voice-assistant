@@ -3,7 +3,7 @@ import * as Bonjour from 'bonjour-service';
 import { createLogger } from '../../src/helpers/logger.mjs';
 
 
-const log = createLogger('ESPHOME-DRIVER');
+const log = createLogger('DRIVER');
 const bonjourInstance = new Bonjour.Bonjour();
 
 interface Device {
@@ -21,13 +21,13 @@ interface Device {
   };
 }
 
-export default class MyDriver extends Homey.Driver {
+export default class EspVoiceDriver extends Homey.Driver {
 
   /**
    * onInit is called when the driver is initialized.
    */
   async onInit(): Promise<void> {
-    this.log('MyDriver has been initialized');
+    log.info('EspVoiceDriver has been initialized');
   }
 
   async onPair(session: any): Promise<void> {
@@ -35,7 +35,7 @@ export default class MyDriver extends Homey.Driver {
     const deviceList: Device[] = [];
 
     session.setHandler('list_devices', async () => {
-      this.log('Starting ESPHome device discovery...');
+      log.info('Starting ESPHome device discovery...');
 
 
       const browser = bonjourInstance.find(
@@ -79,14 +79,14 @@ export default class MyDriver extends Homey.Driver {
 
       // Wait for 10 seconds to allow devices to be discovered
       return new Promise<Device[]>((resolve) => {
-        log.log('Waiting 10 seconds for device discovery to complete...');
+        log.info('Waiting 10 seconds for device discovery to complete...');
 
         // Set a timeout to resolve after 10 seconds
         setTimeout(() => {
           // Stop the browser/discovery process
           browser.stop();
 
-          log.log(`Device discovery complete. Found ${deviceList.length} devices.`);
+          log.info(`Device discovery complete. Found ${deviceList.length} devices.`);
 
           resolve(deviceList);
         }, 10000); // 10 seconds

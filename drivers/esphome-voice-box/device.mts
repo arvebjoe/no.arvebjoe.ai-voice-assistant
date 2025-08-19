@@ -8,13 +8,13 @@ import { DeviceManager } from '../../src/helpers/device-manager.mjs';
 //import { ToolMaker } from '../../src/llm/toolMaker.mjs';
 import { settingsManager } from '../../src/settings/settings-manager.mjs';
 import { OpenAIRealtimeWS, RealtimeOptions } from '../../src/llm/OpenAIRealtimeWS.mjs';
-import { pcmToWavBuffer } from '../../src/helpers/wav-util.mjs';
+import { pcmToWavBuffer, pcmToFlacBuffer } from '../../src/helpers/wav-util.mjs';
 //import { AudioData } from '../../src/helpers/interfaces.mjs';
 import { PcmSegmenter } from '../../src/helpers/pcm-segmenter.mjs';
 import { AudioData } from '../../src/helpers/interfaces.mjs';
 import { ToolManager } from '../../src/llm/ToolManager.mjs';
 
-const log = createLogger('ESPHOME');
+const log = createLogger('DEVICE');
 
 interface DeviceStore {
   address: string;
@@ -35,7 +35,7 @@ export default class EspVoiceDevice extends Homey.Device {
    * onInit is called when the device is initialized.
    */
   async onInit(): Promise<void> {
-    this.log('EspVoiceDevice is initializing...');
+    log.info('EspVoiceDevice is initializing...');
     // TODO:
     this.setUnavailable();
 
@@ -65,9 +65,9 @@ export default class EspVoiceDevice extends Homey.Device {
       sttLanguage: "no", // Hint STT: Norwegian
       outputAudioFormat: "pcm16",
       turnDetection: { type: "server_vad" }, // server VAD on
-      enableLocalVAD: true,                  // local VAD also on
-      localVADSilenceThreshold: 0.5,
-      localVADSilenceMs: 2000,
+      enableLocalVAD: false,                  // local VAD also on
+      //localVADSilenceThreshold: 0.5,
+      //localVADSilenceMs: 2000,
       verbose: true,
     };
 
@@ -93,7 +93,7 @@ export default class EspVoiceDevice extends Homey.Device {
     log.info('PCM Segmenter initialized');
 
 
-    this.esp.on('start', () => {
+    this.esp.on('start', async () => {
       log.info("Voice session started");
       this.devicePromise = this.deviceManager.fetchData();
       this.setCapabilityValue('onoff', true);
@@ -142,15 +142,15 @@ export default class EspVoiceDevice extends Homey.Device {
       log.info(`New TX chunk: ${chunk.length} bytes`);
 
       // TODO: Do not store sample rate, channels, and bits per sample here!
-      const wav = pcmToWavBuffer(chunk, {
+      const flac = await pcmToFlacBuffer(chunk, {
         sampleRate: 24_000,
         channels: 1,
         bitsPerSample: 16
       });
 
       const audioData: AudioData = {
-        data: wav,
-        extension: 'wav'
+        data: flac,
+        extension: 'flac'
       }
 
       const url = await this.webServer.buildStream(audioData);
@@ -160,8 +160,9 @@ export default class EspVoiceDevice extends Homey.Device {
 
 
     this.agent.on('tool.called', async (d: { callId: string; name: string; args: any }) => {
-      log.info(`Tool called: ${d.name}`, d.args);
+      log.info(`${d.name}`, 'Tool calling', d.args);
       await this.devicePromise;
+      
     });
 
     this.agent.on('response.done', () => {
@@ -190,7 +191,7 @@ export default class EspVoiceDevice extends Homey.Device {
     await this.esp.start();
     await this.agent.start();
 
-    this.log('EspVoiceDevice has initialized');
+    log.info('EspVoiceDevice has initialized');
   }
 
 
@@ -200,19 +201,19 @@ export default class EspVoiceDevice extends Homey.Device {
   private RegisterCapabilities() {
 
     this.registerCapabilityListener('onoff', async (value: boolean) => {
-      this.log('Capability onoff changed to:', value);
+      log.info(`Capability onoff changed to: ${value}`);
       // Here you would typically send the command to the device
       // await this.sendCommandToDevice(value);
     });
 
     this.registerCapabilityListener('volume_set', async (value: number) => {
-      this.log('Capability volume_set changed to:', value);
+      log.info(`Capability volume_set changed to: ${value}`);
       // Here you would typically send the command to the device
       // await this.setVolumeOnDevice(value);
     });
 
     this.registerCapabilityListener('volume_mute', async (value: boolean) => {
-      this.log('Capability volume_mute changed to:', value);
+      log.info(`Capability volume_mute changed to: ${value}`);
     });
   }
 
@@ -227,7 +228,7 @@ export default class EspVoiceDevice extends Homey.Device {
    * onAdded is called when the user adds the device, called just after pairing.
    */
   async onAdded(): Promise<void> {
-    this.log('EspVoiceDevice has been added');
+    log.info('EspVoiceDevice has been added');
   }
 
   /**
@@ -247,7 +248,7 @@ export default class EspVoiceDevice extends Homey.Device {
     newSettings: { [key: string]: boolean | string | number | undefined | null };
     changedKeys: string[];
   }): Promise<string | void> {
-    this.log("EspVoiceDevice settings where changed");
+    log.info("EspVoiceDevice settings where changed");
     try {
       const deviceId = (this.getData() as any)?.id || (this as any).id || this.getName();
       const store = this.getStore() as DeviceStore;
@@ -263,13 +264,13 @@ export default class EspVoiceDevice extends Homey.Device {
    * @param {string} name The new name
    */
   async onRenamed(name: string): Promise<void> {
-    this.log('EspVoiceDevice was renamed');
+    log.info('EspVoiceDevice was renamed');
   }
 
   /**
    * onDeleted is called when the user deleted the device.
    */
   async onDeleted(): Promise<void> {
-    this.log('EspVoiceDevice has been deleted');
+    log.info('EspVoiceDevice has been deleted');
   }
 }

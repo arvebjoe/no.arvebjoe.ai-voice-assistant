@@ -5,7 +5,7 @@ import { TypedEmitter } from "tiny-typed-emitter";
 import { encodeFrame, decodeFrame, VA_EVENT } from './esphome-messages.mjs';
 import { createLogger } from '../helpers/logger.mjs';
 
-const log = createLogger('ESP');
+const log = createLogger('ESP', true);
 
 interface EspVoiceClientOptions {
   host: string;

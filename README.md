@@ -3,8 +3,21 @@
 
 
 ## Devices compatibility
-    - What
-    - How to flash
+    - Home Assistant Voice Preview edition  (PE)
+    ![ESPHome Voice Box](./drivers/esphome-voice-box/assets/images/small.png)
+
+    - XiaoZhi Ai
+  
+## How to flash PE
+    - Use browser that supports accessing COM port, like Chrome. 
+    - Go to: https://esphome.github.io/home-assistant-voice-pe/
+    - Select version and hit Connect. Select the COM port to which the PE is connected.
+    - Click "Install Nabu Casa....."
+    - Once installed, set the wifi credentials.
+    - Give the device a static IP in your network
+
+## How to flash XiaoZhi AI
+    - https://github.com/RealDeco/xiaozhi-esphome
 
 
 ## Supported AI providers
@@ -21,8 +34,20 @@
     - Just write it in for release 1.0.0
     - Perhaps pulldown with auto complete in the future?
 
+### Support for Xiaozhi Ai
+    - These stream using Flac
+
+### Add new device
+    - This is weak. Need to connect to each esp device and ask it's capabilities.
+    - Need to support api key?
+
 ### Voice Box
     - Needs to know where it is (zone). So it can controll devices within it's own zone if the user didn't specify the zone.
+    - Still some issue with silence detection
+    - Still issue with LED feedback when playing multiple URL's
+    - Voice box should tell when it's done playing the last URL 
+      - How to do this?
+
 
 ### Homey-log
     - What is it?
@@ -50,6 +75,20 @@
     - Device set mute (on/off)
 
     - App trigger Agent with text prompt. Output as wav or text
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

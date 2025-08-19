@@ -3,6 +3,7 @@ import { EventEmitter } from "events";
 import { TypedEmitter } from "tiny-typed-emitter";
 import { createLogger } from '../helpers/logger.mjs';
 import { ToolManager } from './ToolManager.mjs';
+import { getDefaultInstructions, getResponseInstructions, getErrorResponseInstructions } from '../helpers/agent-instructions.mjs';
 
 /**
  * Minimal shape of Realtime events we care about.
@@ -112,7 +113,7 @@ type PendingToolCall = {
 
 export class OpenAIRealtimeWS extends (EventEmitter as new () => TypedEmitter<RealtimeEvents>) {
     private ws?: WebSocket;
-    private logger = createLogger("AGENT", false);
+    private logger = createLogger("AGENT", true);
     private resample_prev: number | null = null; // last input sample from previous chunk
     private resample_frac: number = 0;           // fractional read position into the source for next call
     private toolManager: ToolManager;
@@ -163,9 +164,7 @@ export class OpenAIRealtimeWS extends (EventEmitter as new () => TypedEmitter<Re
                     ? { type: "server_vad" }
                     : opts.turnDetection,
             sttLanguage: opts.sttLanguage ?? "no", // Norwegian
-            instructions:
-                opts.instructions ??
-                "Du er en hjelpsom stemmeassistent. Snakk alltid norsk, og svar kort og klart.",
+            instructions: getDefaultInstructions(),
             enableLocalVAD: opts.enableLocalVAD ?? true,
             localVADSilenceThreshold: opts.localVADSilenceThreshold ?? 0.01,
             localVADSilenceMs: opts.localVADSilenceMs ?? 800,
@@ -288,7 +287,7 @@ export class OpenAIRealtimeWS extends (EventEmitter as new () => TypedEmitter<Re
                 modalities: ["audio", "text"],           // audio is requested here
                 // voice comes from the session (session.voice)
                 instructions:
-                    "Bruk resultatet over og svar kort på norsk.",
+                    getResponseInstructions(),
                 ...extra,
             },
         };
@@ -532,14 +531,14 @@ export class OpenAIRealtimeWS extends (EventEmitter as new () => TypedEmitter<Re
 
             // Tell the model to continue and produce audio/text based on that result:
             this.createResponse({
-                instructions: "Bruk resultatet fra verktøyet over og svar kort på norsk.",
+                instructions: getResponseInstructions(),
             });
 
         } catch (err: any) {
             // Even on error, feed a structured output back so the model can handle it gracefully:
             this.sendFunctionResult(callId, { error: String(err?.message ?? err) }, rec.itemId);
             this.createResponse({
-                instructions: "Forklar kort på norsk at verktøyet feilet, og foreslå neste steg.",
+                instructions: getErrorResponseInstructions(),
             });
         } finally {
             rec.executed = true;

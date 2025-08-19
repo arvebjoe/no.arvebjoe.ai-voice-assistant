@@ -1,8 +1,7 @@
 // Using require for HomeyAPI as it might not have TypeScript typings
 import { HomeyAPI } from 'homey-api';
-import { Device, DevicesCollection, Zone, ZonesCollection, PaginatedDevices } from './interfaces.mjs';
+import { Device, Zone, ZonesCollection, PaginatedDevices } from './interfaces.mjs';
 import { createLogger } from './logger.mjs';
-import { array } from 'zod';
 
 
 const log = createLogger('DeviceManager');
@@ -37,11 +36,14 @@ export class DeviceManager implements IDeviceManager {
     }
 
     async fetchData(): Promise<void> {
-
+        log.info('Fetching devices and zones from Homey...');
+        
         const [devices, zones] = await Promise.all([
             this.api.devices.getDevices(),
             this.api.zones.getZones(),
         ]);
+
+        log.info(`Found ${Object.keys(devices).length} devices and ${Object.keys(zones).length} zones`);
 
         this.zones = zones;
 
@@ -106,6 +108,9 @@ export class DeviceManager implements IDeviceManager {
 
         this.deviceTypes = Array.from(types).sort();
 
+
+        log.info('Done processing devices and zones');
+
     }
 
 
@@ -117,7 +122,11 @@ export class DeviceManager implements IDeviceManager {
      * @returns Array of zone names
      */
     getZones(): string[] {
-        if (!this.zoneList) return [];
+        if (!this.zoneList) {
+            log.info("No zones found");
+            return [];
+        }
+        log.info(`Found zones: ${this.zoneList.join(', ')}`);
         return this.zoneList;
     }
 
@@ -126,7 +135,11 @@ export class DeviceManager implements IDeviceManager {
      * @returns Array of unique device types
      */
     getAllDeviceTypes(): string[] {
-        if (!this.deviceTypes) return [];
+        if (!this.deviceTypes) {
+            log.info("No device types found");
+            return [];
+        }
+        log.info(`Found device types: ${this.deviceTypes.join(', ')}`);
         return this.deviceTypes;
     }
 
@@ -143,6 +156,7 @@ export class DeviceManager implements IDeviceManager {
     getSmartHomeDevices(zone?: string, type?: string, page_size: number = 25, page_token: string | null = null): PaginatedDevices {
 
         if (!this.devices) {
+            log.info("No devices found");
             return {
                 devices: [],
                 next_page_token: null
@@ -174,6 +188,7 @@ export class DeviceManager implements IDeviceManager {
         }
 
         if (devicesList.length === 0) {
+            log.info("No devices found matching the filters");
             return {
                 devices: [],
                 next_page_token: null
