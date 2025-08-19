@@ -28,7 +28,7 @@
 
 ## TODO before release:
 
-### Agent system prompt
+### Agent system prompt needs language choice
     - Need to tell agent what language is should answer in i.e. "norwegian", "english" or "pirate". 
     - Needs to come from app-settings 
     - Just write it in for release 1.0.0

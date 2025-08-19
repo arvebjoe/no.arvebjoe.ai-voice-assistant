@@ -23,8 +23,28 @@
         <label class="homey-form-label" for="openai_api_key">Apikey</label>
         <input class="homey-form-input" id="openai_api_key" type="text" value="" />
       </div>
+    </fieldset>
 
+    <fieldset class="homey-form-fieldset">
+      <legend class="homey-form-legend">Language settings</legend>
 
+      <div class="homey-form-group">
+        <label class="homey-form-label" for="language_select">Language</label>
+        <select class="homey-form-input" id="language_select">
+          <option value="en,English">English</option>
+          <option value="nl,Dutch">Dutch</option>
+          <option value="de,German">German</option>
+          <option value="fr,French">French</option>
+          <option value="it,Italian">Italian</option>
+          <option value="sv,Swedish">Swedish</option>
+          <option value="no,Norwegian">Norwegian</option>
+          <option value="es,Spanish">Spanish</option>
+          <option value="da,Danish">Danish</option>
+          <option value="ru,Russian">Russian</option>
+          <option value="pl,Polish">Polish</option>
+          <option value="ko,South Korean">South Korean</option>
+        </select>
+      </div>
     </fieldset>
 
     <button id="save" class="homey-button-primary-full">Save changes</button>
@@ -35,6 +55,7 @@
 
 
         var apiKeyElement = document.getElementById("openai_api_key");
+        var languageSelectElement = document.getElementById("language_select");
         var saveElement = document.getElementById("save");
 
         Homey.get("openai_api_key", function (err, apiKey) {
@@ -42,13 +63,21 @@
           apiKeyElement.value = apiKey;
         });
 
+        Homey.get("selected_language", function (err, language) {
+          if (err) return Homey.alert(err);
+          if (language) {
+            languageSelectElement.value = language;
+          }
+        });
 
         saveElement.addEventListener("click", function (e) {
-
           Homey.set("openai_api_key", apiKeyElement.value, function (err) {
             if (err) return Homey.alert(err);
           });
 
+          Homey.set("selected_language", languageSelectElement.value, function (err) {
+            if (err) return Homey.alert(err);
+          });
         });
 
 

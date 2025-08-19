@@ -42,6 +42,8 @@ export default class EspVoiceDriver extends Homey.Driver {
         { type: 'esphomelib', protocol: 'tcp' },
         (service: any) => {
 
+          log.info('Found device', 'onPair', service)
+
           const device: Device = {
             name: service.txt?.friendly_name || service.name || 'Unknown',
             data: {
