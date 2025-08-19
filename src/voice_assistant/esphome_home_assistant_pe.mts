@@ -5,7 +5,7 @@ import { TypedEmitter } from "tiny-typed-emitter";
 import { encodeFrame, decodeFrame, VA_EVENT } from './esphome-messages.mjs';
 import { createLogger } from '../helpers/logger.mjs';
 
-const log = createLogger('ESP', true);
+const log = createLogger('ESP', false);
 
 interface EspVoiceClientOptions {
   host: string;
@@ -13,16 +13,17 @@ interface EspVoiceClientOptions {
 }
 
 type EspVoiceEvents = {
-    connected: () => void;
-    disconnected: () => void;
-    announce_finished: () => void;
-    start: () => void;
-    chunk: (data: Buffer) => void;
-  }
+  connected: () => void;
+  disconnected: () => void;
+  announce_finished: () => void;
+  start: () => void;
+  chunk: (data: Buffer) => void;
+  capabilities: (mediaPlayersCount: number, subscribeVoiceAssistantCount: number, voiceAssistantConfigurationCount: number) => void;
+}
 
 
 
-class EspVoiceClient  extends (EventEmitter as new () => TypedEmitter<EspVoiceEvents>) {
+class EspVoiceClient extends (EventEmitter as new () => TypedEmitter<EspVoiceEvents>) {
   private host: string;
   private apiPort: number;
   private streamId: number;
@@ -37,6 +38,10 @@ class EspVoiceClient  extends (EventEmitter as new () => TypedEmitter<EspVoiceEv
   private healthCheckTimer: NodeJS.Timeout | null;
   private PING_TIMEOUT: number;
   private HEALTH_CHECK_INTERVAL: number;
+  private mediaPlayersCount: number;
+  private subscribeVoiceAssistantCount: number;
+  private voiceAssistantConfigurationCount: number;
+
 
   constructor({ host, apiPort = 6053 }: EspVoiceClientOptions) {
     super();
@@ -54,6 +59,9 @@ class EspVoiceClient  extends (EventEmitter as new () => TypedEmitter<EspVoiceEv
     this.healthCheckTimer = null;
     this.PING_TIMEOUT = 120_000;
     this.HEALTH_CHECK_INTERVAL = 55_000;
+    this.mediaPlayersCount = 0;
+    this.subscribeVoiceAssistantCount = 0;
+    this.voiceAssistantConfigurationCount = 0;
 
   }
 
@@ -108,23 +116,21 @@ class EspVoiceClient  extends (EventEmitter as new () => TypedEmitter<EspVoiceEv
     this.emit('disconnected');
   }
 
-  async connectApi(): Promise<void> {
 
-  }
 
   scheduleReconnect(): void {
-    
+
     if (this.reconnectTimer) {
       return;
     }
 
     const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempt), this.MAX_RECONNECT_DELAY);
     log.warn('Scheduling reconnection attempt', { attempt: this.reconnectAttempt + 1, delayMs: delay });
-    
-    this.reconnectTimer = setTimeout(() => {
+
+    this.reconnectTimer = setTimeout(async () => {
       this.reconnectTimer = null;
       this.reconnectAttempt++;
-      this.connectApi();
+      await this.start();
     }, delay);
   }
 
@@ -132,7 +138,7 @@ class EspVoiceClient  extends (EventEmitter as new () => TypedEmitter<EspVoiceEv
     log.info(`Connected to ${this.host}:${this.apiPort}`);
     this.reconnectAttempt = 0;
     this.startHealthCheck();
-    
+
     this.send('HelloRequest',
       {
         clientInfo: 'echo-test',
@@ -172,7 +178,7 @@ class EspVoiceClient  extends (EventEmitter as new () => TypedEmitter<EspVoiceEv
     }
 
     this.lastPingTime = 0;
-    
+
     if (this.tcp) {
       this.tcp.destroy();
       this.tcp = null;
@@ -182,14 +188,14 @@ class EspVoiceClient  extends (EventEmitter as new () => TypedEmitter<EspVoiceEv
 
   async disconnect(): Promise<boolean> {
     log.info('Disconnecting ESP Voice Client');
-    
+
     this.connected = false;
 
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
-  
+
     // Close mic socket
     log.info('Closing mic socket... from disconnect()');
     this.closeMic();
@@ -210,10 +216,10 @@ class EspVoiceClient  extends (EventEmitter as new () => TypedEmitter<EspVoiceEv
 
   async onTcpData(data: Buffer): Promise<void> {
     this.rxBuf = Buffer.concat([this.rxBuf, data]);
-    
+
     while (true) {
       const frame = decodeFrame(this.rxBuf);
-      
+
       if (!frame) {
         break;
       }
@@ -234,12 +240,37 @@ class EspVoiceClient  extends (EventEmitter as new () => TypedEmitter<EspVoiceEv
     else if (name === 'ConnectResponse') {
       this.connected = true;
       this.emit('connected');
+
+      this.mediaPlayersCount = 0;
+      this.subscribeVoiceAssistantCount = 0;
+      this.voiceAssistantConfigurationCount = 0;
+
       this.send('ListEntitiesRequest', {});
     }
 
-    else if (name === 'ListEntitiesDoneResponse') {
-      this.send('SubscribeVoiceAssistantRequest', { subscribe: true });
+
+    else if (name === 'ListEntitiesMediaPlayerResponse') {
+      this.mediaPlayersCount++;
     }
+
+    else if (name === 'ListEntitiesDoneResponse') {
+
+      this.send('SubscribeVoiceAssistantRequest', { subscribe: true });
+
+      setTimeout(() => {
+        if (this.connected) {
+          this.subscribeVoiceAssistantCount++;
+          this.send('VoiceAssistantConfigurationRequest', {});
+        }
+      }, 500);
+    }
+
+    else if (name === 'VoiceAssistantConfigurationResponse') {
+      this.voiceAssistantConfigurationCount++
+      this.emit('capabilities', this.mediaPlayersCount, this.subscribeVoiceAssistantCount, this.voiceAssistantConfigurationCount);
+    }
+
+
 
     else if (name === 'VoiceAssistantAnnounceFinished') {
       this.emit('announce_finished');

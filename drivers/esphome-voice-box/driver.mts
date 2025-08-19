@@ -1,6 +1,7 @@
 import Homey from 'homey';
 import * as Bonjour from 'bonjour-service';
 import { createLogger } from '../../src/helpers/logger.mjs';
+import { EspVoiceClient } from '../../src/voice_assistant/esphome_home_assistant_pe.mjs';
 
 
 const log = createLogger('DRIVER');
@@ -40,9 +41,7 @@ export default class EspVoiceDriver extends Homey.Driver {
 
       const browser = bonjourInstance.find(
         { type: 'esphomelib', protocol: 'tcp' },
-        (service: any) => {
-
-          log.info('Found device', 'onPair', service)
+        async (service: any) => {          
 
           const device: Device = {
             name: service.txt?.friendly_name || service.name || 'Unknown',
@@ -59,31 +58,53 @@ export default class EspVoiceDriver extends Homey.Driver {
             },
           };
 
-          const isX = device.name.toLocaleLowerCase().includes('xiaozhi');
-
-          const isVoice = device.name.toLowerCase().includes('voice')
-            || device.store.project.toLowerCase().includes('voice')
-            || device.store.serviceName.toLowerCase().includes('voice');
-          const isDevice = isVoice || isX
-
-          if (!isDevice) {
-            log.log(`Skipping non-voice device: ${device.name}`, 'MDNS');
-            return; // Skip non-voice devices
+          if(!device.store.platform.toLocaleLowerCase().includes('esp32')) {
+            log.log(`Skipping none-esp32 device: ${device.name}`, 'onPair');
+            return; 
           }
 
-          deviceList.push(device);
+          
+          let client : EspVoiceClient | null = new EspVoiceClient({host: device.store.address, apiPort: device.store.port});  
 
-          // Send updated device list to the frontend
-          session.emit('list_devices', deviceList);
+          client.on('capabilities', async (mediaPlayersCount, subscribeVoiceAssistantCount, voiceAssistantConfigurationCount) => {
+            
+            // TODO: Need to pass type of device, Nabu (PE) or xiaozhi
+            log.info(`ESP Voice Client capabilities received from ${device.name}:`,'onPair', {
+              mediaPlayersCount,
+              subscribeVoiceAssistantCount,
+              voiceAssistantConfigurationCount
+            });
 
+            if(mediaPlayersCount > 0 && subscribeVoiceAssistantCount > 0 && voiceAssistantConfigurationCount > 0) {
+              deviceList.push(device);
+              session.emit('list_devices', deviceList);
+
+              if(client) {
+                await client.disconnect();
+                client = null;
+              }
+              
+            }
+          });
+
+          await client.start();
+
+          setTimeout(async () => {
+            if(client) {
+              await client.disconnect();
+              client = null;
+            }
+          }, 5000);
+
+ 
         }
       );
 
-      // Wait for 10 seconds to allow devices to be discovered
+      // Wait for 30 seconds to allow devices to be discovered
       return new Promise<Device[]>((resolve) => {
-        log.info('Waiting 10 seconds for device discovery to complete...');
+        log.info('Waiting 30 seconds for device discovery to complete...');
 
-        // Set a timeout to resolve after 10 seconds
+        // Set a timeout to resolve after 30 seconds
         setTimeout(() => {
           // Stop the browser/discovery process
           browser.stop();
@@ -91,7 +112,7 @@ export default class EspVoiceDriver extends Homey.Driver {
           log.info(`Device discovery complete. Found ${deviceList.length} devices.`);
 
           resolve(deviceList);
-        }, 10000); // 10 seconds
+        }, 30_000); // 30 seconds
       })
 
     });
