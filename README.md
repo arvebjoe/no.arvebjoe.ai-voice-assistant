@@ -34,8 +34,7 @@
     - Just write it in for release 1.0.0
     - Perhaps pulldown with auto complete in the future?
 
-### Support for Xiaozhi Ai
-    - These stream using Flac
+### OpenAIRealtimeWS need reconnect logic
 
 ### Add new device
     - This is weak. Need to connect to each esp device and ask it's capabilities.
