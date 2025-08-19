@@ -16,7 +16,7 @@ type RealtimeEvents = {
     open: () => void;
     close: (code: number, reason: string) => void;
     event: (message: any) => void;
-    silence: (src: { source: "server" | "local" }) => void;
+    silence: (source: string) => void;
     error: (err: Error) => void;
 
     "input_audio_buffer.committed": () => void;
@@ -243,7 +243,7 @@ export class OpenAIRealtimeWS extends (EventEmitter as new () => TypedEmitter<Re
                 if (silent && diff >= this.options.localVADSilenceMs) {
                     // We've been silent long enough
                     this.logger.info("Local silence detected, emitting 'silence' event", "VAD", { rms, diff });
-                    this.emit("silence", { source: "local" });
+                    this.emit("silence", "local");
 
                     // To avoid repeated emits during a long silence:
                     this.lastNonSilentTs = now + 1e9;
@@ -355,7 +355,7 @@ export class OpenAIRealtimeWS extends (EventEmitter as new () => TypedEmitter<Re
             /* ---------- Input audio / VAD ---------- */
             case "input_audio_buffer.committed":
                 // Server VAD indicated end-of-utterance; useful to stop mic.
-                this.emit("silence", { source: "server" });
+                this.emit("silence", "server");
                 this.emit("input_audio_buffer.committed");
                 break;
 

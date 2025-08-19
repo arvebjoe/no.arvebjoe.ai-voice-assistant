@@ -120,8 +120,8 @@ export default class EspVoiceDevice extends Homey.Device {
       this.setAvailable();
     });
 
-    this.agent.on('silence', () => {
-      log.info("Silence detected by agent, closing microphone");
+    this.agent.on('silence', (source: string) => {
+      log.info(`Silence detected by agent (${source}), closing microphone.`);
 
       this.esp.closeMic();
 
@@ -162,7 +162,7 @@ export default class EspVoiceDevice extends Homey.Device {
     this.agent.on('tool.called', async (d: { callId: string; name: string; args: any }) => {
       log.info(`${d.name}`, 'Tool calling', d.args);
       await this.devicePromise;
-      
+
     });
 
     this.agent.on('response.done', () => {
