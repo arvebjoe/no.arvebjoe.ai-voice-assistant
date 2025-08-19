@@ -14,7 +14,7 @@ import { PcmSegmenter } from '../../src/helpers/pcm-segmenter.mjs';
 import { AudioData } from '../../src/helpers/interfaces.mjs';
 import { ToolManager } from '../../src/llm/ToolManager.mjs';
 
-const log = createLogger('DEVICE');
+const log = createLogger('DEVICE', true);
 
 interface DeviceStore {
   address: string;
@@ -272,5 +272,14 @@ export default class EspVoiceDevice extends Homey.Device {
    */
   async onDeleted(): Promise<void> {
     log.info('EspVoiceDevice has been deleted');
+    this.esp.disconnect();
+    this.esp = null!;
+
+    this.agent.close();
+    this.agent = null!;
+
+    this.segmenter = null!;
+    this.toolManager = null!;
+
   }
 }
