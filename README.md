@@ -28,10 +28,7 @@
 
 ## TODO before release:
 
-### Agent system prompt needs language choice
-    - Need to tell agent what language is should answer in i.e. "norwegian", "english" or "pirate". 
-    - Needs to come from app-settings     
-    - Pulldown in settings.html with some languages. Default value is what ever the system (homey) is set to.
+### Add handler if user changes language. Re launch agent with new settings.
 
 ### OpenAIRealtimeWS need reconnect logic
     - In case the web socket disconnects
