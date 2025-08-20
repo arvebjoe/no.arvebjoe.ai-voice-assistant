@@ -30,15 +30,24 @@
 
 ### Agent system prompt needs language choice
     - Need to tell agent what language is should answer in i.e. "norwegian", "english" or "pirate". 
-    - Needs to come from app-settings 
-    - Just write it in for release 1.0.0
-    - Perhaps pulldown with auto complete in the future?
+    - Needs to come from app-settings     
+    - Pulldown in settings.html with some languages. Default value is what ever the system (homey) is set to.
 
 ### OpenAIRealtimeWS need reconnect logic
+    - In case the web socket disconnects
+
+## Create another driver/device 
+    - For the xiaozhi devices.
+    - Both xiaozhi and PE can inherit from the same base class.
 
 ### Add new device
-    - This is weak. Need to connect to each esp device and ask it's capabilities.
-    - Need to support api key?
+    - Need to pass type of device back from discovery, either PE or Xiaozhi
+    - Devices that have already been added, cannot be added again!
+    
+## ESPClient
+    - Need to handle any message recieved as a "ping" message to indicate that the connection is alive. So it doesn't reconnect on high trafic. Ping messages are only sent when the ESP is idle.
+    - Try to push a url at the device without it being triggered first.
+      - Need to run_start() perhaps?
 
 ### Voice Box
     - Needs to know where it is (zone). So it can controll devices within it's own zone if the user didn't specify the zone.
@@ -119,6 +128,8 @@
         - Creating text files would also work.
     - Then delete the alarm
 
+## Support ESPHome Api key
+    - If anyone asks for it...
 
 ## Phase 2
 
