@@ -35,6 +35,20 @@ export class SettingsManager {
     return this.instance;
   }
 
+  /** Get available OpenAI realtime voices */
+  static getAvailableVoices(): { value: string; name: string }[] {
+    return [
+      { value: 'alloy', name: 'Alloy' },
+      { value: 'ash', name: 'Ash' },
+      { value: 'ballad', name: 'Ballad' },
+      { value: 'coral', name: 'Coral' },
+      { value: 'echo', name: 'Echo' },
+      { value: 'sage', name: 'Sage' },
+      { value: 'shimmer', name: 'Shimmer' },
+      { value: 'verse', name: 'Verse' }
+    ];
+  }
+
   /** Initialize with Homey reference once (idempotent). */
   init(homey: any) {
     if (this.homey) return; // already initialized
@@ -63,13 +77,9 @@ export class SettingsManager {
     if (!this.homey?.settings) return;
     // Homey settings API does not expose list directly; define keys we care about explicitly.
     // Extend this list as needed.
-    const knownKeys = [ 'openai_api_key' ];
+    const knownKeys = [ 'openai_api_key', 'selected_language_code', 'selected_language_name', 'selected_voice', 'ai_instructions' ];
     for (const k of knownKeys) {
       this.globals[k] = this.homey.settings.get(k);
-    }
-    // Environment fallbacks
-    if (!this.globals['openai_api_key'] && process.env.OPENAI_API_KEY) {
-      this.globals['openai_api_key'] = process.env.OPENAI_API_KEY;
     }
   }
 

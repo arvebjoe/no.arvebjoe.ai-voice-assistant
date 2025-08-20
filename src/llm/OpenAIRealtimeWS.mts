@@ -84,9 +84,16 @@ export type RealtimeOptions = {
      * Hint STT language using ISO-639-1 code. Norwegian = 'no'.
      * This improves ASR accuracy & latency.
      */
-    sttLanguage?: string; // e.g., 'no'
+    languageCode?: string; // e.g., 'no'
 
-    /** Custom system instructions (Norwegian by default). */
+    // Used in the agent instructions to refer to the language to communicate in
+    languageName?: string; // e.g., 'Norwegian'
+
+
+    additionalInstructions?: string;
+
+
+    /** Custom system instructions . */
     instructions?: string;
 
     /** Enable a simple local energy-based VAD to detect silences client-side. */
@@ -125,7 +132,9 @@ export class OpenAIRealtimeWS extends (EventEmitter as new () => TypedEmitter<Re
             | "voice"
             | "outputAudioFormat"
             | "turnDetection"
-            | "sttLanguage"
+            | "languageCode"
+            | "languageName"   
+            | "additionalInstructions"         
             | "instructions"
             | "enableLocalVAD"
             | "localVADSilenceThreshold"
@@ -163,8 +172,10 @@ export class OpenAIRealtimeWS extends (EventEmitter as new () => TypedEmitter<Re
                 typeof opts.turnDetection === "undefined"
                     ? { type: "server_vad" }
                     : opts.turnDetection,
-            sttLanguage: opts.sttLanguage ?? "no", // Norwegian
-            instructions: getDefaultInstructions(),
+            languageCode: opts.languageCode ?? "en", // English
+            languageName: opts.languageName ?? "English",
+            additionalInstructions: opts.additionalInstructions ?? "",
+            instructions: getDefaultInstructions(opts.languageName ?? "English", opts.additionalInstructions),
             enableLocalVAD: opts.enableLocalVAD ?? true,
             localVADSilenceThreshold: opts.localVADSilenceThreshold ?? 0.01,
             localVADSilenceMs: opts.localVADSilenceMs ?? 800,
@@ -313,7 +324,7 @@ export class OpenAIRealtimeWS extends (EventEmitter as new () => TypedEmitter<Re
     }
 
     /**
-     * Update session instructions on the fly (still in Norwegian by default).
+     * Update session instructions on the fly.
      */
     updateInstructions(instructions: string) {
         this.assertOpen();
@@ -581,7 +592,7 @@ export class OpenAIRealtimeWS extends (EventEmitter as new () => TypedEmitter<Re
         // tools schema
         const tools = this.sessionToolsArray();
 
-        // Configure session: model, voice, audio formats, STT language, VAD, instructions (Norwegian).
+        // Configure session: model, voice, audio formats, STT language, VAD, instructions.
         const payload = {
             type: "session.update",
             session: {
@@ -590,7 +601,7 @@ export class OpenAIRealtimeWS extends (EventEmitter as new () => TypedEmitter<Re
                 output_audio_format: this.options.outputAudioFormat, // default 'pcm16'
                 input_audio_format: "pcm16", // we will send PCM16 mono 24kHz
                 input_audio_transcription: {
-                    language: this.options.sttLanguage, // 'no' for Norwegian
+                    language: this.options.languageCode, // 'no' for Norwegian
                     model: "whisper-1", // default STT model
                 },
                 turn_detection: this.options.turnDetection ?? null,
@@ -621,7 +632,7 @@ export class OpenAIRealtimeWS extends (EventEmitter as new () => TypedEmitter<Re
 
     private logMessage(msg: any, direction: string) {
 
-        
+
         if (msg.type === "input_audio_buffer.append" && msg.audio) {
             this.logger.info(msg.type, direction);
             return;
@@ -630,7 +641,7 @@ export class OpenAIRealtimeWS extends (EventEmitter as new () => TypedEmitter<Re
             this.logger.info(msg.type, direction);
             return;
         }
-        
+
         this.logger.info(msg.type, direction, msg);
     }
 

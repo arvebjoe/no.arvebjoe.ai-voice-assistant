@@ -46,8 +46,7 @@ export default class EspVoiceDevice extends Homey.Device {
     this.deviceManager = (this.homey as any).app.deviceManager as InstanceType<typeof DeviceManager>;
 
 
-    // TODO: Combine ApiKey into settings manager!
-    const apiKey = this.homey.settings.get('openai_api_key');
+    
     // Register device-specific settings snapshot so utilities without this.homey can reference it
     try {
       const deviceId = (this.getData() as any)?.id || (this as any).id || this.getName();
@@ -58,11 +57,14 @@ export default class EspVoiceDevice extends Homey.Device {
     }
 
 
+
     const agentOptions: RealtimeOptions = {
-      apiKey: apiKey,
+      apiKey: settingsManager.getGlobal('openai_api_key'),
       model: "gpt-4o-realtime-preview", //"gpt-4o-realtime-preview-2025-06-03"
-      voice: "alloy",
-      sttLanguage: "no", // Hint STT: Norwegian
+      voice: settingsManager.getGlobal('selected_voice') || 'alloy',
+      languageCode: settingsManager.getGlobal('selected_language_code') || 'en',
+      languageName: settingsManager.getGlobal('selected_language_name') || 'English',
+      additionalInstructions: settingsManager.getGlobal('ai_instructions') || '',
       outputAudioFormat: "pcm16",
       turnDetection: { type: "server_vad" }, // server VAD on
       enableLocalVAD: false,                  // local VAD also on

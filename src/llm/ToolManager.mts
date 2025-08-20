@@ -91,7 +91,7 @@ export class ToolManager {
         this.registerTool({
             type: "function",
             name: "get_local_time",
-            description: "Get the local time for a given IANA timezone or city name (default Europe/Oslo). Respond in concise Norwegian.",
+            description: "Get the local time for a given IANA timezone or city name (default Europe/Oslo).",
             parameters: {
                 type: "object",
                 properties: {
@@ -123,60 +123,15 @@ export class ToolManager {
                         year: "numeric",
                     });
                     const s = fmt.format(now);
-                    this.logger.info('get_local_time', 'TOOL', `Klokken er ${s} i ${tz}.`);
-                    return { text: `Klokken er ${s} i ${tz}.` };
-                } catch {
-                    const s = now.toLocaleString("nb-NO", { timeZone: "Europe/Oslo" });
-                    this.logger.info('get_local_time', 'TOOL', `Klarte ikke å tolke tidssone '${tz}'. I Norge er klokken nå ${s}.`);
+                    return { text: `The time is ${s} in ${tz}.` };
+                } catch {                                        
                     return {
-                        text: `Klarte ikke å tolke tidssone '${tz}'. I Norge er klokken nå ${s}.`,
+                        text: `Could not interpret timezone '${tz}'.`,
                     };
                 }
             }
         });
 
-        // ping_simple tool
-        this.registerTool({
-            type: "function",
-            name: "ping_simple",
-            description: "Enkel test: returnerer bare strengen 'pong'. Bruk når brukeren sier 'ping'.",
-            parameters: {
-                type: "object",
-                properties: {},
-                required: [],
-                additionalProperties: false,
-            },
-            handler: () => {
-                const out = "pong";
-                this.logger.info("ping_simple", "TOOL", out);
-                // Return *string* (not an object) to exercise the string path
-                return out;
-            }
-        });
-
-        // demo_list_kv tool
-        this.registerTool({
-            type: "function",
-            name: "demo_list_kv",
-            description: "Testverktøy: returnerer en kort liste med nøkkel=verdi-objekter. Bruk når brukeren spør om en testliste.",
-            parameters: {
-                type: "object",
-                properties: {},
-                required: [],
-                additionalProperties: false,
-            },
-            handler: () => {
-                // Example static list. You can randomize if you want.
-                const items = [
-                    { key: "build", value: "ok" },
-                    { key: "version", value: "1.2.3" },
-                    { key: "uptime", value: "42m" },
-                ];
-                this.logger.info("demo_list_kv", "TOOL");
-                // Return an array of objects (will be JSON-stringified by sendFunctionResult)
-                return items;
-            }
-        });
 
         // Smart Home Tools - migrated from toolMaker.mts
 
@@ -324,5 +279,55 @@ export class ToolManager {
                 return devices;
             }
         });
+
+        // Keep as reference on how to register other type of tools.
+
+        
+        // ping_simple tool
+        /*
+        this.registerTool({
+            type: "function",
+            name: "ping_simple",
+            description: "Enkel test: returnerer bare strengen 'pong'. Bruk når brukeren sier 'ping'.",
+            parameters: {
+                type: "object",
+                properties: {},
+                required: [],
+                additionalProperties: false,
+            },
+            handler: () => {
+                const out = "pong";
+                this.logger.info("ping_simple", "TOOL", out);
+                // Return *string* (not an object) to exercise the string path
+                return out;
+            }
+        });
+        */
+
+        // demo_list_kv tool
+        /*
+        this.registerTool({
+            type: "function",
+            name: "demo_list_kv",
+            description: "Testverktøy: returnerer en kort liste med nøkkel=verdi-objekter. Bruk når brukeren spør om en testliste.",
+            parameters: {
+                type: "object",
+                properties: {},
+                required: [],
+                additionalProperties: false,
+            },
+            handler: () => {
+                // Example static list. You can randomize if you want.
+                const items = [
+                    { key: "build", value: "ok" },
+                    { key: "version", value: "1.2.3" },
+                    { key: "uptime", value: "42m" },
+                ];
+                this.logger.info("demo_list_kv", "TOOL");
+                // Return an array of objects (will be JSON-stringified by sendFunctionResult)
+                return items;
+            }
+        });
+        */        
     }
 }

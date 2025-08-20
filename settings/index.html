@@ -1,90 +1,209 @@
 <!DOCTYPE html>
 <html>
-  <head>
-    <!-- The '/homey.js' script must be included in your settings view to work -->
-    <script type="text/javascript" src="/homey.js" data-origin="settings"></script>
-  </head>
-  <body>
-    <header class="homey-header">
-      <h1 class="homey-title" data-i18n="settings.title">
-        <!-- This will be filled with the translated string with key 'settings.title'. -->
-      </h1>
-    </header>
 
-    <!--
-        https://apps.developer.homey.app/advanced/custom-views/app-settings        
-        https://github.com/rogierhofboer/com.ikea.tradfri.gateway/tree/master
-    -->
+<head>
+  <!-- The '/homey.js' script must be included in your settings view to work -->
+  <script type="text/javascript" src="/homey.js" data-origin="settings"></script>
+  <style>
+    /* Fallback styles and enhancements */
+    * {
+      box-sizing: border-box;
+    }
 
-    <fieldset class="homey-form-fieldset">
-      <legend class="homey-form-legend">Open AI settings</legend>
-
-      <div class="homey-form-group">
-        <label class="homey-form-label" for="openai_api_key">Apikey</label>
-        <input class="homey-form-input" id="openai_api_key" type="text" value="" />
-      </div>
-    </fieldset>
-
-    <fieldset class="homey-form-fieldset">
-      <legend class="homey-form-legend">Language settings</legend>
-
-      <div class="homey-form-group">
-        <label class="homey-form-label" for="language_select">Language</label>
-        <select class="homey-form-input" id="language_select">
-          <option value="en,English">English</option>
-          <option value="nl,Dutch">Dutch</option>
-          <option value="de,German">German</option>
-          <option value="fr,French">French</option>
-          <option value="it,Italian">Italian</option>
-          <option value="sv,Swedish">Swedish</option>
-          <option value="no,Norwegian">Norwegian</option>
-          <option value="es,Spanish">Spanish</option>
-          <option value="da,Danish">Danish</option>
-          <option value="ru,Russian">Russian</option>
-          <option value="pl,Polish">Polish</option>
-          <option value="ko,South Korean">South Korean</option>
-        </select>
-      </div>
-    </fieldset>
-
-    <button id="save" class="homey-button-primary-full">Save changes</button>
-
-    <script type="text/javascript">
-      // a method named 'onHomeyReady' must be present in your code
-      function onHomeyReady(Homey) {
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      margin: 10px;
+      padding: 0;
+    }
 
 
-        var apiKeyElement = document.getElementById("openai_api_key");
-        var languageSelectElement = document.getElementById("language_select");
-        var saveElement = document.getElementById("save");
+    .homey-title {
+      margin: 0;
+    }
 
-        Homey.get("openai_api_key", function (err, apiKey) {
+
+    .homey-form-fieldset {
+      border: 0;
+      padding: 0;
+    }
+
+
+    .homey-form-group {
+      margin-bottom: 15px;
+    }
+
+    .homey-form-label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: 600;
+      font-size: 16px;
+    }
+
+    .homey-form-input {
+      width: 100%;
+      padding: 10px 12px;
+      border: 2px solid #ced4da;
+      border-radius: 4px;
+      font-size: 14px;
+      transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+    }
+
+
+
+    .homey-button-primary-full {
+      width: 100%;
+
+      padding: 12px 20px;
+      font-size: 16px;
+      font-weight: 600;
+
+
+    }
+
+    .help-text {
+      font-size: 12px;
+      color: #6c757d;
+      margin-top: 5px;
+      font-style: italic;
+    }
+  </style>
+</head>
+
+<body>
+  <header class="homey-header">
+    <h1 class="homey-title" data-i18n="settings.title">
+      <!-- This will be filled with the translated string with key 'settings.title'. -->
+    </h1>
+  </header>
+
+  <fieldset class="homey-form-fieldset">
+    <div class="homey-form-group">
+      <label class="homey-form-label" for="openai_api_key">Open AI APIKEY</label>
+      <textarea class="homey-form-input" id="openai_api_key" rows="5"
+        placeholder="Enter your OpenAI API key here..."></textarea>
+      <div class="help-text">Visit https://platform.openai.com to get one</div>
+    </div>
+
+    <div class="homey-form-group">
+      <label class="homey-form-label" for="language_select">Language</label>
+      <select class="homey-form-input" id="language_select">
+        <option value="en">English</option>
+        <option value="nl">Dutch</option>
+        <option value="de">German</option>
+        <option value="fr">French</option>
+        <option value="it">Italian</option>
+        <option value="sv">Swedish</option>
+        <option value="no">Norwegian</option>
+        <option value="es">Spanish</option>
+        <option value="da">Danish</option>
+        <option value="ru">Russian</option>
+        <option value="pl">Polish</option>
+        <option value="ko">South Korean</option>
+      </select>
+      <div class="help-text">The spoken language used by you and the ai</div>
+    </div>
+
+    <div class="homey-form-group">
+      <label class="homey-form-label" for="voice_select">Voice</label>
+      <select class="homey-form-input" id="voice_select">
+        <option value="alloy">Alloy</option>
+        <option value="ash">Ash</option>
+        <option value="ballad">Ballad</option>
+        <option value="coral">Coral</option>
+        <option value="echo">Echo</option>
+        <option value="sage">Sage</option>
+        <option value="shimmer">Shimmer</option>
+        <option value="verse">Verse</option>
+      </select>
+      <div class="help-text">The AI voice used for speech responses</div>
+    </div>
+
+    <div class="homey-form-group">
+      <label class="homey-form-label" for="ai_instructions">AI Instructions (Optional)</label>
+      <textarea class="homey-form-input" id="ai_instructions" rows="4" 
+        placeholder="Enter optional instructions for the AI, such as personality traits, behavior guidelines, or specific responses you'd like..."></textarea>
+      <div class="help-text">Customize the AI's personality and behavior with additional instructions. Examples: "You act like Santa Claus" or "Be super sarcastic like GLaDOS."</div>
+    </div>
+  </fieldset>
+
+  <button id="save" class="homey-button-primary-full">Save changes</button>
+
+  <script type="text/javascript">
+    // a method named 'onHomeyReady' must be present in your code
+    function onHomeyReady(Homey) {
+
+
+      var apiKeyElement = document.getElementById("openai_api_key");
+      var languageSelectElement = document.getElementById("language_select");
+      var voiceSelectElement = document.getElementById("voice_select");
+      var aiInstructionsElement = document.getElementById("ai_instructions");
+      var saveElement = document.getElementById("save");
+
+      Homey.get("openai_api_key", function (err, apiKey) {
+        if (err) return Homey.alert(err);
+        apiKeyElement.value = apiKey;
+      });
+
+      Homey.get("selected_language_code", function (err, language) {
+        if (err) return Homey.alert(err);
+        if (language) {
+          languageSelectElement.value = language;
+        }
+      });
+
+      Homey.get("selected_voice", function (err, voice) {
+        if (err) return Homey.alert(err);
+        if (voice) {
+          voiceSelectElement.value = voice;
+        } else {
+          voiceSelectElement.value = "alloy"; // default voice
+        }
+      });
+
+      Homey.get("ai_instructions", function (err, instructions) {
+        if (err) return Homey.alert(err);
+        if (instructions) {
+          aiInstructionsElement.value = instructions;
+        }
+      });
+
+      saveElement.addEventListener("click", function (e) {
+        Homey.set("openai_api_key", apiKeyElement.value, function (err) {
           if (err) return Homey.alert(err);
-          apiKeyElement.value = apiKey;
         });
 
-        Homey.get("selected_language", function (err, language) {
+        // Get both value and text from the select element
+        var selectedValue = languageSelectElement.value;
+        var selectedText = languageSelectElement.options[languageSelectElement.selectedIndex].text;
+
+        console.log("Selected language value:", selectedValue);
+        console.log("Selected language text:", selectedText);
+
+        Homey.set("selected_language_code", selectedValue, function (err) {
           if (err) return Homey.alert(err);
-          if (language) {
-            languageSelectElement.value = language;
-          }
         });
 
-        saveElement.addEventListener("click", function (e) {
-          Homey.set("openai_api_key", apiKeyElement.value, function (err) {
-            if (err) return Homey.alert(err);
-          });
-
-          Homey.set("selected_language", languageSelectElement.value, function (err) {
-            if (err) return Homey.alert(err);
-          });
+        Homey.set("selected_language_name", selectedText, function (err) {
+          if (err) return Homey.alert(err);
         });
 
+        // Save selected voice
+        Homey.set("selected_voice", voiceSelectElement.value, function (err) {
+          if (err) return Homey.alert(err);
+        });
 
-        // Tell Homey we're ready to be displayed
-        Homey.ready();
+        // Save AI instructions
+        Homey.set("ai_instructions", aiInstructionsElement.value, function (err) {
+          if (err) return Homey.alert(err);
+        });
+      });
 
-      }
-    </script>
-  </body>
+
+      // Tell Homey we're ready to be displayed
+      Homey.ready();
+
+    }
+  </script>
+</body>
+
 </html>

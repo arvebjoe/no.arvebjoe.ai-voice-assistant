@@ -7,7 +7,7 @@ import { getDefaultInstructions } from './agent-instructions.mjs';
  */
 export function getCustomInstructions(): string {
     // You can build upon the default instructions
-    const baseInstructions = getDefaultInstructions();
+    const baseInstructions = getDefaultInstructions('English'); // Added required languageName parameter
     
     // Or create completely custom ones
     return `${baseInstructions}
