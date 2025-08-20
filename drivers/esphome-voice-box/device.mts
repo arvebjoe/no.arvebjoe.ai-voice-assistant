@@ -14,7 +14,7 @@ import { PcmSegmenter } from '../../src/helpers/pcm-segmenter.mjs';
 import { AudioData } from '../../src/helpers/interfaces.mjs';
 import { ToolManager } from '../../src/llm/ToolManager.mjs';
 
-const log = createLogger('DEVICE', true);
+const log = createLogger('DEVICE', false);
 
 interface DeviceStore {
   address: string;
@@ -30,6 +30,8 @@ export default class EspVoiceDevice extends Homey.Device {
   private toolManager!: ToolManager;
   private agent!: OpenAIRealtimeWS;
   private segmenter!: PcmSegmenter;
+  private settingsUnsubscribe?: () => void; // To clean up the subscription
+  private currentSettings: any = {}; // Store current settings to detect changes
 
   /**
    * onInit is called when the device is initialized.
@@ -78,6 +80,19 @@ export default class EspVoiceDevice extends Homey.Device {
     // TODO: Pass this.homey and this.toolMaker to the agent
     this.agent = new OpenAIRealtimeWS(this.toolManager, agentOptions);
     log.info('Agent initialized with tools');
+
+    // Store initial settings
+    this.currentSettings = {
+      voice: agentOptions.voice,
+      languageCode: agentOptions.languageCode,
+      languageName: agentOptions.languageName,
+      additionalInstructions: agentOptions.additionalInstructions
+    };
+
+    // Subscribe to settings changes to update agent on the fly
+    this.settingsUnsubscribe = settingsManager.onGlobals((newSettings) => {
+      this.handleSettingsChange(newSettings);
+    });
 
 
     const store = this.getStore() as DeviceStore;
@@ -196,6 +211,45 @@ export default class EspVoiceDevice extends Homey.Device {
     log.info('EspVoiceDevice has initialized');
   }
 
+  /**
+   * Handle settings changes and update agent accordingly
+   */
+  private async handleSettingsChange(newSettings: any): Promise<void> {
+    log.info('Settings changed, updating agent...', undefined, newSettings);
+
+    try {
+      // Check if voice changed
+      const newVoice = newSettings.selected_voice;
+      if (newVoice && newVoice !== this.currentSettings.voice) {
+        log.info(`Voice changed from ${this.currentSettings.voice} to ${newVoice}`);        
+        this.currentSettings.voice = newVoice;
+        this.agent.updateVoiceWithReconnect(this.currentSettings.voice);
+      }
+
+      // Check if language changed
+      const newLanguageCode = newSettings.selected_language_code;
+      const newLanguageName = newSettings.selected_language_name;
+      if (newLanguageCode && newLanguageCode !== this.currentSettings.languageCode) {
+        log.info(`Language changed from ${this.currentSettings.languageCode} to ${newLanguageCode}`);
+        // TODO: Add updateLanguage method to OpenAIRealtimeWS or restart connection
+        this.currentSettings.languageCode = newLanguageCode;
+        this.currentSettings.languageName = newLanguageName || 'English';
+        log.warn('Language update requires agent restart - not implemented yet');
+      }
+
+      // Check if AI instructions changed
+      const newInstructions = newSettings.ai_instructions;
+      if (newInstructions !== this.currentSettings.additionalInstructions) {
+        log.info('AI instructions changed, updating...');        
+        this.currentSettings.additionalInstructions = newInstructions || '';
+        this.agent.updateInstructions(this.currentSettings.additionalInstructions);
+      }
+
+    } catch (error) {
+      log.error('Failed to update agent settings:', error);
+    }
+  }
+
 
 
 
@@ -274,6 +328,13 @@ export default class EspVoiceDevice extends Homey.Device {
    */
   async onDeleted(): Promise<void> {
     log.info('EspVoiceDevice has been deleted');
+    
+    // Clean up settings subscription
+    if (this.settingsUnsubscribe) {
+      this.settingsUnsubscribe();
+      this.settingsUnsubscribe = undefined;
+    }
+    
     this.esp.disconnect();
     this.esp = null!;
 

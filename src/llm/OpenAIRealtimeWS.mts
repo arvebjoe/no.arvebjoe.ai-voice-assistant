@@ -120,7 +120,7 @@ type PendingToolCall = {
 
 export class OpenAIRealtimeWS extends (EventEmitter as new () => TypedEmitter<RealtimeEvents>) {
     private ws?: WebSocket;
-    private logger = createLogger("AGENT", true);
+    private logger = createLogger("AGENT", false);
     private resample_prev: number | null = null; // last input sample from previous chunk
     private resample_frac: number = 0;           // fractional read position into the source for next call
     private toolManager: ToolManager;
@@ -133,8 +133,8 @@ export class OpenAIRealtimeWS extends (EventEmitter as new () => TypedEmitter<Re
             | "outputAudioFormat"
             | "turnDetection"
             | "languageCode"
-            | "languageName"   
-            | "additionalInstructions"         
+            | "languageName"
+            | "additionalInstructions"
             | "instructions"
             | "enableLocalVAD"
             | "localVADSilenceThreshold"
@@ -326,12 +326,38 @@ export class OpenAIRealtimeWS extends (EventEmitter as new () => TypedEmitter<Re
     /**
      * Update session instructions on the fly.
      */
-    updateInstructions(instructions: string) {
+    updateAllInstructions(instructions: string) {
         this.assertOpen();
         this.options.instructions = instructions;
         this.sendSessionUpdate();
     }
 
+    async updateVoiceWithReconnect(newVoice: string): Promise<void> {
+        this.options.voice = newVoice;
+        
+        // Close current connection
+        this.close();
+        
+        // Wait a bit for clean closure
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        // Reconnect with new voice
+        await this.start();
+    }
+
+    async updateInstructions(newInstructions: string): Promise<void> {
+        this.assertOpen();
+        this.options.additionalInstructions = newInstructions;
+        this.options.instructions = getDefaultInstructions(this.options.languageName, newInstructions);
+
+        const payload = {
+            type: "session.update",
+            session: {
+                instructions: this.options.instructions,
+            },
+        };
+        this.send(payload);
+    }
 
 
     /* ----------------- Internals ----------------- */
