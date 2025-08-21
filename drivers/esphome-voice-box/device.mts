@@ -230,11 +230,12 @@ export default class EspVoiceDevice extends Homey.Device {
       const newLanguageCode = newSettings.selected_language_code;
       const newLanguageName = newSettings.selected_language_name;
       if (newLanguageCode && newLanguageCode !== this.currentSettings.languageCode) {
-        log.info(`Language changed from ${this.currentSettings.languageCode} to ${newLanguageCode}`);
+        log.info(`Language code changed from ${this.currentSettings.languageCode} to ${newLanguageCode}`);
+        log.info(`Language name changed from ${this.currentSettings.languageName} to ${newLanguageName}`);
         // TODO: Add updateLanguage method to OpenAIRealtimeWS or restart connection
         this.currentSettings.languageCode = newLanguageCode;
         this.currentSettings.languageName = newLanguageName || 'English';
-        log.warn('Language update requires agent restart - not implemented yet');
+        this.agent.updateLanguage(this.currentSettings.languageCode, this.currentSettings.languageName);
       }
 
       // Check if AI instructions changed
@@ -242,7 +243,7 @@ export default class EspVoiceDevice extends Homey.Device {
       if (newInstructions !== this.currentSettings.additionalInstructions) {
         log.info('AI instructions changed, updating...');        
         this.currentSettings.additionalInstructions = newInstructions || '';
-        this.agent.updateInstructions(this.currentSettings.additionalInstructions);
+        this.agent.updateAdditionalInstructions(this.currentSettings.additionalInstructions);
       }
 
     } catch (error) {

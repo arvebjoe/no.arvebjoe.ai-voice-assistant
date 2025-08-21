@@ -179,13 +179,14 @@
         console.log("Selected language value:", selectedValue);
         console.log("Selected language text:", selectedText);
 
+        Homey.set("selected_language_name", selectedText, function (err) {
+          if (err) return Homey.alert(err);
+        });
+
         Homey.set("selected_language_code", selectedValue, function (err) {
           if (err) return Homey.alert(err);
         });
 
-        Homey.set("selected_language_name", selectedText, function (err) {
-          if (err) return Homey.alert(err);
-        });
 
         // Save selected voice
         Homey.set("selected_voice", voiceSelectElement.value, function (err) {

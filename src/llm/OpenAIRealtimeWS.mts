@@ -334,31 +334,36 @@ export class OpenAIRealtimeWS extends (EventEmitter as new () => TypedEmitter<Re
 
     async updateVoiceWithReconnect(newVoice: string): Promise<void> {
         this.options.voice = newVoice;
-        
-        // Close current connection
+
+        await this.restart();
+    }
+
+    async updateAdditionalInstructions(newAdditionalInstructions: string): Promise<void> {
+        this.assertOpen();
+        this.options.additionalInstructions = newAdditionalInstructions;
+        this.options.instructions = getDefaultInstructions(this.options.languageName, this.options.additionalInstructions);
+
+        await this.restart();
+    }
+
+    async updateLanguage(newLanguageCode: string, newLanguageName: string): Promise<void> {
+        this.assertOpen();
+        this.options.languageCode = newLanguageCode;
+        this.options.languageName = newLanguageName;
+        this.options.instructions = getDefaultInstructions(this.options.languageName, this.options.additionalInstructions);
+
+        await this.restart();
+    }
+
+    private async restart() {
         this.close();
-        
+
         // Wait a bit for clean closure
         await new Promise(resolve => setTimeout(resolve, 100));
-        
-        // Reconnect with new voice
+
+        // Reconnect with new options
         await this.start();
     }
-
-    async updateInstructions(newInstructions: string): Promise<void> {
-        this.assertOpen();
-        this.options.additionalInstructions = newInstructions;
-        this.options.instructions = getDefaultInstructions(this.options.languageName, newInstructions);
-
-        const payload = {
-            type: "session.update",
-            session: {
-                instructions: this.options.instructions,
-            },
-        };
-        this.send(payload);
-    }
-
 
     /* ----------------- Internals ----------------- */
 

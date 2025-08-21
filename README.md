@@ -28,8 +28,6 @@
 
 ## TODO before release:
 
-### Add handler if user changes language. Re launch agent with new settings.
-
 ### OpenAIRealtimeWS need reconnect logic
     - In case the web socket disconnects
 
@@ -53,11 +51,20 @@
     - Voice box should tell when it's done playing the last URL 
       - How to do this?
 
+## Use built in discovery method
+    - https://apps.developer.homey.app/wireless/wi-fi/discovery
 
 ### Homey-log
     - What is it?
     - Do we need it?
     - https://www.npmjs.com/package/homey-log
+
+
+### Add donate button
+
+### Create Homey Community Topic ?
+
+### Set description
 
 
 ### Flow cards
