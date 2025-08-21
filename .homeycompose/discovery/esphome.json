@@ -1,0 +1,16 @@
+{
+  "type": "mdns-sd",
+  "mdns-sd": {
+    "name": "esphomelib",
+    "protocol": "tcp"
+  },
+  "id": "{{txt.mac}}",
+  "conditions": [
+    [
+      {
+        "field": "txt.platform",
+        "match": { "type": "regex", "value": "esp32" }
+      }
+    ]
+  ]
+}

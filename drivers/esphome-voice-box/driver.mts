@@ -1,123 +1,190 @@
 import Homey from 'homey';
-import * as Bonjour from 'bonjour-service';
 import { createLogger } from '../../src/helpers/logger.mjs';
 import { EspVoiceClient } from '../../src/voice_assistant/esphome_home_assistant_pe.mjs';
 
 
 const log = createLogger('DRIVER');
-const bonjourInstance = new Bonjour.Bonjour();
 
-interface Device {
+type PairDevice = {
   name: string;
-  data: {
-    id: string;
-  };
+  data: { id: string };
   store: {
     address: string;
     port: number;
-    mac: string;
-    platform: string;
-    project: string;
-    serviceName: string;
+    mac?: string;
+    platform?: string;
+    serviceName?: string;
+    // Optional extras from the capability probe:
+    //mediaPlayersCount?: number;
+    //subscribeVoiceAssistantCount?: number;
+    //voiceAssistantConfigurationCount?: number;
+    // TODO: decide and set voiceAssistantType: 'nabu-pe' | 'xiaozhi' | 'unknown'
   };
-}
+};
 
-export default class EspVoiceDriver extends Homey.Driver {
+export default class Driver extends Homey.Driver {
 
-  /**
-   * onInit is called when the driver is initialized.
-   */
   async onInit(): Promise<void> {
     log.info('EspVoiceDriver has been initialized');
   }
 
-  async onPair(session: any): Promise<void> {
-
-    const deviceList: Device[] = [];
-
-    session.setHandler('list_devices', async () => {
-      log.info('Starting ESPHome device discovery...');
-
-
-      const browser = bonjourInstance.find(
-        { type: 'esphomelib', protocol: 'tcp' },
-        async (service: any) => {          
-
-          const device: Device = {
-            name: service.txt?.friendly_name || service.name || 'Unknown',
-            data: {
-              id: service.txt?.mac || service.name.replace(/[^a-zA-Z0-9_-]/g, '_'),
-            },
-            store: {
-              address: service.addresses?.find((addr: string) => addr.includes('.')) || 'Unknown',
-              port: service.port || 6053,
-              mac: service.txt?.mac || 'Unknown',
-              platform: service.txt?.platform || 'Unknown',
-              project: service.txt?.project_name || 'Unknown',
-              serviceName: service.name || 'Unknown',
-            },
-          };
-
-          if(!device.store.platform.toLocaleLowerCase().includes('esp32')) {
-            log.log(`Skipping none-esp32 device: ${device.name}`, 'onPair');
-            return; 
-          }
-
-          
-          let client : EspVoiceClient | null = new EspVoiceClient({host: device.store.address, apiPort: device.store.port});  
-
-          client.on('capabilities', async (mediaPlayersCount, subscribeVoiceAssistantCount, voiceAssistantConfigurationCount) => {
-            
-            // TODO: Need to pass type of device, Nabu (PE) or xiaozhi
-            log.info(`ESP Voice Client capabilities received from ${device.name}:`,'onPair', {
-              mediaPlayersCount,
-              subscribeVoiceAssistantCount,
-              voiceAssistantConfigurationCount
-            });
-
-            if(mediaPlayersCount > 0 && subscribeVoiceAssistantCount > 0 && voiceAssistantConfigurationCount > 0) {
-              deviceList.push(device);
-              session.emit('list_devices', deviceList);
-
-              if(client) {
-                await client.disconnect();
-                client = null;
-              }
-              
-            }
-          });
-
-          await client.start();
-
-          setTimeout(async () => {
-            if(client) {
-              await client.disconnect();
-              client = null;
-            }
-          }, 5000);
-
- 
-        }
-      );
-
-      // Wait for 30 seconds to allow devices to be discovered
-      return new Promise<Device[]>((resolve) => {
-        log.info('Waiting 30 seconds for device discovery to complete...');
-
-        // Set a timeout to resolve after 30 seconds
-        setTimeout(() => {
-          // Stop the browser/discovery process
-          browser.stop();
-
-          log.info(`Device discovery complete. Found ${deviceList.length} devices.`);
-
-          resolve(deviceList);
-        }, 30_000); // 30 seconds
-      })
-
-    });
-
-
+  /**
+   * Convert a Homey Discovery result to our PairDevice shape.
+   */
+  private resultToDevice(r: any): PairDevice {
+    return {
+      name: r.txt?.friendly_name || r.name || r.host || `ESPHome ${String(r.id).slice(-4)}`,
+      data: { id: r.id }, // must stay stable and match device.ts:onDiscoveryResult
+      store: {
+        address: r.address,
+        port: r.port ?? 6053,
+        mac: r.txt?.mac,
+        platform: r.txt?.platform,
+        serviceName: r.name,
+      },
+    };
   }
 
+  /**
+   * Returns enriched device if it supports voice,
+   * otherwise resolves to null. Ensures cleanup + timeout.
+   */
+  private async checkVoiceCapabilities(device: PairDevice, timeoutMs = 5000): Promise<PairDevice | null> {
+
+    let client: EspVoiceClient | null = null;
+    let done = false;
+    let intentionalDisconnect = false;
+
+    const finish = async (result: PairDevice | null) => {
+      if (done) return;
+      done = true;
+
+      // stop further handlers from flipping the result
+      try {
+        intentionalDisconnect = true;
+        // Detach listeners first (if your client supports it)
+        client?.off?.('capabilities', onCapabilities as any);
+        client?.off?.('disconnected', onDisconnected as any);
+
+      } catch { }
+
+      try {
+        if (client) await client.disconnect();
+      } catch { }
+      client = null;
+
+      return result;
+    };
+
+    const onCapabilities = async (
+      mediaPlayersCount: number,
+      subscribeVoiceAssistantCount: number,
+      voiceAssistantConfigurationCount: number
+    ) => {
+      this.log(`Capabilities from ${device.name}`, {
+        mediaPlayersCount,
+        subscribeVoiceAssistantCount,
+        voiceAssistantConfigurationCount,
+      });
+
+      if (
+        mediaPlayersCount > 0 &&
+        subscribeVoiceAssistantCount > 0 &&
+        voiceAssistantConfigurationCount > 0
+      ) {
+        // (Optional) keep these if you want them later
+        //device.store.mediaPlayersCount = mediaPlayersCount;
+        //device.store.subscribeVoiceAssistantCount = subscribeVoiceAssistantCount;
+        //device.store.voiceAssistantConfigurationCount = voiceAssistantConfigurationCount;
+
+        // IMPORTANT: resolve success FIRST (finish handles disconnect safely)
+        await finish(device);
+        return;
+      }
+      // else: let timeout decide; do nothing here
+    };
+
+    const onDisconnected = async () => {
+      // Ignore if *we* initiated the disconnect after success/finish
+      if (!intentionalDisconnect && !done) {
+        await finish(null);
+      }
+    };
+
+
+
+    return new Promise<PairDevice | null>(async (resolve) => {
+      try {
+        client = new EspVoiceClient({
+          host: device.store.address,
+          apiPort: device.store.port,
+        });
+
+        client.on('capabilities', onCapabilities as any);
+        client.on?.('disconnected', onDisconnected as any);
+
+        await client.start();
+
+        setTimeout(async () => {
+          if (!done) await finish(null);
+        }, timeoutMs).unref?.();
+
+        // Resolve when finish() completes
+        const poll = () => done ? resolve(device ?? null) : setTimeout(poll, 10);
+        poll();
+      } catch {
+        resolve(null);
+      }
+    });
+  }
+
+  /**
+   * Limit concurrency so we don't open too many sockets at once.
+   */
+  private async filterByVoiceCapabilities(devices: PairDevice[], { timeoutMs = 5000, concurrency = 4 } = {}): Promise<PairDevice[]> {
+    const queue = devices.slice();
+    const results: PairDevice[] = [];
+
+    const worker = async () => {
+      while (queue.length) {
+        const d = queue.shift()!;
+        const ok = await this.checkVoiceCapabilities(d, timeoutMs);
+        this.log(`Checked device ${d.name} (${d.store.address}:${d.store.port})`, { ok });
+        if (ok) results.push(ok);
+      }
+    };
+
+    const workers = Array.from({ length: Math.min(concurrency, devices.length) }, worker);
+    await Promise.all(workers);
+
+    this.log(`Checked ${results.length} devices for voice capabilities`, { results });
+
+    return results;
+  }
+
+  /**
+   * One-shot list call used by the default Add Devices UI.
+   * 1) Read discovery results
+   * 2) Map to PairDevice
+   * 3) Probe voice capability (your logic)
+   * 4) Return only capable devices
+   */
+  async onPairListDevices() {
+    const strategy = this.getDiscoveryStrategy();
+    const results = strategy.getDiscoveryResults();
+
+    this.log(`Discovery results`, JSON.stringify({ results }));
+
+    // Step 1–2: discovery -> PairDevice[]
+    const candidates: PairDevice[] = Object.values(results).map((r: any) => this.resultToDevice(r));
+
+    // Step 3: run your capability filter (kept separate and readable)
+    const capable = await this.filterByVoiceCapabilities(candidates, {
+      timeoutMs: 5000,
+      concurrency: 4, // tune if you have many devices
+    });
+
+    // Step 4: return to Homey
+    return capable;
+  }
 }

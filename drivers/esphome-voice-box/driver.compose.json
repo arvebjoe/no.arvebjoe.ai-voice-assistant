@@ -3,6 +3,7 @@
     "en": "ESPHome voice box"
   },
   "class": "button",
+  "discovery": "esphome",
   "capabilities": [
     "onoff",
     "volume_set",

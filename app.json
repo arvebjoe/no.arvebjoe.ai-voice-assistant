@@ -30,7 +30,6 @@
     "email": "arvebjoe@hotmail.com"
   },
   "support": "https://github.com/arvebjoe/no.arvebjoe.ai-voice-assistant",
-  "source": "https://github.com/arvebjoe/no.arvebjoe.ai-voice-assistant",
   "esm": true,
   "drivers": [
     {
@@ -38,6 +37,7 @@
         "en": "ESPHome voice box"
       },
       "class": "button",
+      "discovery": "esphome",
       "capabilities": [
         "onoff",
         "volume_set",
@@ -69,5 +69,26 @@
       ],
       "id": "esphome-voice-box"
     }
-  ]
+  ],
+  "discovery": {
+    "esphome": {
+      "type": "mdns-sd",
+      "mdns-sd": {
+        "name": "esphomelib",
+        "protocol": "tcp"
+      },
+      "id": "{{txt.mac}}",
+      "conditions": [
+        [
+          {
+            "field": "txt.platform",
+            "match": {
+              "type": "regex",
+              "value": "esp32"
+            }
+          }
+        ]
+      ]
+    }
+  }
 }
