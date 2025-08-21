@@ -48,7 +48,7 @@ export default class EspVoiceDevice extends Homey.Device {
     this.deviceManager = (this.homey as any).app.deviceManager as InstanceType<typeof DeviceManager>;
 
 
-    
+
     // Register device-specific settings snapshot so utilities without this.homey can reference it
     try {
       const deviceId = (this.getData() as any)?.id || (this as any).id || this.getName();
@@ -221,7 +221,7 @@ export default class EspVoiceDevice extends Homey.Device {
       // Check if voice changed
       const newVoice = newSettings.selected_voice;
       if (newVoice && newVoice !== this.currentSettings.voice) {
-        log.info(`Voice changed from ${this.currentSettings.voice} to ${newVoice}`);        
+        log.info(`Voice changed from ${this.currentSettings.voice} to ${newVoice}`);
         this.currentSettings.voice = newVoice;
         this.agent.updateVoiceWithReconnect(this.currentSettings.voice);
       }
@@ -241,7 +241,7 @@ export default class EspVoiceDevice extends Homey.Device {
       // Check if AI instructions changed
       const newInstructions = newSettings.ai_instructions;
       if (newInstructions !== this.currentSettings.additionalInstructions) {
-        log.info('AI instructions changed, updating...');        
+        log.info('AI instructions changed, updating...');
         this.currentSettings.additionalInstructions = newInstructions || '';
         this.agent.updateAdditionalInstructions(this.currentSettings.additionalInstructions);
       }
@@ -276,7 +276,31 @@ export default class EspVoiceDevice extends Homey.Device {
 
 
 
+  // Called for every discovery result; return truthy if it’s this device
+  onDiscoveryResult(r: any) {
+    return r.id === this.getData().id;
+  }
 
+  // First time we see the device (after onDiscoveryResult==true)
+  async onDiscoveryAvailable(r: any) {
+    await this.setStoreValue('address', r.address).catch(this.error);
+    await this.setStoreValue('port', r.port ?? 6053).catch(this.error);
+
+    // TODO: connect to your device here (native API, websocket, etc.)
+    // e.g. this.api = new MyEspHomeClient({ host: r.address, port: r.port ?? 6053 });
+    // await this.api.connect(); // throw to mark device unavailable
+  }
+
+  // IP changed (e.g., DHCP lease renewal)
+  onDiscoveryAddressChanged(r: any) {
+    this.setStoreValue('address', r.address).catch(this.error);
+    // this.api?.reconnectTo(r.address);
+  }
+
+  // Seen again after being offline, try to reconnect
+  onDiscoveryLastSeenChanged(_r: any) {
+    // this.api?.reconnect().catch(this.error);
+  }
 
 
 
@@ -329,13 +353,13 @@ export default class EspVoiceDevice extends Homey.Device {
    */
   async onDeleted(): Promise<void> {
     log.info('EspVoiceDevice has been deleted');
-    
+
     // Clean up settings subscription
     if (this.settingsUnsubscribe) {
       this.settingsUnsubscribe();
       this.settingsUnsubscribe = undefined;
     }
-    
+
     this.esp.disconnect();
     this.esp = null!;
 
