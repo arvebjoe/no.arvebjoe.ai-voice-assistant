@@ -10,6 +10,7 @@ const log = createLogger('ESP', false);
 interface EspVoiceClientOptions {
   host: string;
   apiPort?: number;
+  discoveryMode?: boolean;
 }
 
 type EspVoiceEvents = {
@@ -41,12 +42,15 @@ class EspVoiceClient extends (EventEmitter as new () => TypedEmitter<EspVoiceEve
   private mediaPlayersCount: number;
   private subscribeVoiceAssistantCount: number;
   private voiceAssistantConfigurationCount: number;
+  private discoveryMode: boolean;
+  private deviceType: string | null;
 
 
-  constructor({ host, apiPort = 6053 }: EspVoiceClientOptions) {
+  constructor({ host, apiPort = 6053, discoveryMode = false }: EspVoiceClientOptions) {
     super();
     this.host = host;
     this.apiPort = apiPort;
+    this.discoveryMode = discoveryMode;
 
     this.streamId = 1;
     this.rxBuf = Buffer.alloc(0);
@@ -62,6 +66,7 @@ class EspVoiceClient extends (EventEmitter as new () => TypedEmitter<EspVoiceEve
     this.mediaPlayersCount = 0;
     this.subscribeVoiceAssistantCount = 0;
     this.voiceAssistantConfigurationCount = 0;
+    this.deviceType = null;
 
   }
 
@@ -222,6 +227,17 @@ class EspVoiceClient extends (EventEmitter as new () => TypedEmitter<EspVoiceEve
 
       if (!frame) {
         break;
+      }
+
+      if (this.discoveryMode && !this.deviceType && frame.message) {
+        var rawMessage = JSON.stringify(frame.message);
+        if (rawMessage.includes('nabu')) {
+          this.deviceType = 'nabu';
+          this.discoveryMode = false;
+        } else if (rawMessage.includes('xiaozhi')) {
+          this.deviceType = 'xiaozhi';
+          this.discoveryMode = false;
+        }
       }
 
       this.logRx(frame);

@@ -118,6 +118,7 @@ export default class Driver extends Homey.Driver {
         client = new EspVoiceClient({
           host: device.store.address,
           apiPort: device.store.port,
+          discoveryMode: true,
         });
 
         client.on('capabilities', onCapabilities as any);
