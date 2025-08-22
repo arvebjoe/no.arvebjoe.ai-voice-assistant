@@ -171,7 +171,7 @@ export default abstract class VoiceAssistantDriver extends Homey.Driver {
 
         // Step 3: run your capability filter (kept separate and readable)
         const capable = await this.filterByVoiceCapabilities(candidates, {
-            timeoutMs: 5000,
+            timeoutMs: 5_000,
             concurrency: 4, // tune if you have many devices
         });
 

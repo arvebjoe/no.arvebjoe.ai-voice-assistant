@@ -271,7 +271,7 @@ class EspVoiceClient extends (EventEmitter as new () => TypedEmitter<EspVoiceEve
 
     else if (name === 'ListEntitiesDoneResponse') {
 
-      this.send('SubscribeVoiceAssistantRequest', { subscribe: true });
+      this.send('SubscribeVoiceAssistantRequest', { subscribe: true });     
 
       setTimeout(() => {
         if (this.connected) {
@@ -316,7 +316,7 @@ class EspVoiceClient extends (EventEmitter as new () => TypedEmitter<EspVoiceEve
     this.vaEvent(VA_EVENT.VOICE_ASSISTANT_RUN_START, {}, 'RUN_START');
   }
 
-  end_run(): void {
+  run_end(): void {
     this.vaEvent(VA_EVENT.VOICE_ASSISTANT_RUN_END, {}, 'RUN_END');
     this.streamId++;
   }

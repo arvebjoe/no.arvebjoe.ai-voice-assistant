@@ -182,7 +182,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       this.segmenter.flush();
       this.esp.tts_end();
       this.esp.closeMic();
-      this.esp.end_run();
+      this.esp.run_end();
       this.setCapabilityValue('onoff', false);
     });
 
