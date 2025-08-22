@@ -2,9 +2,9 @@ import VoiceAssistantDevice from '../../src/homey/voice_assistant_device.mjs';
 
 export default class XiaozhiAIDevice extends VoiceAssistantDevice {
 
-  constructor() {
-    super();
-  }
+    constructor(...args: any[]) {
+        super(...args);
+    }
 
   /*
   async onInit() {
