@@ -13,7 +13,7 @@ export default abstract class VoiceAssistantDriver extends Homey.Driver {
     }
 
     async onInit(): Promise<void> {
-        this.log('EspVoiceDriver has been initialized');
+        this.log('VoiceAssistantDriver has been initialized');
     }
 
     /**

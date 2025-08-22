@@ -34,43 +34,6 @@
   "drivers": [
     {
       "name": {
-        "en": "ESPHome voice box"
-      },
-      "class": "button",
-      "discovery": "esphome",
-      "capabilities": [
-        "onoff",
-        "volume_set",
-        "volume_mute"
-      ],
-      "platforms": [
-        "local"
-      ],
-      "connectivity": [
-        "lan"
-      ],
-      "images": {
-        "small": "/drivers/esphome-voice-box/assets/images/small.png",
-        "large": "/drivers/esphome-voice-box/assets/images/large.png",
-        "xlarge": "/drivers/esphome-voice-box/assets/images/xlarge.png"
-      },
-      "pair": [
-        {
-          "id": "list_devices",
-          "template": "list_devices",
-          "navigation": {
-            "next": "add_devices"
-          }
-        },
-        {
-          "id": "add_devices",
-          "template": "add_devices"
-        }
-      ],
-      "id": "esphome-voice-box"
-    },
-    {
-      "name": {
         "en": "Home Assistant Voice PE"
       },
       "class": "other",
