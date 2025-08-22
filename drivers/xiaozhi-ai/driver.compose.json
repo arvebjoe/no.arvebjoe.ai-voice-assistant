@@ -3,6 +3,7 @@
     "en": "Xiaozhi AI"
   },
   "class": "other",
+  "discovery": "esphome",
   "capabilities": [
     "onoff"
   ],

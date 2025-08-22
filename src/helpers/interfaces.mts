@@ -50,3 +50,24 @@ export declare interface WavOptions {
     channels: number;
     bitsPerSample: number;
 }
+
+
+export type PairDevice = {
+  name: string;
+  data: { id: string };
+  store: {
+    address: string;
+    port: number;
+    mac?: string;
+    platform?: string;
+    serviceName?: string;
+    deviceType?: string | null; // 'pe' | 'xiaozhi' | null
+  };
+};
+
+
+export interface DeviceStore {
+  address: string;
+  port: number;
+  [key: string]: any;
+}
