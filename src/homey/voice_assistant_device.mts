@@ -355,15 +355,35 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       this.settingsUnsubscribe = undefined;
     }
 
-    this.esp.disconnect();
-    this.esp = null!;
+    // Safely disconnect ESP client
+    try {
+      if (this.esp) {
+        // Remove event listeners before disconnecting to prevent any event-triggered actions
+        this.esp.removeAllListeners();
+        await this.esp.disconnect().catch(err => {
+          log.warn('Error while disconnecting ESP client:', err);
+        });
+      }
+    } catch (err) {
+      log.warn('Failed to properly disconnect ESP client:', err);
+    } finally {
+      this.esp = null!;
+    }
 
-    this.agent.close();
-    this.agent = null!;
+    // Safely close agent
+    try {
+      if (this.agent) {
+        this.agent.close();
+      }
+    } catch (err) {
+      log.warn('Failed to close agent:', err);
+    } finally {
+      this.agent = null!;
+    }
 
+    // Cleanup other resources
     this.segmenter = null!;
     this.toolManager = null!;
-
   }
 
 }

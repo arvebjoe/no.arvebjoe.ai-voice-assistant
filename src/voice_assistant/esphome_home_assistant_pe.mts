@@ -194,29 +194,57 @@ class EspVoiceClient extends (EventEmitter as new () => TypedEmitter<EspVoiceEve
   async disconnect(): Promise<boolean> {
     log.info('Disconnecting ESP Voice Client');
 
+    // Mark as disconnected before anything else to prevent reconnect attempts
     this.connected = false;
 
-    if (this.reconnectTimer) {
-      clearTimeout(this.reconnectTimer);
-      this.reconnectTimer = null;
-    }
+    try {
+      // Clean up timers
+      if (this.reconnectTimer) {
+        clearTimeout(this.reconnectTimer);
+        this.reconnectTimer = null;
+      }
 
-    // Close mic socket
-    log.info('Closing mic socket... from disconnect()');
-    this.closeMic();
+      // Close mic socket - wrap in try-catch in case it's already closed
+      try {
+        log.info('Closing mic socket... from disconnect()');
+        this.closeMic();
+      } catch (err) {
+        log.warn('Error closing mic socket:', err);
+      }
 
-    if (this.healthCheckTimer) {
-      clearInterval(this.healthCheckTimer);
-      this.healthCheckTimer = null;
-    }
-    if (this.tcp) {
-      this.tcp.destroy();
-      this.tcp = null;
-    }
+      // Clean up health check timer
+      if (this.healthCheckTimer) {
+        clearInterval(this.healthCheckTimer);
+        this.healthCheckTimer = null;
+      }
 
-    this.emit('disconnected');
-    log.info('ESP Voice Client disconnected');
-    return true;
+      // Close TCP socket - wrap in try-catch in case it's already closed
+      if (this.tcp) {
+        try {
+          this.tcp.destroy();
+        } catch (err) {
+          log.warn('Error destroying TCP socket:', err);
+        } finally {
+          this.tcp = null;
+        }
+      }
+
+      log.info('ESP Voice Client disconnected');
+      return true;
+    } catch (err) {
+      log.error('Error during disconnect:', err);
+      return false;
+    } finally {
+      // Always emit the disconnected event, but use a setTimeout to 
+      // ensure it happens after the current execution context
+      setTimeout(() => {
+        try {
+          this.emit('disconnected');
+        } catch (err) {
+          // Ignore errors during event emit on cleanup
+        }
+      }, 0);
+    }
   }
 
   async onTcpData(data: Buffer): Promise<void> {
