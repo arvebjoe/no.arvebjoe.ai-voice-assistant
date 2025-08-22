@@ -14,11 +14,7 @@ type PairDevice = {
     mac?: string;
     platform?: string;
     serviceName?: string;
-    // Optional extras from the capability probe:
-    //mediaPlayersCount?: number;
-    //subscribeVoiceAssistantCount?: number;
-    //voiceAssistantConfigurationCount?: number;
-    // TODO: decide and set voiceAssistantType: 'nabu-pe' | 'xiaozhi' | 'unknown'
+    deviceType?: string | null; // 'pe' | 'xiaozhi' | null
   };
 };
 
@@ -41,6 +37,7 @@ export default class Driver extends Homey.Driver {
         mac: r.txt?.mac,
         platform: r.txt?.platform,
         serviceName: r.name,
+        deviceType: null,
       },
     };
   }
@@ -79,25 +76,19 @@ export default class Driver extends Homey.Driver {
     const onCapabilities = async (
       mediaPlayersCount: number,
       subscribeVoiceAssistantCount: number,
-      voiceAssistantConfigurationCount: number
+      voiceAssistantConfigurationCount: number,
+      deviceType: string | null
+
     ) => {
       this.log(`Capabilities from ${device.name}`, {
         mediaPlayersCount,
         subscribeVoiceAssistantCount,
         voiceAssistantConfigurationCount,
+        deviceType,
       });
 
-      if (
-        mediaPlayersCount > 0 &&
-        subscribeVoiceAssistantCount > 0 &&
-        voiceAssistantConfigurationCount > 0
-      ) {
-        // (Optional) keep these if you want them later
-        //device.store.mediaPlayersCount = mediaPlayersCount;
-        //device.store.subscribeVoiceAssistantCount = subscribeVoiceAssistantCount;
-        //device.store.voiceAssistantConfigurationCount = voiceAssistantConfigurationCount;
-
-        // IMPORTANT: resolve success FIRST (finish handles disconnect safely)
+      if (mediaPlayersCount > 0 && subscribeVoiceAssistantCount > 0 && voiceAssistantConfigurationCount > 0) {
+        device.store.deviceType = deviceType;        
         await finish(device);
         return;
       }

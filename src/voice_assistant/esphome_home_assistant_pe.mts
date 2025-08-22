@@ -5,7 +5,7 @@ import { TypedEmitter } from "tiny-typed-emitter";
 import { encodeFrame, decodeFrame, VA_EVENT } from './esphome-messages.mjs';
 import { createLogger } from '../helpers/logger.mjs';
 
-const log = createLogger('ESP', false);
+const log = createLogger('ESP', true);
 
 interface EspVoiceClientOptions {
   host: string;
@@ -19,7 +19,7 @@ type EspVoiceEvents = {
   announce_finished: () => void;
   start: () => void;
   chunk: (data: Buffer) => void;
-  capabilities: (mediaPlayersCount: number, subscribeVoiceAssistantCount: number, voiceAssistantConfigurationCount: number) => void;
+  capabilities: (mediaPlayersCount: number, subscribeVoiceAssistantCount: number, voiceAssistantConfigurationCount: number, deviceType: string | null) => void;
 }
 
 
@@ -230,9 +230,9 @@ class EspVoiceClient extends (EventEmitter as new () => TypedEmitter<EspVoiceEve
       }
 
       if (this.discoveryMode && !this.deviceType && frame.message) {
-        var rawMessage = JSON.stringify(frame.message);
-        if (rawMessage.includes('nabu')) {
-          this.deviceType = 'nabu';
+        var rawMessage = JSON.stringify(frame.message).toLocaleLowerCase();
+        if (rawMessage.includes('nabu casa') || rawMessage.includes('home assistant voice pe')) {
+          this.deviceType = 'pe';
           this.discoveryMode = false;
         } else if (rawMessage.includes('xiaozhi')) {
           this.deviceType = 'xiaozhi';
@@ -275,18 +275,22 @@ class EspVoiceClient extends (EventEmitter as new () => TypedEmitter<EspVoiceEve
 
       setTimeout(() => {
         if (this.connected) {
-          this.subscribeVoiceAssistantCount++;
-          this.send('VoiceAssistantConfigurationRequest', {});
+          this.send('DeviceInfoRequest', {});
         }
       }, 500);
     }
 
-    else if (name === 'VoiceAssistantConfigurationResponse') {
-      this.voiceAssistantConfigurationCount++
-      this.emit('capabilities', this.mediaPlayersCount, this.subscribeVoiceAssistantCount, this.voiceAssistantConfigurationCount);
+    else if (name === 'DeviceInfoResponse') {
+      this.subscribeVoiceAssistantCount++;
+      this.send('VoiceAssistantConfigurationRequest', {});
+
     }
 
+    else if (name === 'VoiceAssistantConfigurationResponse') {
+      this.voiceAssistantConfigurationCount++
+      this.emit('capabilities', this.mediaPlayersCount, this.subscribeVoiceAssistantCount, this.voiceAssistantConfigurationCount, this.deviceType);
 
+    }
 
     else if (name === 'VoiceAssistantAnnounceFinished') {
       this.emit('announce_finished');
