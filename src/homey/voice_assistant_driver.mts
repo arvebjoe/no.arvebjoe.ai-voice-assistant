@@ -43,10 +43,12 @@ export default abstract class VoiceAssistantDriver extends Homey.Driver {
         let client: EspVoiceClient | null = null;
         let done = false;
         let intentionalDisconnect = false;
+        let resultToReturn: PairDevice | null = null;
 
         const finish = async (result: PairDevice | null) => {
             if (done) return;
             done = true;
+            resultToReturn = result; // Store the result for later use
 
             // stop further handlers from flipping the result
             try {
@@ -65,30 +67,27 @@ export default abstract class VoiceAssistantDriver extends Homey.Driver {
             return result;
         };
 
-        const onCapabilities = async (
-            mediaPlayersCount: number,
-            subscribeVoiceAssistantCount: number,
-            voiceAssistantConfigurationCount: number,
-            deviceType: string | null
-
-        ) => {
+        const onCapabilities = async (mediaPlayersCount: number, subscribeVoiceAssistantCount: number, voiceAssistantConfigurationCount: number, deviceType: string | null  ) => {
+            
             this.log(`Capabilities from ${device.name}`, {
                 mediaPlayersCount,
                 subscribeVoiceAssistantCount,
                 voiceAssistantConfigurationCount,
                 deviceType,
             });
-            this.log('Looking for device of type ' + this.thisAssistantType);
+            this.log('Looking for device of type ' + this.thisAssistantType + ' and found ' + deviceType);
 
 
             if (this.thisAssistantType == deviceType && mediaPlayersCount > 0 && subscribeVoiceAssistantCount > 0 && voiceAssistantConfigurationCount > 0) {
+                this.log('Found matching device:', deviceType);
                 device.store.deviceType = deviceType;
                 await finish(device);
                 return;
+            } else {
+                // Explicitly reject devices that don't match our type
+                await finish(null);
+                return;
             }
-            
-            // else: let timeout decide; do nothing here
-            await finish(null);            
         };
 
         const onDisconnected = async () => {
@@ -97,8 +96,6 @@ export default abstract class VoiceAssistantDriver extends Homey.Driver {
                 await finish(null);
             }
         };
-
-
 
         return new Promise<PairDevice | null>(async (resolve) => {
             try {
@@ -117,8 +114,8 @@ export default abstract class VoiceAssistantDriver extends Homey.Driver {
                     if (!done) await finish(null);
                 }, timeoutMs).unref?.();
 
-                // Resolve when finish() completes
-                const poll = () => done ? resolve(device ?? null) : setTimeout(poll, 10);
+                // Resolve when finish() completes with the stored result
+                const poll = () => done ? resolve(resultToReturn) : setTimeout(poll, 10);
                 poll();
             } catch {
                 resolve(null);
