@@ -1,17 +1,14 @@
 # TODO before release:
-
-# Create another driver/device     
-    - Both xiaozhi and PE can inherit from the same base class.
-    - Each class should just have a private field telling the base driver class how to filter, and device base class what audio format to use.
-
     
 # ESPClient
-    - Need to handle any message recieved as a "ping" message to indicate that the connection is alive. So it doesn't reconnect on high trafic. Ping messages are only sent when the ESP is idle.
     - Try to push a url at the device without it being triggered first.
         - This works!
           this.run_start();
           this.playAudioFromUrl('https://github.com/RealDeco/xiaozhi-esphome/raw/refs/heads/main/sounds/timer_finished.flac', false);
           this.run_end();
+
+## Implement volume and mute capability
+
 ## Voice Box
     - Needs to know where it is (zone). So it can controll devices within it's own zone if the user didn't specify the zone.
     - Still some issue with silence detection

@@ -5,7 +5,7 @@ import { TypedEmitter } from "tiny-typed-emitter";
 import { encodeFrame, decodeFrame, VA_EVENT } from './esphome-messages.mjs';
 import { createLogger } from '../helpers/logger.mjs';
 
-const log = createLogger('ESP', true);
+const log = createLogger('ESP', false);
 
 interface EspVoiceClientOptions {
   host: string;
@@ -35,7 +35,7 @@ class EspVoiceClient extends (EventEmitter as new () => TypedEmitter<EspVoiceEve
   private reconnectTimer: NodeJS.Timeout | null;
   private reconnectAttempt: number;
   private MAX_RECONNECT_DELAY: number;
-  private lastPingTime: number;
+  private lastMessageReceivedTime: number;
   private healthCheckTimer: NodeJS.Timeout | null;
   private PING_TIMEOUT: number;
   private HEALTH_CHECK_INTERVAL: number;
@@ -59,7 +59,7 @@ class EspVoiceClient extends (EventEmitter as new () => TypedEmitter<EspVoiceEve
     this.reconnectTimer = null;
     this.reconnectAttempt = 0;
     this.MAX_RECONNECT_DELAY = 10_000;
-    this.lastPingTime = 0;
+    this.lastMessageReceivedTime = 0;
     this.healthCheckTimer = null;
     this.PING_TIMEOUT = 120_000;
     this.HEALTH_CHECK_INTERVAL = 55_000;
@@ -160,14 +160,14 @@ class EspVoiceClient extends (EventEmitter as new () => TypedEmitter<EspVoiceEve
 
     this.healthCheckTimer = setInterval(() => {
       const now = Date.now();
-      if (this.lastPingTime > 0 && (now - this.lastPingTime) > this.PING_TIMEOUT) {
+      if (this.lastMessageReceivedTime > 0 && (now - this.lastMessageReceivedTime) > this.PING_TIMEOUT) {
         log.warn('Connection timeout - no ping received', {
-          lastPing: Math.round((now - this.lastPingTime) / 1000) + 's ago'
+          lastPing: Math.round((now - this.lastMessageReceivedTime) / 1000) + 's ago'
         });
         this.handleDisconnect();
       }
-      else if (this.lastPingTime > 0) {
-        log.info('Connection is healthy. Last ping received ' + Math.round((now - this.lastPingTime) / 1000) + 's ago');
+      else if (this.lastMessageReceivedTime > 0) {
+        log.info('Connection is healthy. Last ping received ' + Math.round((now - this.lastMessageReceivedTime) / 1000) + 's ago');
       }
     }, this.HEALTH_CHECK_INTERVAL);
   }
@@ -182,7 +182,7 @@ class EspVoiceClient extends (EventEmitter as new () => TypedEmitter<EspVoiceEve
       this.healthCheckTimer = null;
     }
 
-    this.lastPingTime = 0;
+    this.lastMessageReceivedTime = 0;
 
     if (this.tcp) {
       this.tcp.destroy();
@@ -268,6 +268,7 @@ class EspVoiceClient extends (EventEmitter as new () => TypedEmitter<EspVoiceEve
         }
       }
 
+      this.lastMessageReceivedTime = Date.now();
       this.logRx(frame);
       this.dispatch({ name: frame.name ?? '', message: frame.message });
 
@@ -276,6 +277,7 @@ class EspVoiceClient extends (EventEmitter as new () => TypedEmitter<EspVoiceEve
   }
 
   async dispatch({ name, message }: { name: string; message: any }): Promise<void> {
+
 
     if (name === 'HelloResponse' && !this.connected) {
       this.send('ConnectRequest', { password: '' });
@@ -299,7 +301,7 @@ class EspVoiceClient extends (EventEmitter as new () => TypedEmitter<EspVoiceEve
 
     else if (name === 'ListEntitiesDoneResponse') {
 
-      this.send('SubscribeVoiceAssistantRequest', { subscribe: true });     
+      this.send('SubscribeVoiceAssistantRequest', { subscribe: true });
 
       setTimeout(() => {
         if (this.connected) {
@@ -333,9 +335,7 @@ class EspVoiceClient extends (EventEmitter as new () => TypedEmitter<EspVoiceEve
     }
 
     else if (name === 'PingRequest') {
-      this.lastPingTime = Date.now();
       this.send('PingResponse', {});
-      //this.lastPongTime = Date.now();
     }
   }
 
