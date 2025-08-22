@@ -1,12 +1,12 @@
 {
   "name": {
-    "en": "ESPHome voice box"
+    "en": "Home Assistant Voice PE"
   },
-  "class": "button",
+  "class": "other",
   "discovery": "esphome",
   "capabilities": [
-    "onoff",
     "volume_set",
+    "onoff",
     "volume_mute"
   ],
   "platforms": [
@@ -31,6 +31,6 @@
     {
       "id": "add_devices",
       "template": "add_devices"
-    }    
+    }
   ]
 }

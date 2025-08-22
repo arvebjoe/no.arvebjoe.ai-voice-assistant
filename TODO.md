@@ -1,12 +1,5 @@
 # TODO before release:
     
-# ESPClient
-    - Try to push a url at the device without it being triggered first.
-        - This works!
-          this.run_start();
-          this.playAudioFromUrl('https://github.com/RealDeco/xiaozhi-esphome/raw/refs/heads/main/sounds/timer_finished.flac', false);
-          this.run_end();
-
 ## Implement volume and mute capability
 
 ## Voice Box
@@ -46,6 +39,14 @@
     - Device set mute (on/off)
 
     - App trigger Agent with text prompt. Output as wav or text
+
+
+# ESPClient
+    - Try to push a url at the device without it being triggered first.
+        - This works!
+          this.run_start();
+          this.playAudioFromUrl('https://github.com/RealDeco/xiaozhi-esphome/raw/refs/heads/main/sounds/timer_finished.flac', false);
+          this.run_end();
 
 
 ## Homey-log

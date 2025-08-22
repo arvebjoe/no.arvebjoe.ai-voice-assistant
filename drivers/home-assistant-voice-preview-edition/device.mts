@@ -1,7 +1,7 @@
 import VoiceAssistantDevice  from  '../../src/homey/voice_assistant_device.mjs';
 
 
-export default class EspVoiceDevice extends VoiceAssistantDevice {
+export default class HomeAssistantVoicePreviewEditionDevice extends VoiceAssistantDevice {
     constructor(...args: any[]) {
         super(...args);
     }

@@ -71,6 +71,43 @@
     },
     {
       "name": {
+        "en": "Home Assistant Voice PE"
+      },
+      "class": "other",
+      "discovery": "esphome",
+      "capabilities": [
+        "volume_set",
+        "onoff",
+        "volume_mute"
+      ],
+      "platforms": [
+        "local"
+      ],
+      "connectivity": [
+        "lan"
+      ],
+      "images": {
+        "small": "/drivers/home-assistant-voice-preview-edition/assets/images/small.png",
+        "large": "/drivers/home-assistant-voice-preview-edition/assets/images/large.png",
+        "xlarge": "/drivers/home-assistant-voice-preview-edition/assets/images/xlarge.png"
+      },
+      "pair": [
+        {
+          "id": "list_devices",
+          "template": "list_devices",
+          "navigation": {
+            "next": "add_devices"
+          }
+        },
+        {
+          "id": "add_devices",
+          "template": "add_devices"
+        }
+      ],
+      "id": "home-assistant-voice-preview-edition"
+    },
+    {
+      "name": {
         "en": "Xiaozhi AI"
       },
       "class": "other",
