@@ -311,7 +311,7 @@ class EspVoiceClient extends (EventEmitter as new () => TypedEmitter<EspVoiceEve
       this.mediaPlayersCount++;
       if (message.objectId && message.key) {
         this.entityKeys[message.objectId] = message.key;
-        
+
         // Store the first media player key as our default media_player entity for volume control
         if (!this.entityKeys['media_player']) {
           this.entityKeys['media_player'] = message.key;
@@ -525,6 +525,20 @@ class EspVoiceClient extends (EventEmitter as new () => TypedEmitter<EspVoiceEve
   }
 
 
+  startListening() {
+    log.info('startListening() called');
+
+    this.emit('start');
+    setTimeout(() => {
+      this.send('VoiceAssistantRequest',
+        {
+          start: true,
+          flags: 0
+        });
+    }, 1000);
+
+  }
+
 
   /**
    * Subscribe to state updates for media player, volume number entity, and mute switch
@@ -605,7 +619,7 @@ class EspVoiceClient extends (EventEmitter as new () => TypedEmitter<EspVoiceEve
         hasVolume: true,
         volume: volume
       });
-      
+
       // Track state locally
       this.currentVolume = volume;
     } catch (error) {

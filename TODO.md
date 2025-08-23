@@ -1,6 +1,6 @@
 # TODO before release:
     
-## Implement volume and mute capability
+## Implement trigger listen
 
 ## Voice Box
     - Needs to know where it is (zone). So it can controll devices within it's own zone if the user didn't specify the zone.

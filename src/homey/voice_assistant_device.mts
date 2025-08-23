@@ -116,6 +116,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
     // Bind the event handler to this class instance
     this.esp.on('chunk', (data: Buffer) => {
+      log.info(`New RX chunk: ${data.length} bytes`);
       // TODO: Move upsample16kTo24k to wav-helper.js
       const pcm24 = this.agent.upsample16kTo24k(data);
       // TODO: Have a test buffer 
@@ -270,8 +271,16 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
     this.registerCapabilityListener('onoff', async (value: boolean) => {
       log.info(`Capability onoff changed to: ${value}`);
-      // Here you would typically send the command to the device
-      // await this.sendCommandToDevice(value);
+    
+        
+        // Start listening when turned on
+        if (this.esp && typeof this.esp.startListening === 'function') {
+          log.info('Triggering voice assistant to start listening');
+          this.esp.startListening();
+        } else {
+          log.warn('ESP client not initialized or startListening method not available');
+        }
+
     });
 
     this.registerCapabilityListener('volume_set', async (value: number) => {
