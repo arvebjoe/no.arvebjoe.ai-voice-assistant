@@ -311,13 +311,13 @@ class EspVoiceClient extends (EventEmitter as new () => TypedEmitter<EspVoiceEve
       this.mediaPlayersCount++;
       if (message.objectId && message.key) {
         this.entityKeys[message.objectId] = message.key;
-        log.info(`Registered media player: ${message.objectId} with key ${message.key}`);
         
-        // Store the first media player key as our default media_player entity
-        // This is used for volume control via MediaPlayerCommandRequest
+        // Store the first media player key as our default media_player entity for volume control
         if (!this.entityKeys['media_player']) {
           this.entityKeys['media_player'] = message.key;
-          log.info(`Set ${message.objectId} as primary media player for volume control`);
+          log.info(`Registered media player: ${message.objectId} with key ${message.key} (primary)`);
+        } else {
+          log.info(`Registered media player: ${message.objectId} with key ${message.key}`);
         }
       }
     }
@@ -373,17 +373,6 @@ class EspVoiceClient extends (EventEmitter as new () => TypedEmitter<EspVoiceEve
     }
 
     else if (name === 'MediaPlayerStateResponse') {
-      // Check if this is our primary media player entity
-      const isMainPlayer = message.key === this.entityKeys['media_player'];
-      
-      // Log full response to understand volume state reporting
-      log.info(`Received media player state${isMainPlayer ? ' (primary player)' : ''}`, 'MediaPlayerState', {
-        state: message.state,
-        volume: message.volume !== undefined ? message.volume.toFixed(2) : 'n/a',
-        position: message.position,
-        mediaPlayerKey: message.key
-      });
-
       // Update our tracked volume if it changed
       if (typeof message.volume === 'number') {
         const previousVolume = this.currentVolume;
@@ -392,7 +381,7 @@ class EspVoiceClient extends (EventEmitter as new () => TypedEmitter<EspVoiceEve
         // Emit event if volume changed
         if (Math.abs(previousVolume - this.currentVolume) > 0.01) { // Small threshold to avoid noise
           this.emit('volume', this.currentVolume);
-          log.info(`Volume changed to ${Math.round(this.currentVolume * 100)}% (from media player)`);
+          log.info(`Volume changed to ${Math.round(this.currentVolume * 100)}%`);
         }
       }
     }
@@ -428,7 +417,7 @@ class EspVoiceClient extends (EventEmitter as new () => TypedEmitter<EspVoiceEve
         // Emit event if volume changed
         if (Math.abs(previousVolume - this.currentVolume) > 0.01) { // Small threshold to avoid noise
           this.emit('volume', this.currentVolume);
-          log.info(`Volume changed to ${Math.round(this.currentVolume * 100)}% (from number entity)`);
+          log.info(`Volume changed to ${Math.round(this.currentVolume * 100)}%`);
         }
       }
     }
@@ -610,18 +599,15 @@ class EspVoiceClient extends (EventEmitter as new () => TypedEmitter<EspVoiceEve
     }
 
     try {
-      // Send MediaPlayerCommandRequest with camelCase property names as required by protobuf encoding
+      // Send MediaPlayerCommandRequest
       this.send('MediaPlayerCommandRequest', {
         key: mediaPlayerKey,
-        hasVolume: true,  // IMPORTANT: Use camelCase 'hasVolume', not snake_case 'has_volume'
+        hasVolume: true,
         volume: volume
       });
       
-      // Track state locally - don't rely on this though, as actual changes
-      // will come back through the subscription events
+      // Track state locally
       this.currentVolume = volume;
-      
-      log.info(`Volume command sent to key ${mediaPlayerKey} with value ${volume}`);
     } catch (error) {
       log.error('Error sending volume command:', error);
     }
