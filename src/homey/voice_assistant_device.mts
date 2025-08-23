@@ -198,6 +198,22 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     this.agent.on('open', () => {
       log.info("Realtime agent connection opened");
     });
+    
+    // Listen for volume changes from the device
+    this.esp.on('volume', (level: number) => {
+      log.info(`Received volume update: ${Math.round(level * 100)}%`);
+      this.setCapabilityValue('volume_set', level).catch(err => {
+        log.warn('Failed to update volume_set capability', err);
+      });
+    });
+    
+    // Listen for mute state changes from the device
+    this.esp.on('mute', (isMuted: boolean) => {
+      log.info(`Received mute state update: ${isMuted ? 'muted' : 'unmuted'}`);
+      this.setCapabilityValue('volume_mute', isMuted).catch(err => {
+        log.warn('Failed to update volume_mute capability', err);
+      });
+    });
 
 
     await this.esp.start();
@@ -260,12 +276,22 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
     this.registerCapabilityListener('volume_set', async (value: number) => {
       log.info(`Capability volume_set changed to: ${value}`);
-      // Here you would typically send the command to the device
-      // await this.setVolumeOnDevice(value);
+      // Send the volume command to the ESPHome device
+      if (this.esp && this.esp.setVolume) {
+        this.esp.setVolume(value);
+      } else {
+        log.warn('ESP client not initialized or setVolume method not available');
+      }
     });
 
     this.registerCapabilityListener('volume_mute', async (value: boolean) => {
       log.info(`Capability volume_mute changed to: ${value}`);
+      // Send the mute command to the ESPHome device
+      if (this.esp && this.esp.setMute) {
+        this.esp.setMute(value);
+      } else {
+        log.warn('ESP client not initialized or setMute method not available');
+      }
     });
   }
 

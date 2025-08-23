@@ -20,6 +20,8 @@ type EspVoiceEvents = {
   start: () => void;
   chunk: (data: Buffer) => void;
   capabilities: (mediaPlayersCount: number, subscribeVoiceAssistantCount: number, voiceAssistantConfigurationCount: number, deviceType: string | null) => void;
+  volume: (level: number) => void; // Volume change event
+  mute: (isMuted: boolean) => void; // Mute state change event
 }
 
 
@@ -44,6 +46,15 @@ class EspVoiceClient extends (EventEmitter as new () => TypedEmitter<EspVoiceEve
   private voiceAssistantConfigurationCount: number;
   private discoveryMode: boolean;
   private deviceType: string | null;
+
+  // Store entity keys by object_id for easier access
+  private entityKeys: {
+    [objectId: string]: number
+  } = {};
+
+  // Track device state
+  private currentVolume: number = 0.5;
+  private isMuted: boolean = false;
 
 
   constructor({ host, apiPort = 6053, discoveryMode = false }: EspVoiceClientOptions) {
@@ -290,6 +301,7 @@ class EspVoiceClient extends (EventEmitter as new () => TypedEmitter<EspVoiceEve
       this.mediaPlayersCount = 0;
       this.subscribeVoiceAssistantCount = 0;
       this.voiceAssistantConfigurationCount = 0;
+      this.entityKeys = {};
 
       this.send('ListEntitiesRequest', {});
     }
@@ -297,11 +309,38 @@ class EspVoiceClient extends (EventEmitter as new () => TypedEmitter<EspVoiceEve
 
     else if (name === 'ListEntitiesMediaPlayerResponse') {
       this.mediaPlayersCount++;
+      if (message.objectId && message.key) {
+        this.entityKeys[message.objectId] = message.key;
+        log.info(`Registered media player: ${message.objectId} with key ${message.key}`);
+      }
+    }
+
+    else if (name === 'ListEntitiesSwitchResponse') {
+      if (message.objectId && message.key) {
+        this.entityKeys[message.objectId] = message.key;
+        log.info(`Registered switch: ${message.objectId} with key ${message.key}`);
+      }
+    }
+
+    else if (name === 'ListEntitiesNumberResponse') {
+      if (message.objectId && message.key) {
+        this.entityKeys[message.objectId] = message.key;
+        log.info(`Registered number: ${message.objectId} with key ${message.key}`);
+
+        // Check if this might be a volume control entity
+        const objectIdLower = message.objectId.toLowerCase();
+        if (objectIdLower.includes('volume')) {
+          this.entityKeys['volume'] = message.key;
+          log.info(`Found potential volume control number entity: ${message.objectId}`);
+        }
+      }
     }
 
     else if (name === 'ListEntitiesDoneResponse') {
-
       this.send('SubscribeVoiceAssistantRequest', { subscribe: true });
+
+      // Subscribe to media player state updates to track volume changes
+      this.subscribeToMediaPlayerState();
 
       setTimeout(() => {
         if (this.connected) {
@@ -326,8 +365,62 @@ class EspVoiceClient extends (EventEmitter as new () => TypedEmitter<EspVoiceEve
       this.emit('announce_finished');
     }
 
-    else if (name === 'MediaPlayerStateResponse' && message.state == 1) {
-      //this.emit('end');
+    else if (name === 'MediaPlayerStateResponse') {
+      // Log full response to understand volume state reporting
+      log.info('Received media player state', 'MediaPlayerState', {
+        state: message.state,
+        volume: message.volume,
+        position: message.position,
+        mediaPlayerKey: message.key
+      });
+
+      // Update our tracked volume if it changed
+      if (typeof message.volume === 'number') {
+        const previousVolume = this.currentVolume;
+        this.currentVolume = message.volume;
+
+        // Emit event if volume changed
+        if (previousVolume !== this.currentVolume) {
+          this.emit('volume', this.currentVolume);
+          log.info(`Volume changed to ${Math.round(this.currentVolume * 100)}%`);
+        }
+      }
+    }
+
+    else if (name === 'SwitchStateResponse') {
+      // Check if this is the mute switch
+      const muteKey = this.entityKeys['mute'];
+      if (muteKey && message.key === muteKey) {
+        const previousMuteState = this.isMuted;
+        this.isMuted = message.state;
+
+        // Emit event if mute state changed
+        if (previousMuteState !== this.isMuted) {
+          this.emit('mute', this.isMuted);
+          log.info(`Mute state changed to ${this.isMuted ? 'muted' : 'unmuted'}`);
+        }
+      }
+    }
+
+    else if (name === 'NumberStateResponse') {
+      // Check if this is the volume entity
+      const volumeKey = this.entityKeys['volume'];
+      if (volumeKey && message.key === volumeKey && typeof message.state === 'number') {
+        // Convert from percentage (0-100) to decimal (0-1) if needed
+        let volumeLevel = message.state;
+        if (volumeLevel > 1) {
+          volumeLevel = volumeLevel / 100;
+        }
+
+        const previousVolume = this.currentVolume;
+        this.currentVolume = volumeLevel;
+
+        // Emit event if volume changed
+        if (Math.abs(previousVolume - this.currentVolume) > 0.01) { // Small threshold to avoid noise
+          this.emit('volume', this.currentVolume);
+          log.info(`Volume changed to ${Math.round(this.currentVolume * 100)}% (from number entity)`);
+        }
+      }
     }
 
     else if (name === 'VoiceAssistantRequest' && message.start) {
@@ -434,6 +527,54 @@ class EspVoiceClient extends (EventEmitter as new () => TypedEmitter<EspVoiceEve
 
 
 
+  /**
+   * Subscribe to state updates for media player, volume number entity, and mute switch
+   * This allows tracking of volume changes and playback state
+   */
+  subscribeToMediaPlayerState(): void {
+    const mediaPlayerKey = this.entityKeys['media_player'];
+    const volumeKey = this.entityKeys['volume'];
+    const muteKey = this.entityKeys['mute'];
+
+    log.info('Subscribing to device state updates');
+
+    // Subscribe to the media player entity if available
+    if (mediaPlayerKey) {
+      try {
+        this.send('SubscribeMediaPlayerStateRequest', {
+          key: mediaPlayerKey
+        });
+        log.info(`Subscribed to media player state updates with key ${mediaPlayerKey}`);
+      } catch (error) {
+        log.warn('Error subscribing to media player state:', error);
+      }
+    }
+
+    // Subscribe to the volume number entity if available
+    if (volumeKey) {
+      try {
+        this.send('SubscribeNumberStateRequest', {
+          key: volumeKey
+        });
+        log.info(`Subscribed to volume number entity state updates with key ${volumeKey}`);
+      } catch (error) {
+        log.warn('Error subscribing to volume number state:', error);
+      }
+    }
+
+    // Subscribe to the mute switch if available
+    if (muteKey) {
+      try {
+        this.send('SubscribeSwitchStateRequest', {
+          key: muteKey
+        });
+        log.info(`Subscribed to mute switch state updates with key ${muteKey}`);
+      } catch (error) {
+        log.warn('Error subscribing to mute switch state:', error);
+      }
+    }
+  }
+
   playAudioFromUrl(url: string, startConversation: boolean): void {
     this.send('VoiceAssistantAnnounceRequest', {
       mediaId: url,
@@ -441,6 +582,52 @@ class EspVoiceClient extends (EventEmitter as new () => TypedEmitter<EspVoiceEve
       startConversation: startConversation,
     });
   }
+
+  /**
+   * Sets the volume level (0-1)
+   * @param volume Volume level (0-1)
+   */
+  setVolume(volume: number): void {
+    // Ensure volume is between 0 and 1
+    volume = Math.max(0, Math.min(1, volume));
+
+    log.info(`Setting volume to ${volume * 100}% - Implementation pending GPT solution`);
+
+    // Implementation removed - waiting for GPT solution
+  }
+
+  /**
+   * Mutes or unmutes the device using the dedicated mute switch
+   * @param mute True to mute, false to unmute
+   */
+  setMute(mute: boolean): void {
+    log.info(`${mute ? 'Muting' : 'Unmuting'} device`);
+
+    // Find the mute switch entity key
+    const muteKey = this.entityKeys['mute'];
+
+    if (!muteKey) {
+      log.warn('No mute switch entity found');
+      return;
+    }
+
+    // Send switch command to control mute state
+    try {
+      this.send('SwitchCommandRequest', {
+        key: muteKey,
+        state: mute
+      });
+
+      // Track state locally
+      this.isMuted = mute;
+
+      // Emit event
+      this.emit('mute', this.isMuted);
+    } catch (error) {
+      log.error('Error setting mute state:', error);
+    }
+  }
+
 
 
 
