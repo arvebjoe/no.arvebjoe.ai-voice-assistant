@@ -1,6 +1,6 @@
 import Homey from 'homey';
 //import { createLogger } from '../../src/helpers/logger.mjs';
-import { EspVoiceClient } from '../../src/voice_assistant/esphome_home_assistant_pe.mjs';
+import { EspVoiceAssistantClient } from '../voice_assistant/esp_voice_assistant_client.mjs';
 import { PairDevice } from '../../src/helpers/interfaces.mjs';
 
 //const log = createLogger('VA_DRIVER', false);
@@ -40,7 +40,7 @@ export default abstract class VoiceAssistantDriver extends Homey.Driver {
      */
     private async checkVoiceCapabilities(device: PairDevice, timeoutMs = 5000): Promise<PairDevice | null> {
 
-        let client: EspVoiceClient | null = null;
+        let client: EspVoiceAssistantClient | null = null;
         let done = false;
         let intentionalDisconnect = false;
         let resultToReturn: PairDevice | null = null;
@@ -99,7 +99,7 @@ export default abstract class VoiceAssistantDriver extends Homey.Driver {
 
         return new Promise<PairDevice | null>(async (resolve) => {
             try {
-                client = new EspVoiceClient({
+                client = new EspVoiceAssistantClient({
                     host: device.store.address,
                     apiPort: device.store.port,
                     discoveryMode: true,

@@ -1,13 +1,8 @@
 # TODO before release:
     
-## Implement trigger listen
-
 ## Voice Box
     - Needs to know where it is (zone). So it can controll devices within it's own zone if the user didn't specify the zone.
-    - Still some issue with silence detection
-    - Still issue with LED feedback when playing multiple URL's
-    - Voice box should tell when it's done playing the last URL 
-      - How to do this?
+
 
 ## OpenAIRealtimeWS need reconnect logic
     - In case the web socket disconnects
@@ -116,6 +111,15 @@
 
 # Support ESPHome Api key
     - If anyone asks for it...
+
+
+
+## Voice Box
+    - Still some issue with silence detection
+    - Still issue with LED feedback when playing multiple URL's
+    - Voice box should tell when it's done playing the last URL 
+      - How to do this?
+
 
 # Phase 2
 

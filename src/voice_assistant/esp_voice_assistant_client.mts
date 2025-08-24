@@ -26,7 +26,7 @@ type EspVoiceEvents = {
 
 
 
-class EspVoiceClient extends (EventEmitter as new () => TypedEmitter<EspVoiceEvents>) {
+class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<EspVoiceEvents>) {
   private host: string;
   private apiPort: number;
   private streamId: number;
@@ -680,4 +680,4 @@ class EspVoiceClient extends (EventEmitter as new () => TypedEmitter<EspVoiceEve
 
 }
 
-export { EspVoiceClient, EspVoiceClientOptions };
+export { EspVoiceAssistantClient , EspVoiceClientOptions };

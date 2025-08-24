@@ -1,7 +1,7 @@
 import Homey from 'homey';
 import { createLogger } from '../helpers/logger.mjs';
 import { WebServer } from '../helpers/webserver.mjs';
-import { EspVoiceClient } from '../voice_assistant/esphome_home_assistant_pe.mjs';
+import { EspVoiceAssistantClient } from '../voice_assistant/esp_voice_assistant_client.mjs';
 import { DeviceManager } from '../helpers/device-manager.mjs';
 //import { transcribe } from '../../src/speech_to_text/openai_stt.mjs';
 //import { synthesize } from '../../src/text_to_speech/openai-tts.mjs';
@@ -18,7 +18,7 @@ import { DeviceStore }  from '../../src/helpers/interfaces.mjs';
 const log = createLogger('VA_DEVICE', false);
 
 export default abstract class VoiceAssistantDevice extends Homey.Device {
-  private esp!: EspVoiceClient;
+  private esp!: EspVoiceAssistantClient;
   private webServer!: WebServer;
   private deviceManager!: DeviceManager;
   private devicePromise!: Promise<void>;
@@ -91,14 +91,14 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
 
     const store = this.getStore() as DeviceStore;
-    // Initialize and start EspVoiceClient
+    // Initialize and start EspVoiceAssistantClient
 
-    this.esp = new EspVoiceClient({
+    this.esp = new EspVoiceAssistantClient({
       host: store.address,
       apiPort: store.port
     });
 
-    log.info('ESP Voice Client initialized');
+    log.info('ESP Voice Assistant Client initialized');
 
 
     this.segmenter = new PcmSegmenter();
