@@ -62,7 +62,6 @@ type RealtimeEvent = {
     [k: string]: any;
 };
 
-type ToolHandler = (args: any) => Promise<any> | any;
 
 export type RealtimeOptions = {
     /** Your OpenAI API key */

@@ -13,7 +13,7 @@ import { pcmToWavBuffer, pcmToFlacBuffer } from '../helpers/audio-encoders.mjs';
 import { PcmSegmenter } from '../helpers/pcm-segmenter.mjs';
 import { AudioData } from '../helpers/interfaces.mjs';
 import { ToolManager } from '../llm/tool-manager.mjs';
-import { DeviceStore }  from '../helpers/interfaces.mjs';
+import { DeviceStore } from '../helpers/interfaces.mjs';
 
 const log = createLogger('VA_DEVICE', false);
 
@@ -33,7 +33,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
    */
   async onInit(): Promise<void> {
     log.info('EspVoiceDevice is initializing...');
-    
+
     this.setUnavailable();
 
     this.RegisterCapabilities();
@@ -195,7 +195,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     this.agent.on('open', () => {
       log.info("Realtime agent connection opened");
     });
-    
+
     // Listen for volume changes from the device
     this.esp.on('volume', (level: number) => {
       log.info(`Received volume update: ${Math.round(level * 100)}%`);
@@ -203,7 +203,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
         log.warn('Failed to update volume_set capability', err);
       });
     });
-    
+
     // Listen for mute state changes from the device
     this.esp.on('mute', (isMuted: boolean) => {
       log.info(`Received mute state update: ${isMuted ? 'muted' : 'unmuted'}`);
@@ -212,6 +212,13 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       });
     });
 
+    this.agent.on('connectionHealthy', () => {
+      this.setAvailable();
+    });
+
+    this.agent.on('connectionUnhealthy', () => {
+      this.setUnavailable();
+    });
 
     await this.esp.start();
     await this.agent.start();
@@ -261,11 +268,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
 
 
-
-
   private RegisterCapabilities() {
-
-
 
     this.registerCapabilityListener('volume_set', async (value: number) => {
       log.info(`Capability volume_set changed to: ${value}`);
