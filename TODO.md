@@ -1,28 +1,26 @@
 # TODO before release:
     
 
-## Set description
-
 ## Create flow cards
 
 ### WHEN
-    - Device starts listening
-    - Device stops listening
-    - Device starts playback (of wav file)
-    - Device ends playback (of wav file)
+    - Device starts listening - Doable
+    - Device stops listening - Doable
+    - Device starts playback of url - Doable
+    - Device ends playback of url - Doesn't send message for this
     
 ### AND
-    - Device is listening
-    - Device is playing
-    - Device is muted
+    - Device is listening - Doable
+    - Device is playing - Not doable, done not know when it's done
+    - Device is muted - Doable
 
 ### THEN
-    - Device start listening. Output as wav or text
-    - Device begin playback for wav or text
-    - Device set volume
-    - Device set mute (on/off)
+    - Device start listening. Output as URL or text - Not doable (yet)
+    - Device begin playback for URL or text - Doable
+    - Device set volume     - Doable
+    - Device set mute (on/off) - Doable
 
-    - App trigger Agent with text prompt. Output as wav or text
+    - App trigger Agent with text prompt. Output as URL or text - Doable, needs some coding
 
 
 # ESPClient
@@ -39,23 +37,7 @@
     - https://www.npmjs.com/package/homey-log
 
 
-
-## New AI tool - Change settings (lot's of work, but would be cool)
-    - Need to expose as a tool what settings can be changed by the agent.
-    - Allowed settings are 'voice', 'language' and 'optional_ai_instructions'
-    - Example:
-      - User: "I want to change your voice"
-      - Agent: "Sure, you can change my voice to alloy, ash, ballad, ... " 
-        - This uses a tool to get all allowed voices from setting manager.
-        - Also needs a tool to keep converation alive. Set a flag or something, that will set VoiceAssistantAnnounceRequest.startConverstion to "true".
-      - User: "alloy"
-      - Agent: "Changing voice to alloy"
-        - Another tool. Will set {voice: "alloy"}.
-        - And then the agent completes it's run.
-        - Then after the agent is done do the actual change.
-          - Socket will reconnect
-        - Have the agent speak back with a new voice?
-  - 
+## Use OpenAI to translate to all languages
 
 
 
@@ -84,6 +66,27 @@
     - Start flow by name, "start <flow name>"
     - Start flow by synonym, "i'm going to bed" -> starts flow "night mode" - Need some way of letting user create connections between synonym and flow name
 
+
+
+## New AI tool - Change settings (lot's of work, but would be cool)
+    - Need to expose as a tool what settings can be changed by the agent.
+    - Allowed settings are 'voice', 'language' and 'optional_ai_instructions'
+    - Example:
+      - User: "I want to change your voice"
+      - Agent: "Sure, you can change my voice to alloy, ash, ballad, ... " 
+        - This uses a tool to get all allowed voices from setting manager.
+        - Also needs a tool to keep converation alive. Set a flag or something, that will set VoiceAssistantAnnounceRequest.startConverstion to "true".
+      - User: "alloy"
+      - Agent: "Changing voice to alloy"
+        - Another tool. Will set {voice: "alloy"}.
+        - And then the agent completes it's run.
+        - Then after the agent is done do the actual change.
+          - Socket will reconnect
+        - Have the agent speak back with a new voice?
+
+## New AI Tool - Help!
+    - Can ask agent what it can do. 
+
 ## Alarm or count down
     - This would be really nice to have
     - Looks like i can create alarm in the homey api:
@@ -105,8 +108,7 @@
     - Needs to know where it is (zone). So it can controll devices within it's own zone if the user didn't specify the zone.
     - Still some issue with silence detection
     - Still issue with LED feedback when playing multiple URL's
-    - Voice box should tell when it's done playing the last URL 
-      - How to do this?
+        - Voice box should tell when it's done playing the last URL 
 
 
 # Phase 2
