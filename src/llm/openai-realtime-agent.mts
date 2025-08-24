@@ -2,7 +2,7 @@ import WebSocket from "ws";
 import { EventEmitter } from "events";
 import { TypedEmitter } from "tiny-typed-emitter";
 import { createLogger } from '../helpers/logger.mjs';
-import { ToolManager } from './ToolManager.mjs';
+import { ToolManager } from './tool-manager.mjs';
 import { getDefaultInstructions, getResponseInstructions, getErrorResponseInstructions } from '../helpers/agent-instructions.mjs';
 
 /**
@@ -118,7 +118,7 @@ type PendingToolCall = {
     executed?: boolean;        // to avoid double-runs
 };
 
-export class OpenAIRealtimeWS extends (EventEmitter as new () => TypedEmitter<RealtimeEvents>) {
+export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter<RealtimeEvents>) {
     private ws?: WebSocket;
     private logger = createLogger("AGENT", false);
     private resample_prev: number | null = null; // last input sample from previous chunk

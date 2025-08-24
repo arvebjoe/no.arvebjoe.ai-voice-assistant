@@ -1,4 +1,4 @@
-import VoiceAssistantDevice from '../../src/homey/voice_assistant_device.mjs';
+import VoiceAssistantDevice from '../../src/homey/voice-assistant-device.mjs';
 
 export default class XiaozhiAIDevice extends VoiceAssistantDevice {
 

@@ -1,7 +1,7 @@
 import Homey from 'homey';
 //import { createLogger } from '../../src/helpers/logger.mjs';
-import { EspVoiceAssistantClient } from '../voice_assistant/esp_voice_assistant_client.mjs';
-import { PairDevice } from '../../src/helpers/interfaces.mjs';
+import { EspVoiceAssistantClient } from '../voice_assistant/esp-voice-assistant-client.mjs';
+import { PairDevice } from '../helpers/interfaces.mjs';
 
 //const log = createLogger('VA_DRIVER', false);
 

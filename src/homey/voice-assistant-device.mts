@@ -1,19 +1,19 @@
 import Homey from 'homey';
 import { createLogger } from '../helpers/logger.mjs';
 import { WebServer } from '../helpers/webserver.mjs';
-import { EspVoiceAssistantClient } from '../voice_assistant/esp_voice_assistant_client.mjs';
+import { EspVoiceAssistantClient } from '../voice_assistant/esp-voice-assistant-client.mjs';
 import { DeviceManager } from '../helpers/device-manager.mjs';
 //import { transcribe } from '../../src/speech_to_text/openai_stt.mjs';
 //import { synthesize } from '../../src/text_to_speech/openai-tts.mjs';
 //import { ToolMaker } from '../../src/llm/toolMaker.mjs';
 import { settingsManager } from '../settings/settings-manager.mjs';
-import { OpenAIRealtimeWS, RealtimeOptions } from '../llm/OpenAIRealtimeWS.mjs';
+import { OpenAIRealtimeAgent, RealtimeOptions } from '../llm/openai-realtime-agent.mjs';
 import { pcmToWavBuffer, pcmToFlacBuffer } from '../helpers/audio-encoders.mjs';
 //import { AudioData } from '../../src/helpers/interfaces.mjs';
 import { PcmSegmenter } from '../helpers/pcm-segmenter.mjs';
 import { AudioData } from '../helpers/interfaces.mjs';
-import { ToolManager } from '../llm/ToolManager.mjs';
-import { DeviceStore }  from '../../src/helpers/interfaces.mjs';
+import { ToolManager } from '../llm/tool-manager.mjs';
+import { DeviceStore }  from '../helpers/interfaces.mjs';
 
 const log = createLogger('VA_DEVICE', false);
 
@@ -23,7 +23,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
   private deviceManager!: DeviceManager;
   private devicePromise!: Promise<void>;
   private toolManager!: ToolManager;
-  private agent!: OpenAIRealtimeWS;
+  private agent!: OpenAIRealtimeAgent;
   private segmenter!: PcmSegmenter;
   private settingsUnsubscribe?: () => void; // To clean up the subscription
   private currentSettings: any = {}; // Store current settings to detect changes
@@ -73,7 +73,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     this.toolManager = new ToolManager(this.deviceManager);
 
     // TODO: Pass this.homey and this.toolMaker to the agent
-    this.agent = new OpenAIRealtimeWS(this.toolManager, agentOptions);
+    this.agent = new OpenAIRealtimeAgent(this.toolManager, agentOptions);
     log.info('Agent initialized with tools');
 
     // Store initial settings

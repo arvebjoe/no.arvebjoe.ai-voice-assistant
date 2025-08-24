@@ -2,7 +2,7 @@ import EventEmitter from 'node:events';
 import net from 'node:net';
 import dgram from 'node:dgram';
 import { TypedEmitter } from "tiny-typed-emitter";
-import { encodeFrame, decodeFrame, VA_EVENT } from './esp_messages.mjs';
+import { encodeFrame, decodeFrame, VA_EVENT } from './esp-messages.mjs';
 import { createLogger } from '../helpers/logger.mjs';
 
 const log = createLogger('ESP', false);
