@@ -1,0 +1,10 @@
+{
+  "actions": [
+    {
+      "id": "mute",
+      "title": {
+        "en": "Mute"
+      }
+    }
+  ]
+}

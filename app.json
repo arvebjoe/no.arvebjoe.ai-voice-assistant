@@ -64,6 +64,23 @@
     ]
   },
   "esm": true,
+  "flow": {
+    "actions": [
+      {
+        "id": "mute",
+        "title": {
+          "en": "Mute"
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=home-assistant-voice-preview-edition"
+          }
+        ]
+      }
+    ]
+  },
   "drivers": [
     {
       "name": {

@@ -291,6 +291,11 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     });
   }
 
+  async mute(): Promise<void> {
+    if (this.esp && this.esp.setMute) {
+        this.esp.setMute(true);
+      }
+  }
 
 
   // Called for every discovery result; return truthy if it’s this device

@@ -8,6 +8,7 @@
     - Device stops listening - Doable
     - Device starts playback of url - Doable
     - Device ends playback of url - Doesn't send message for this
+    - Device volum changed - DONE
     
 ### AND
     - Device is listening - Doable
@@ -17,8 +18,9 @@
 ### THEN
     - Device start listening. Output as URL or text - Not doable (yet)
     - Device begin playback for URL or text - Doable
-    - Device set volume     - Doable
-    - Device set mute (on/off) - Doable
+    
+    - Device set volume     - DONE
+    - Device set mute (on/off) - DONE
 
     - App trigger Agent with text prompt. Output as URL or text - Doable, needs some coding
 

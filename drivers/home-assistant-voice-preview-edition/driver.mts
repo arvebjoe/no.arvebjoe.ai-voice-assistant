@@ -8,5 +8,15 @@ export default class HomeAssistantVoicePreviewEditionDriver extends VoiceAssista
         super(...args);
     }
 
-  
+    async onInit(){
+        super.onInit();
+
+        const card = this.homey.flow.getActionCard('mute');
+        card.registerRunListener(async (args, state) => {
+            await args.device.mute();
+            // Handle the mute action
+        });
+    }
+
+
 }
