@@ -40,7 +40,7 @@
       "discovery": "esphome",
       "capabilities": [
         "volume_set",
-        "onoff",
+        "alert_listening",
         "volume_mute"
       ],
       "platforms": [
@@ -76,7 +76,7 @@
       "class": "other",
       "discovery": "esphome",
       "capabilities": [
-        "onoff"
+        "alert_listening"
       ],
       "platforms": [
         "local"
@@ -105,6 +105,19 @@
       "id": "xiaozhi-ai"
     }
   ],
+  "capabilities": {
+    "alert_listening": {
+      "type": "boolean",
+      "title": {
+        "en": "Listening"
+      },
+      "getable": true,
+      "setable": false,
+      "uiComponent": "sensor",
+      "uiQuickAction": false,
+      "icon": "/assets/listening.svg"
+    }
+  },
   "discovery": {
     "esphome": {
       "type": "mdns-sd",

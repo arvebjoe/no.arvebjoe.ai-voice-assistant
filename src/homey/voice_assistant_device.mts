@@ -108,7 +108,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     this.esp.on('start', async () => {
       log.info("Voice session started");
       this.devicePromise = this.deviceManager.fetchData();
-      this.setCapabilityValue('onoff', true);
+      this.setCapabilityValue('alert_listening', true);
       this.esp.run_start();
       this.esp.stt_vad_start();
       this.esp.begin_mic_capture();
@@ -184,7 +184,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       this.esp.tts_end();
       this.esp.closeMic();
       this.esp.run_end();
-      this.setCapabilityValue('onoff', false);
+      this.setCapabilityValue('alert_listening', false);
     });
 
     this.agent.on('error', (error: Error) => {
@@ -269,19 +269,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
   private RegisterCapabilities() {
 
-    this.registerCapabilityListener('onoff', async (value: boolean) => {
-      log.info(`Capability onoff changed to: ${value}`);
-    
-        
-        // Start listening when turned on
-        if (this.esp && typeof this.esp.startListening === 'function') {
-          log.info('Triggering voice assistant to start listening');
-          this.esp.startListening();
-        } else {
-          log.warn('ESP client not initialized or startListening method not available');
-        }
 
-    });
 
     this.registerCapabilityListener('volume_set', async (value: number) => {
       log.info(`Capability volume_set changed to: ${value}`);

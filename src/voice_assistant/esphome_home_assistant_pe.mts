@@ -525,19 +525,6 @@ class EspVoiceClient extends (EventEmitter as new () => TypedEmitter<EspVoiceEve
   }
 
 
-  startListening() {
-    log.info('startListening() called');
-
-    this.emit('start');
-    setTimeout(() => {
-      this.send('VoiceAssistantRequest',
-        {
-          start: true,
-          flags: 0
-        });
-    }, 1000);
-
-  }
 
 
   /**
