@@ -19,6 +19,13 @@ type RealtimeEvents = {
     silence: (source: string) => void;
     error: (err: Error) => void;
 
+    // Reconnection events
+    reconnecting: (attempt: number, delay: number) => void;
+    reconnected: () => void;
+    reconnectFailed: (attempt: number, error: Error) => void;
+    connectionHealthy: () => void;
+    connectionUnhealthy: () => void;
+
     "input_audio_buffer.committed": () => void;
 
     "session.updated": (msg: any) => void;
@@ -89,9 +96,7 @@ export type RealtimeOptions = {
     // Used in the agent instructions to refer to the language to communicate in
     languageName?: string; // e.g., 'Norwegian'
 
-
     additionalInstructions?: string;
-
 
     /** Custom system instructions . */
     instructions?: string;
@@ -107,6 +112,23 @@ export type RealtimeOptions = {
 
     /** Emit extra debug logs */
     verbose?: boolean;
+
+    /* ----------------- Reconnection options ----------------- */
+
+    /** Maximum number of reconnection attempts (default: Infinity) */
+    maxReconnectAttempts?: number;
+
+    /** Initial reconnection delay in milliseconds (default: 1000) */
+    reconnectDelay?: number;
+
+    /** Maximum reconnection delay in milliseconds (default: 30000) */
+    maxReconnectDelay?: number;
+
+    /** Connection health check interval in milliseconds (default: 30000) */
+    connectionHealthCheckInterval?: number;
+
+    /** Enable automatic reconnection on connection loss (default: true) */
+    enableAutoReconnect?: boolean;
 };
 
 type PendingToolCall = {
@@ -140,11 +162,15 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
             | "localVADSilenceThreshold"
             | "localVADSilenceMs"
             | "verbose"
+            | "maxReconnectAttempts"
+            | "reconnectDelay"
+            | "maxReconnectDelay"
+            | "connectionHealthCheckInterval"
+            | "enableAutoReconnect"
         >
     > & {
         apiKey: string;
         url: string;
-
     };
 
     // buffer local-VAD state
@@ -152,6 +178,18 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
 
     // keep your existing maps, but store full records keyed by callId
     private pendingToolCalls: Map<string, PendingToolCall> = new Map();
+
+    // Reconnection logic properties
+    private reconnectAttempts = 0;
+    private maxReconnectAttempts = Infinity; // Keep trying indefinitely
+    private reconnectDelay = 1000; // Start with 1 second
+    private maxReconnectDelay = 30000; // Max 30 seconds between attempts
+    private reconnectTimeoutId?: NodeJS.Timeout;
+    private isManuallyClosing = false;
+    private isReconnecting = false;
+    private pingIntervalId?: NodeJS.Timeout;
+    private lastPongTime = 0;
+    private connectionHealthCheckInterval = 30000; // Check every 30 seconds
 
     constructor(toolManager: ToolManager, opts: RealtimeOptions) {
         super();
@@ -180,7 +218,19 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
             localVADSilenceThreshold: opts.localVADSilenceThreshold ?? 0.01,
             localVADSilenceMs: opts.localVADSilenceMs ?? 800,
             verbose: !!opts.verbose,
+            // Reconnection options
+            maxReconnectAttempts: opts.maxReconnectAttempts ?? Infinity,
+            reconnectDelay: opts.reconnectDelay ?? 1000,
+            maxReconnectDelay: opts.maxReconnectDelay ?? 30000,
+            connectionHealthCheckInterval: opts.connectionHealthCheckInterval ?? 30000,
+            enableAutoReconnect: opts.enableAutoReconnect ?? true,
         };
+
+        // Initialize reconnection properties from options
+        this.maxReconnectAttempts = this.options.maxReconnectAttempts;
+        this.reconnectDelay = this.options.reconnectDelay;
+        this.maxReconnectDelay = this.options.maxReconnectDelay;
+        this.connectionHealthCheckInterval = this.options.connectionHealthCheckInterval;
     }
 
     /* ----------------- Public API ----------------- */
@@ -192,37 +242,83 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
     async start(): Promise<void> {
         if (this.ws && this.ws.readyState === WebSocket.OPEN) return;
 
+        // Clear any existing reconnect timeout
+        if (this.reconnectTimeoutId) {
+            clearTimeout(this.reconnectTimeoutId);
+            this.reconnectTimeoutId = undefined;
+        }
+
         this.log("Connecting WS:", this.options.url);
 
-        this.ws = new WebSocket(this.options.url, {
-            headers: {
-                Authorization: `Bearer ${this.options.apiKey}`,
-                "OpenAI-Beta": "realtime=v1", // required during beta
-            },
-        });
+        try {
+            this.ws = new WebSocket(this.options.url, {
+                headers: {
+                    Authorization: `Bearer ${this.options.apiKey}`,
+                    "OpenAI-Beta": "realtime=v1", // required during beta
+                },
+            });
 
-        this.ws.on("open", () => {
-            this.log("WebSocket open");
-            this.emit("open");
-            this.sendSessionUpdate();
+            this.ws.on("open", () => {
+                this.log("WebSocket open");
+                this.reconnectAttempts = 0; // Reset reconnect attempts on successful connection
+                this.isReconnecting = false;
+                this.lastPongTime = Date.now();
 
-        });
+                this.emit("open");
+                this.sendSessionUpdate();
+                this.startConnectionHealthCheck();
 
-        this.ws.on("message", (data) => this.onMessage(data));
-        this.ws.on("error", (err) => {
-            this.log("WebSocket error:", err);
-            this.emit("error", err);
-        });
-        this.ws.on("close", (code, reason) => {
-            this.log("WebSocket closed:", code, reason.toString());
-            this.emit("close", code, reason.toString());
-        });
+                if (this.reconnectAttempts > 0) {
+                    this.emit("reconnected");
+                }
+            });
+
+            this.ws.on("message", (data) => this.onMessage(data));
+
+            this.ws.on("error", (err) => {
+                this.log("WebSocket error:", err);
+                this.emit("error", err);
+            });
+
+            this.ws.on("close", (code, reason) => {
+                this.log("WebSocket closed:", code, reason.toString());
+                this.stopConnectionHealthCheck();
+                this.emit("close", code, reason.toString());
+
+                // Only attempt reconnection if not manually closing
+                if (!this.isManuallyClosing && !this.isReconnecting) {
+                    this.scheduleReconnect();
+                }
+            });
+
+            this.ws.on("pong", () => {
+                this.logger.info("Received pong", 'HEALTH');
+                this.lastPongTime = Date.now();
+            });
+
+        } catch (error) {
+            this.log("Failed to create WebSocket:", error);
+            this.emit("error", error as Error);
+
+            if (!this.isManuallyClosing) {
+                this.scheduleReconnect();
+            }
+        }
     }
 
     /**
      * Gracefully close the socket.
      */
     close(code = 1000, reason = "client-close") {
+        this.isManuallyClosing = true;
+        this.stopConnectionHealthCheck();
+
+        // Clear any pending reconnect attempts
+        if (this.reconnectTimeoutId) {
+            clearTimeout(this.reconnectTimeoutId);
+            this.reconnectTimeoutId = undefined;
+        }
+
         this.ws?.close(code, reason);
     }
 
@@ -356,10 +452,17 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
     }
 
     private async restart() {
+        // Set flag to prevent automatic reconnection during manual restart
+        const wasManuallyClosing = this.isManuallyClosing;
+        this.isManuallyClosing = true;
+
         this.close();
 
         // Wait a bit for clean closure
         await new Promise(resolve => setTimeout(resolve, 100));
+
+        // Reset the manual closing flag
+        this.isManuallyClosing = wasManuallyClosing;
 
         // Reconnect with new options
         await this.start();
@@ -651,13 +754,21 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
     private send(obj: any) {
         this.assertOpen();
         const str = JSON.stringify(obj);
-        this.logMessage(obj, "SENDING");
+
+        if (obj.type !== "input_audio_buffer.append") {
+            this.logMessage(obj, "SENDING");
+        }
+
         this.ws!.send(str);
     }
 
     private assertOpen() {
         if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-            throw new Error("WebSocket is not open");
+            // If we're not manually closing and not already reconnecting, start reconnection
+            if (!this.isManuallyClosing && !this.isReconnecting) {
+                this.scheduleReconnect();
+            }
+            throw new Error("WebSocket is not open - reconnection initiated");
         }
     }
 
@@ -685,7 +796,156 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
         }
     }
 
+    /* ----------------- Reconnection logic ----------------- */
 
+    /**
+     * Schedule a reconnection attempt with exponential backoff
+     */
+    private scheduleReconnect() {
+        if (this.isManuallyClosing || this.reconnectTimeoutId || !this.options.enableAutoReconnect) {
+            return; // Don't reconnect if manually closing, already scheduled, or auto-reconnect disabled
+        }
+
+        this.isReconnecting = true;
+        this.reconnectAttempts++;
+
+        // Calculate delay with exponential backoff and jitter
+        const baseDelay = Math.min(
+            this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1),
+            this.maxReconnectDelay
+        );
+
+        // Add jitter (±25%) to prevent thundering herd
+        const jitter = baseDelay * 0.25 * (Math.random() - 0.5);
+        const delay = Math.max(1000, baseDelay + jitter);
+
+        this.logger.info(`Scheduling reconnect attempt ${this.reconnectAttempts} in ${delay}ms`, 'RECONNECT');
+        this.emit("reconnecting", this.reconnectAttempts, delay);
+
+        this.reconnectTimeoutId = setTimeout(async () => {
+            this.reconnectTimeoutId = undefined;
+
+            try {
+                await this.start();
+            } catch (error) {
+                this.logger.info(`Reconnect attempt ${this.reconnectAttempts} failed:`, 'RECONNECT', error);
+                this.emit("reconnectFailed", this.reconnectAttempts, error as Error);
+
+                // If we haven't exceeded max attempts, schedule another reconnect
+                if (this.reconnectAttempts < this.maxReconnectAttempts) {
+                    this.scheduleReconnect();
+                } else {
+                    this.logger.info("Max reconnect attempts reached", 'RECONNECT');
+                    this.isReconnecting = false;
+                }
+            }
+        }, delay);
+    }
+
+    /**
+     * Start monitoring connection health with periodic pings
+     */
+    private startConnectionHealthCheck() {
+        this.stopConnectionHealthCheck(); // Clear any existing interval
+
+        this.pingIntervalId = setInterval(() => {
+            if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                // Check if we received a pong recently
+                const timeSinceLastPong = Date.now() - this.lastPongTime;
+
+                if (timeSinceLastPong > this.connectionHealthCheckInterval * 2) {
+                    // No pong received for too long - connection might be unhealthy
+                    this.logger.info("Connection appears unhealthy - no pong received", 'HEALTH');
+                    this.emit("connectionUnhealthy");
+
+                    // Force reconnection
+                    this.ws.close(1006, "connection-health-check-failed");
+                } else {
+                    // Send ping to check connection
+                    try {
+                        this.logger.info("Sending ping", 'HEALTH');
+                        this.ws.ping();
+                        this.emit("connectionHealthy");
+                    } catch (error) {
+                        this.logger.info("Failed to send ping:", 'HEALTH', error);
+                        this.ws.close(1006, "ping-failed");
+                    }
+                }
+            }
+        }, this.connectionHealthCheckInterval);
+    }
+
+    /**
+     * Stop the connection health check
+     */
+    private stopConnectionHealthCheck() {
+        if (this.pingIntervalId) {
+            clearInterval(this.pingIntervalId);
+            this.pingIntervalId = undefined;
+        }
+    }
+
+    /**
+     * Get current connection status and statistics
+     */
+    public getConnectionStatus() {
+        return {
+            connected: this.ws?.readyState === WebSocket.OPEN,
+            reconnectAttempts: this.reconnectAttempts,
+            isReconnecting: this.isReconnecting,
+            isManuallyClosing: this.isManuallyClosing,
+            lastPongTime: this.lastPongTime,
+            timeSinceLastPong: this.lastPongTime > 0 ? Date.now() - this.lastPongTime : -1,
+        };
+    }
+
+    /**
+     * Force a reconnection (useful for testing or manual recovery)
+     */
+    public async forceReconnect() {
+        if (this.isManuallyClosing) {
+            throw new Error("Cannot force reconnect while manually closing");
+        }
+
+        this.log("Forcing reconnection");
+        this.reconnectAttempts = 0; // Reset attempts for forced reconnect
+
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            this.ws.close(1000, "force-reconnect");
+        } else {
+            await this.start();
+        }
+    }
+
+    /**
+     * Completely destroy the agent and clean up all resources
+     */
+    public destroy() {
+        this.log("Destroying OpenAI Realtime Agent");
+        this.isManuallyClosing = true;
+
+        // Clear all timers
+        this.stopConnectionHealthCheck();
+        if (this.reconnectTimeoutId) {
+            clearTimeout(this.reconnectTimeoutId);
+            this.reconnectTimeoutId = undefined;
+        }
+
+        // Close WebSocket
+        if (this.ws) {
+            this.ws.removeAllListeners();
+            if (this.ws.readyState === WebSocket.OPEN) {
+                this.ws.close(1000, "agent-destroyed");
+            }
+            this.ws = undefined;
+        }
+
+        // Clear pending tool calls
+        this.pendingToolCalls.clear();
+
+        // Remove all event listeners
+        this.removeAllListeners();
+    }
 
     /* ----------------- Built-in tools ----------------- */
 

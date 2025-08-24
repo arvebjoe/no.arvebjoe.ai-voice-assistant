@@ -116,11 +116,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
     // Bind the event handler to this class instance
     this.esp.on('chunk', (data: Buffer) => {
-      log.info(`New RX chunk: ${data.length} bytes`);
-      // TODO: Move upsample16kTo24k to wav-helper.js
       const pcm24 = this.agent.upsample16kTo24k(data);
-      // TODO: Have a test buffer 
-      //audioBuffer.push(pcm24);
       this.agent.sendAudioChunk(pcm24);
     });
 

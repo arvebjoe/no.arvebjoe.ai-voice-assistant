@@ -13,11 +13,6 @@
 
 ## Set description
 
-## Suppor none-static IP adresses. 
-    - Handler on the device onSometingChanged()
-        - Just update the store
-        - Then client.restart()
-
 ## Create flow cards
 
 ### WHEN
