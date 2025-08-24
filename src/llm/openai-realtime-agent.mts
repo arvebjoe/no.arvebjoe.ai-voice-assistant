@@ -247,7 +247,7 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
             this.reconnectTimeoutId = undefined;
         }
 
-        this.log("Connecting WS:", this.options.url);
+        this.logger.info("Connecting WS:", 'START', this.options.url);
 
         try {
             this.ws = new WebSocket(this.options.url, {
@@ -258,7 +258,7 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
             });
 
             this.ws.on("open", () => {
-                this.log("WebSocket open");
+                this.logger.info("WebSocket open");
                 this.reconnectAttempts = 0; // Reset reconnect attempts on successful connection
                 this.isReconnecting = false;
                 this.lastPongTime = Date.now();
@@ -275,12 +275,12 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
             this.ws.on("message", (data) => this.onMessage(data));
 
             this.ws.on("error", (err) => {
-                this.log("WebSocket error:", err);
+                this.logger.error("WebSocket error", err);
                 this.emit("error", err);
             });
 
             this.ws.on("close", (code, reason) => {
-                this.log("WebSocket closed:", code, reason.toString());
+                this.logger.info("WebSocket closed", undefined, { code, reason: reason.toString() });
                 this.stopConnectionHealthCheck();
                 this.emit("close", code, reason.toString());
 
@@ -296,7 +296,7 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
             });
 
         } catch (error) {
-            this.log("Failed to create WebSocket:", error);
+            this.logger.error("Failed to create WebSocket", error);
             this.emit("error", error as Error);
 
             if (!this.isManuallyClosing) {
@@ -662,8 +662,11 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
         if (rec.argsText == null) return;        // still missing args (unlikely)
 
         let args: any = {};
-        try { args = rec.argsText ? JSON.parse(rec.argsText) : {}; }
-        catch (e) { this.log("Tool args JSON parse error:", e); }
+        try {
+            args = rec.argsText ? JSON.parse(rec.argsText) : {};
+        } catch (e) {
+            this.logger.error("Tool args JSON parse error", e);
+        }
 
         this.emit("tool.called", { callId, name: rec.name, args });
 
@@ -786,14 +789,7 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
         this.logger.info(msg.type, direction, msg);
     }
 
-    private log(message: string, ...args: any[]) {
-        if (this.options.verbose) {
 
-            this.logger.info(message, undefined, ...args);
-            // eslint-disable-next-line no-console
-            //console.log("[Realtime]", ...args);
-        }
-    }
 
     /* ----------------- Reconnection logic ----------------- */
 
@@ -906,7 +902,7 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
             throw new Error("Cannot force reconnect while manually closing");
         }
 
-        this.log("Forcing reconnection");
+        this.logger.info("Forcing reconnection");
         this.reconnectAttempts = 0; // Reset attempts for forced reconnect
 
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
@@ -920,7 +916,7 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
      * Completely destroy the agent and clean up all resources
      */
     public destroy() {
-        this.log("Destroying OpenAI Realtime Agent");
+        this.logger.info("Destroying OpenAI Realtime Agent");
         this.isManuallyClosing = true;
 
         // Clear all timers
