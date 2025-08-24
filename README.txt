@@ -1,0 +1,3 @@
+Turn ESPHome Voice Assistant devices into a natural voice interface for Homey. Speak normally to get quick answers and control lights, climate, music, scenes and more. Real-time responsiveness powered by OpenAI’s Realtime API makes everyday tasks feel instant and effortless.
+
+Ideal for whole-home use, each room gets hands-free control and fast replies. It works with your existing Homey devices and Flows, so your routines and automations respond the moment you speak—no apps or remotes required.

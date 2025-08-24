@@ -10,7 +10,7 @@
     "en": "AI Voice Assistant"
   },
   "description": {
-    "en": "Adds support for MyBrand devices."
+    "en": "Ask anything. Control everything."
   },
   "category": [
     "tools"
@@ -29,5 +29,37 @@
     "email": "arvebjoe@hotmail.com"
   },
   "support": "https://github.com/arvebjoe/no.arvebjoe.ai-voice-assistant",
-  "source": "https://github.com/arvebjoe/no.arvebjoe.ai-voice-assistant"
+  "source": "https://github.com/arvebjoe/no.arvebjoe.ai-voice-assistant",
+  "contributing": {
+    "donate": {
+      "paypal": {
+        "username": "arvebjoe"
+      }
+    }
+  },
+  "tags": {
+    "en": [
+      "voice",
+      "voice control",
+      "voice assistant",
+      "esphome",
+      "esphome voice assistant",
+      "smart home",
+      "homey",
+      "openai",
+      "realtime",
+      "real-time",
+      "hands-free",
+      "natural language",
+      "automation",
+      "homey flows",
+      "scenes",
+      "wake word",
+      "multi-room",
+      "low latency",
+      "fast",
+      "nabu",
+      "xiaozhi"
+    ]
+  }
 }

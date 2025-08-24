@@ -1,11 +1,5 @@
 # TODO before release:
     
-## Voice Box
-    - Needs to know where it is (zone). So it can controll devices within it's own zone if the user didn't specify the zone.
-
-## Add donate button
-
-## Create Homey Community Topic ?
 
 ## Set description
 
@@ -76,6 +70,9 @@
 
 # TODO after release
 
+## Create Homey Community Topic ?
+
+
 ## Locally hosted AI
     - Whipsper
     - Piper
@@ -104,8 +101,8 @@
     - If anyone asks for it...
 
 
-
 ## Voice Box
+    - Needs to know where it is (zone). So it can controll devices within it's own zone if the user didn't specify the zone.
     - Still some issue with silence detection
     - Still issue with LED feedback when playing multiple URL's
     - Voice box should tell when it's done playing the last URL 
