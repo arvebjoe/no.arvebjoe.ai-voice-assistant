@@ -4,6 +4,9 @@
     - Needs to know where it is (zone). So it can controll devices within it's own zone if the user didn't specify the zone.
 
 
+## Device deletion
+    - What will happen?
+
 ## OpenAIRealtimeWS need reconnect logic
     - In case the web socket disconnects
 
