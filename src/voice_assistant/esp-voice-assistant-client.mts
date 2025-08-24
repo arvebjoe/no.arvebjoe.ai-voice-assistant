@@ -27,6 +27,7 @@ type EspVoiceEvents = {
 
 
 class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<EspVoiceEvents>) {
+
   private host: string;
   private apiPort: number;
   private streamId: number;
@@ -132,7 +133,9 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
     this.emit('disconnected');
   }
 
-
+  setHost(address: any) {
+    this.host = address;
+  }
 
   scheduleReconnect(): void {
 

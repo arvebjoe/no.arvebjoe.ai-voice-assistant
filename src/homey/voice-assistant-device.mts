@@ -33,7 +33,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
    */
   async onInit(): Promise<void> {
     log.info('EspVoiceDevice is initializing...');
-    // TODO:
+    
     this.setUnavailable();
 
     this.RegisterCapabilities();
@@ -303,21 +303,20 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
   async onDiscoveryAvailable(r: any) {
     await this.setStoreValue('address', r.address).catch(this.error);
     await this.setStoreValue('port', r.port ?? 6053).catch(this.error);
-
-    // TODO: connect to your device here (native API, websocket, etc.)
-    // e.g. this.api = new MyEspHomeClient({ host: r.address, port: r.port ?? 6053 });
-    // await this.api.connect(); // throw to mark device unavailable
   }
 
   // IP changed (e.g., DHCP lease renewal)
   onDiscoveryAddressChanged(r: any) {
+    log.info('Device address changed, updating ESP client', 'onDiscoveryAddressChanged', r);
     this.setStoreValue('address', r.address).catch(this.error);
-    // this.api?.reconnectTo(r.address);
+    this.esp.stop();
+    this.esp.setHost(r.address);
+    this.esp.start().catch(this.error);
   }
 
   // Seen again after being offline, try to reconnect
   onDiscoveryLastSeenChanged(_r: any) {
-    // this.api?.reconnect().catch(this.error);
+    // Not needed, will automatically reconnect
   }
 
 
