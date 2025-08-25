@@ -4,25 +4,22 @@
 ## Create flow cards
 
 ### WHEN
-    - Device starts listening - Doable
-    - Device stops listening - Doable
-    - Device starts playback of url - Doable
-    - Device ends playback of url - Doesn't send message for this
+    - Device starts listening - DONE
+    - Device stops listening - DONE
     - Device volum changed - DONE
     
 ### AND
-    - Device is listening - Doable
-    - Device is playing - Not doable, done not know when it's done
+    - Device is listening - DONE    
     - Device is muted - Doable
 
 ### THEN
-    - Device start listening. Output as URL or text - Not doable (yet)
-    - Device begin playback for URL or text - Doable
-    
-    - Device set volume     - DONE
+    - Device start listening. DONE
+    - Device set volume     - DONE 
     - Device set mute (on/off) - DONE
-
-    - App trigger Agent with text prompt. Output as URL or text - Doable, needs some coding
+    - Device begin playback for URL - Doable
+    - Device begin playback of text, need to go via tts service - Doable??
+    - Device should trigger agent with text prompt. Output directly to speaker - Doable
+    - Device should trigger agent with text prompt. Output as text  - Doable
 
 
 # ESPClient
@@ -63,6 +60,13 @@
     - Ollama 
       - as an realtime agent?
       - using gpt-oss? (omg!)
+
+
+    Build a Simple AI Agent with OpenAI’s gpt-oss-20b 
+    https://www.youtube.com/watch?v=e2sgwsC92Bc
+
+    Build Anything with OpenAI’s New OSS Models (n8n Agents)
+    https://www.youtube.com/watch?v=Myjo1amUZ08
 
 ## Agent tools
     - Start flow by name, "start <flow name>"

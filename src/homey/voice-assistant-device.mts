@@ -108,7 +108,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     this.esp.on('start', async () => {
       log.info("Voice session started");
       this.devicePromise = this.deviceManager.fetchData();
-      this.setCapabilityValue('listening', true);
+      this.setCapabilityValue('onoff', true);
       this.esp.run_start();
       this.esp.stt_vad_start();
       this.esp.begin_mic_capture();
@@ -180,7 +180,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       this.esp.tts_end();
       this.esp.closeMic();
       this.esp.run_end();
-      this.setCapabilityValue('listening', false);      
+      this.setCapabilityValue('onoff', false);      
     });
 
     this.agent.on('error', (error: Error) => {
@@ -271,14 +271,14 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
   private RegisterCapabilities() {
 
 
-    this.registerCapabilityListener('listening', async (value: boolean) => {
+    this.registerCapabilityListener('onoff', async (value: boolean) => {
       log.info(`Capability listening changed to: ${value}`);
       
       if (this.esp && value) {
         this.esp.run_start();
         this.esp.playAudioFromUrl('https://github.com/esphome/home-assistant-voice-pe/raw/dev/sounds/wake_word_triggered.flac', true);
       }
-      
+
     });
 
     this.registerCapabilityListener('volume_set', async (value: number) => {

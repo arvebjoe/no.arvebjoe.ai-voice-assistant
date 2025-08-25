@@ -5,7 +5,7 @@
   "class": "other",
   "discovery": "esphome",
   "capabilities": [
-    "listening"
+    "onoff"
   ],
   "platforms": [
     "local"
