@@ -139,6 +139,25 @@ type PendingToolCall = {
     executed?: boolean;        // to avoid double-runs
 };
 
+/**
+ * OpenAI Realtime Agent that supports both audio and text input/output combinations:
+ * 
+ * Input/Output Combinations:
+ * - Audio -> Audio: Use sendAudioChunk() (default behavior, output mode auto-set to "audio")
+ * - Text -> Audio: Use sendTextForAudioResponse(text) or setOutputMode("audio") + sendUserText() + createResponse()
+ * - Audio -> Text: Use setAudioToTextMode() then sendAudioChunk() (output mode set to "text")
+ * - Text -> Text: Use sendTextForTextResponse(text) or setOutputMode("text") + sendUserText() + createResponse()
+ * 
+ * Output Events:
+ * - Audio output: Emits "audio.delta" events (existing behavior)
+ * - Text output: Emits "text.done" events (existing behavior)
+ * 
+ * Default Behavior:
+ * - Output mode defaults to "audio"
+ * - sendAudioChunk() automatically sets output mode to "audio" (unless explicitly set to "text")
+ * - Text input methods allow explicit output mode control
+ */
+
 export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter<RealtimeEvents>) {
     private ws?: WebSocket;
     private logger = createLogger("AGENT", false);
@@ -189,6 +208,9 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
     private pingIntervalId?: NodeJS.Timeout;
     private lastPongTime = 0;
     private connectionHealthCheckInterval = 30000; // Check every 30 seconds
+
+    // Output mode configuration
+    private outputMode: "audio" | "text" = "audio"; // Default to audio output
 
     constructor(toolManager: ToolManager, opts: RealtimeOptions) {
         super();
@@ -321,6 +343,56 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
         this.ws?.close(code, reason);
     }
 
+
+    sendSomeText() {
+        this.logger.info("Sending text to agent");
+        // Send "Hvordan går det med deg i dag?" to the agent.
+        // Default to audio output for this test method
+        this.sendTextForAudioResponse("Hvordan går det med deg i dag?");
+    }
+
+    /**
+     * Set the output mode for the agent responses.
+     * @param mode - "audio" for audio output, "text" for text output
+     */
+    setOutputMode(mode: "audio" | "text") {
+        this.outputMode = mode;
+        this.logger.info(`Output mode set to: ${mode}`);
+    }
+
+    /**
+     * Get the current output mode.
+     */
+    getOutputMode(): "audio" | "text" {
+        return this.outputMode;
+    }
+
+    /**
+     * Send text input and get audio response (Text -> Audio).
+     */
+    sendTextForAudioResponse(text: string) {
+        this.setOutputMode("audio");
+        this.sendUserText(text);
+        this.createResponse();
+    }
+
+    /**
+     * Send text input and get text response (Text -> Text).
+     */
+    sendTextForTextResponse(text: string) {
+        this.setOutputMode("text");
+        this.sendUserText(text);
+        this.createResponse();
+    }
+
+    /**
+     * Send audio chunk and expect text response (Audio -> Text).
+     * Call this method first to set text mode, then use sendAudioChunk() normally.
+     */
+    setAudioToTextMode() {
+        this.setOutputMode("text");
+    }
+
     /**
      * Push a PCM16 mono 24kHz chunk into the input buffer.
      * The API expects Base64-encoded audio bytes via input_audio_buffer.append.
@@ -332,6 +404,11 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
         }
 
         this.assertOpen();
+
+        // Default to audio output when receiving audio input (unless explicitly set to text mode)
+        if (this.outputMode !== "text") {
+            this.setOutputMode("audio");
+        }
 
         const b64 = pcm16Mono24k.toString("base64");
 
@@ -387,10 +464,14 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
      */
     createResponse(extra?: Record<string, any>) {
         this.assertOpen();
+        
+        // Determine modalities based on output mode
+        const modalities = this.outputMode === "text" ? ["text"] : ["audio", "text"];
+        
         const evt = {
             type: "response.create",
             response: {
-                modalities: ["audio", "text"],           // audio is requested here
+                modalities,           // Use appropriate modalities based on output mode
                 // voice comes from the session (session.voice)
                 instructions:
                     getResponseInstructions(),
@@ -404,6 +485,8 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
     /**
      * Send a plain text "user" message (no audio).
      * Often followed by createResponse() to trigger the model's reply.
+     * Note: This method does not change the output mode. Use sendTextForAudioResponse() 
+     * or sendTextForTextResponse() for explicit output mode control.
      */
     sendUserText(text: string) {
         this.assertOpen();

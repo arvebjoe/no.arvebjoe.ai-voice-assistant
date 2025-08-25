@@ -91,6 +91,7 @@
       "capabilities": [
         "volume_set",
         "onoff",
+        "listening",
         "volume_mute"
       ],
       "platforms": [

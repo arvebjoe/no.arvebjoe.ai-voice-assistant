@@ -147,6 +147,10 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       this.segmenter.feed(audioBuffer);
     });
 
+    this.agent.on('text.done', (msg: any) => {
+      log.info('Text processing done:', undefined, msg);
+    });
+
     this.segmenter.on('chunk', async (chunk: Buffer) => {
       log.info(`New TX chunk: ${chunk.length} bytes`);
 
@@ -269,6 +273,21 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
 
   private RegisterCapabilities() {
+
+
+
+    this.registerCapabilityListener('listening', async (value: boolean) => {
+      log.info(`Capability listening changed to: ${value}`);
+
+      if(value){
+        log.info("Sending test prompt to agent. Result should be audio.");
+        this.agent.sendTextForAudioResponse("Hvordan går det med deg i dag?");
+      } else {
+        log.info("Sending test prompt to agent. Result should be text.");
+        this.agent.sendTextForTextResponse("Hvor mye er klokka?");
+      }
+      
+    });
 
 
     this.registerCapabilityListener('onoff', async (value: boolean) => {
