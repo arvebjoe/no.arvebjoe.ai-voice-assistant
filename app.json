@@ -90,7 +90,7 @@
       "discovery": "esphome",
       "capabilities": [
         "volume_set",
-        "alert_listening",
+        "listening",
         "volume_mute"
       ],
       "platforms": [
@@ -126,7 +126,7 @@
       "class": "other",
       "discovery": "esphome",
       "capabilities": [
-        "alert_listening"
+        "listening"
       ],
       "platforms": [
         "local"
@@ -156,14 +156,14 @@
     }
   ],
   "capabilities": {
-    "alert_listening": {
+    "listening": {
       "type": "boolean",
       "title": {
         "en": "Listening"
       },
       "getable": true,
-      "setable": false,
-      "uiComponent": "sensor",
+      "setable": true,
+      "uiComponent": "button",
       "uiQuickAction": false,
       "icon": "/assets/listening.svg"
     }

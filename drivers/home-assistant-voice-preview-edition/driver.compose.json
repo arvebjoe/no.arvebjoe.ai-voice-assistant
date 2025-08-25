@@ -4,9 +4,9 @@
   },
   "class": "other",
   "discovery": "esphome",
-  "capabilities": [
+  "capabilities": [    
     "volume_set",
-    "alert_listening",
+    "listening",
     "volume_mute"
   ],
   "platforms": [

@@ -108,7 +108,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     this.esp.on('start', async () => {
       log.info("Voice session started");
       this.devicePromise = this.deviceManager.fetchData();
-      this.setCapabilityValue('alert_listening', true);
+      this.setCapabilityValue('listening', true);
       this.esp.run_start();
       this.esp.stt_vad_start();
       this.esp.begin_mic_capture();
@@ -180,7 +180,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       this.esp.tts_end();
       this.esp.closeMic();
       this.esp.run_end();
-      this.setCapabilityValue('alert_listening', false);
+      this.setCapabilityValue('listening', false);      
     });
 
     this.agent.on('error', (error: Error) => {
@@ -270,6 +270,17 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
   private RegisterCapabilities() {
 
+
+    this.registerCapabilityListener('listening', async (value: boolean) => {
+      log.info(`Capability listening changed to: ${value}`);
+      
+      if (this.esp && value) {
+        this.esp.run_start();
+        this.esp.playAudioFromUrl('https://github.com/esphome/home-assistant-voice-pe/raw/dev/sounds/wake_word_triggered.flac', true);
+      }
+      
+    });
+
     this.registerCapabilityListener('volume_set', async (value: number) => {
       log.info(`Capability volume_set changed to: ${value}`);
       // Send the volume command to the ESPHome device
@@ -293,8 +304,8 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
   async mute(): Promise<void> {
     if (this.esp && this.esp.setMute) {
-        this.esp.setMute(true);
-      }
+      this.esp.setMute(true);
+    }
   }
 
 

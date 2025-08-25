@@ -2,8 +2,8 @@
   "type": "boolean",
   "title": { "en": "Listening" },
   "getable": true,
-  "setable": false,
-  "uiComponent": "sensor",
+  "setable": true,
+  "uiComponent": "button",
   "uiQuickAction": false,
   "icon": "/assets/listening.svg"
 }
