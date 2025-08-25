@@ -184,7 +184,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       this.esp.tts_end();
       this.esp.closeMic();
       this.esp.run_end();
-      this.setCapabilityValue('onoff', false);      
+      this.setCapabilityValue('onoff', false);
     });
 
     this.agent.on('error', (error: Error) => {
@@ -279,6 +279,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     this.registerCapabilityListener('listening', async (value: boolean) => {
       log.info(`Capability listening changed to: ${value}`);
 
+      /*
       if(value){
         log.info("Sending test prompt to agent. Result should be audio.");
         this.agent.sendTextForAudioResponse("Hvordan går det med deg i dag?");
@@ -286,13 +287,14 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
         log.info("Sending test prompt to agent. Result should be text.");
         this.agent.sendTextForTextResponse("Hvor mye er klokka?");
       }
-      
+      */
+      this.agent.textToSpeech("Jeg er kong Harald av Norge!");
     });
 
 
     this.registerCapabilityListener('onoff', async (value: boolean) => {
       log.info(`Capability listening changed to: ${value}`);
-      
+
       if (this.esp && value) {
         this.esp.run_start();
         this.esp.playAudioFromUrl('https://github.com/esphome/home-assistant-voice-pe/raw/dev/sounds/wake_word_triggered.flac', true);

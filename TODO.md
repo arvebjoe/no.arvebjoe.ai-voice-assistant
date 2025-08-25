@@ -1,25 +1,25 @@
 # TODO before release:
     
 
-## Create flow cards
+## Create flow cards for device
 
 ### WHEN
-    - Device starts listening - DONE
-    - Device stops listening - DONE
-    - Device volum changed - DONE
+    - starts listening - DONE
+    - stops listening - DONE
+    - volum changed - DONE
     
 ### AND
-    - Device is listening - DONE    
-    - Device is muted - Doable
+    - is listening - DONE    
+    - is muted - Doable
 
 ### THEN
-    - Device start listening. DONE
-    - Device set volume     - DONE 
-    - Device set mute (on/off) - DONE
-    - Device begin playback for URL - Doable
-    - Device begin playback of text, need to go via tts service - Doable??
-    - Device should trigger agent with text prompt. Output directly to speaker - Doable
-    - Device should trigger agent with text prompt. Output as text  - Doable
+    - start listening. DONE
+    - set volume     - DONE 
+    - set mute (on/off) - DONE
+    - begin playback for URL. Use playAudioFromUrl() - Easy
+    - begin playback of text. Use textToSpeech() - Easy
+    - give agent text prompt. Output directly to speaker - Easy
+    - give agent text prompt. Output as text - Easy
 
 
 # ESPClient

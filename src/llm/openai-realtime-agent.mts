@@ -148,6 +148,9 @@ type PendingToolCall = {
  * - Audio -> Text: Use setAudioToTextMode() then sendAudioChunk() (output mode set to "text")
  * - Text -> Text: Use sendTextForTextResponse(text) or setOutputMode("text") + sendUserText() + createResponse()
  * 
+ * Direct TTS (minimal AI processing):
+ * - Text -> Audio (TTS): Use textToSpeech(text) for text-to-speech with minimal AI processing
+ * 
  * Output Events:
  * - Audio output: Emits "audio.delta" events (existing behavior)
  * - Text output: Emits "text.done" events (existing behavior)
@@ -391,6 +394,39 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
      */
     setAudioToTextMode() {
         this.setOutputMode("text");
+    }
+
+    /**
+     * Direct text-to-speech conversion with minimal AI processing.
+     * Uses a simple prompt to minimize AI interference.
+     * @param text - The text to convert to speech
+     */
+    textToSpeech(text: string) {
+        this.assertOpen();
+        
+        // Send a user message asking the AI to simply repeat the text
+        const userMsg = {
+            type: "conversation.item.create",
+            item: {
+                type: "message",
+                role: "user",
+                content: [{ 
+                    type: "input_text", 
+                    text: `Please say exactly: "${text}"` 
+                }],
+            },
+        };
+        this.send(userMsg);
+
+        // Request response with only audio and very specific instructions
+        const evt = {
+            type: "response.create",
+            response: {
+                modalities: ["audio", "text"], 
+                instructions: "Respond with exactly the text the user asked you to say, without any additional words, commentary, or changes. Do not add greetings, confirmations, or explanations.",
+            },
+        };
+        this.send(evt);
     }
 
     /**
