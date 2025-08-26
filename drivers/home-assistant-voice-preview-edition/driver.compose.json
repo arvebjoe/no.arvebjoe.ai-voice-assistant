@@ -6,8 +6,7 @@
   "discovery": "esphome",
   "capabilities": [    
     "volume_set",
-    "onoff",
-    "listening",
+    "onoff",    
     "volume_mute"
   ],
   "platforms": [

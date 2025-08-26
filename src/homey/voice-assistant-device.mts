@@ -276,24 +276,9 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
   private RegisterCapabilities() {
 
-    this.registerCapabilityListener('listening', async (value: boolean) => {
-      log.info(`Capability listening changed to: ${value}`);
-
-      /*
-      if(value){
-        log.info("Sending test prompt to agent. Result should be audio.");
-        this.agent.sendTextForAudioResponse("Hvordan går det med deg i dag?");
-      } else {
-        log.info("Sending test prompt to agent. Result should be text.");
-        this.agent.sendTextForTextResponse("Hvor mye er klokka?");
-      }
-      */
-      this.agent.textToSpeech("Jeg er kong Harald av Norge!");
-    });
-
 
     this.registerCapabilityListener('onoff', async (value: boolean) => {
-      log.info(`Capability listening changed to: ${value}`);
+      log.info(`Capability onoff changed to: ${value}`);
 
       if (this.esp && value) {
         this.esp.run_start();
