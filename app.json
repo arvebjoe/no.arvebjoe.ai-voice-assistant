@@ -67,7 +67,6 @@
   "flow": {
     "conditions": [
       {
-        "id": "is-muted",
         "title": {
           "en": "Is muted"
         },
@@ -75,40 +74,17 @@
           {
             "type": "device",
             "name": "device",
+            "title": {
+              "en": "Device"
+            },
             "filter": "driver_id=home-assistant-voice-preview-edition"
           }
-        ]
+        ],
+        "id": "is-muted"
       }
     ],
     "actions": [
       {
-        "id": "ask-agent-output-to-speaker",
-        "title": {
-          "en": "Ask agent. Output to speaker"
-        },
-        "titleFormatted": {
-          "en": "Ask assistant '[[Question]]'. Output to speaker"
-        },
-        "hint": {
-          "en": "Send an inquiry to the AI assistant, the response will play on this device"
-        },
-        "args": [
-          {
-            "type": "device",
-            "name": "device",
-            "filter": "driver_id=home-assistant-voice-preview-edition"
-          },
-          {
-            "type": "text",
-            "name": "Question",
-            "placeholder": {
-              "en": "a question"
-            }
-          }
-        ]
-      },
-      {
-        "id": "ask-agent-output-as-text",
         "title": {
           "en": "Ask assistant. Output as text"
         },
@@ -122,13 +98,16 @@
           {
             "type": "device",
             "name": "device",
-            "filter": "driver_id=home-assistant-voice-preview-edition"
+            "title": {
+              "en": "Device"
+            },
+            "filter": "driver_id=home-assistant-voice-preview-edition|driver_id=xiaozhi-ai"
           },
           {
             "type": "text",
             "name": "Question",
             "placeholder": {
-              "en": "a question"
+              "en": "Question"
             }
           }
         ],
@@ -140,21 +119,56 @@
               "en": "Assistant response"
             }
           }
-        ]
+        ],
+        "id": "ask-agent-output-as-text"
       },
       {
-        "id": "playback-audio-from-url",
         "title": {
-          "en": "Playback audio from URL"
+          "en": "Ask agent. Output to speaker"
+        },
+        "titleFormatted": {
+          "en": "Ask assistant '[[Question]]'. Output to speaker"
         },
         "hint": {
-          "en": "Play any (local or remote) web URL as long as it's .flac format"
+          "en": "Send an inquiry to the AI assistant, the response will play on this device"
         },
         "args": [
           {
             "type": "device",
             "name": "device",
-            "filter": "driver_id=home-assistant-voice-preview-edition"
+            "title": {
+              "en": "Device"
+            },
+            "filter": "driver_id=home-assistant-voice-preview-edition|driver_id=xiaozhi-ai"
+          },
+          {
+            "type": "text",
+            "name": "Question",
+            "placeholder": {
+              "en": "Question"
+            }
+          }
+        ],
+        "id": "ask-agent-output-to-speaker"
+      },
+      {
+        "title": {
+          "en": "Playback audio from URL"
+        },
+        "titleFormatted": {
+          "en": "Playback audio from [[Url]]"
+        },
+        "hint": {
+          "en": "Play any (local or remote) web URL as long as it's flac format"
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "title": {
+              "en": "Device"
+            },
+            "filter": "driver_id=home-assistant-voice-preview-edition|driver_id=xiaozhi-ai"
           },
           {
             "type": "text",
@@ -163,10 +177,10 @@
               "en": "Url"
             }
           }
-        ]
+        ],
+        "id": "playback-audio-from-url"
       },
       {
-        "id": "speak-text",
         "title": {
           "en": "Speak text"
         },
@@ -180,7 +194,10 @@
           {
             "type": "device",
             "name": "device",
-            "filter": "driver_id=home-assistant-voice-preview-edition"
+            "title": {
+              "en": "Device"
+            },
+            "filter": "driver_id=home-assistant-voice-preview-edition|driver_id=xiaozhi-ai"
           },
           {
             "type": "text",
@@ -189,7 +206,8 @@
               "en": "text"
             }
           }
-        ]
+        ],
+        "id": "speak-text"
       }
     ]
   },

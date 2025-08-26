@@ -1,0 +1,28 @@
+{
+  "title": {
+    "en": "Speak text"
+  },
+  "titleFormatted": {
+    "en": "Speak '[[text]]'"
+  },
+  "hint": {
+    "en": "Convert text to speech and play it"
+  },
+  "args": [
+    {
+      "type": "device",
+      "name": "device",
+      "title": {
+        "en": "Device"
+      },
+      "filter": "driver_id=home-assistant-voice-preview-edition|driver_id=xiaozhi-ai"
+    },
+    {
+      "type": "text",
+      "name": "text",
+      "placeholder": {
+        "en": "text"
+      }
+    }
+  ]
+}

@@ -7,5 +7,4 @@ export default class XiaozhiAIDriver extends VoiceAssistantDriver {
     constructor(...args: any[]) {
         super(...args);
     }
-
-};
+}

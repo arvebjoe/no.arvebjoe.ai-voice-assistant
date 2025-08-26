@@ -1,0 +1,28 @@
+{
+  "title": {
+    "en": "Ask agent. Output to speaker"
+  },
+  "titleFormatted": {
+    "en": "Ask assistant '[[Question]]'. Output to speaker"
+  },
+  "hint": {
+    "en": "Send an inquiry to the AI assistant, the response will play on this device"
+  },
+  "args": [
+    {
+      "type": "device",
+      "name": "device",
+      "title": {
+        "en": "Device"
+      },
+      "filter": "driver_id=home-assistant-voice-preview-edition|driver_id=xiaozhi-ai"
+    },
+    {
+      "type": "text",
+      "name": "Question",
+      "placeholder": {
+        "en": "Question"
+      }
+    }
+  ]
+}

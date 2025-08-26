@@ -1,9 +1,15 @@
 # TODO before release:
     
 
-## BUG - Triggering agent flows doesn't preload device manager
-
 ## Add flow cards to xiazhi devices also
+
+## BUG
+2025-08-26T21:43:47.063Z [log] [ManagerFlow] [FlowCardCondition][is-muted] Warning: Run listener was already registered.
+2025-08-26T21:43:47.065Z [log] [ManagerFlow] [FlowCardAction][playback-audio-from-url] Warning: Run listener was already registered.
+2025-08-26T21:43:47.067Z [log] [ManagerFlow] [FlowCardAction][speak-text] Warning: Run listener was already registered.
+2025-08-26T21:43:47.068Z [log] [ManagerFlow] [FlowCardAction][ask-agent-output-to-speaker] Warning: Run listener was already registered.
+2025-08-26T21:43:47.071Z [log] [ManagerFlow] [FlowCardAction][ask-agent-output-as-text] Warning: Run listener was already registered.
+
 
 ## REMOVE 'logger.mts' and use this.log from SimpleClass
 

@@ -7,10 +7,4 @@ export default class HomeAssistantVoicePreviewEditionDriver extends VoiceAssista
     constructor(...args: any[]) {
         super(...args);
     }
-
-    async onInit(){
-        super.onInit();
-    }
-
-
 }

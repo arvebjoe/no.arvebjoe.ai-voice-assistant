@@ -1,0 +1,15 @@
+{
+  "title": {
+    "en": "Is muted"
+  },
+  "args": [
+    {
+      "type": "device",
+      "name": "device",
+      "title": {
+        "en": "Device"
+      },
+      "filter": "driver_id=home-assistant-voice-preview-edition"
+    }
+  ]
+}

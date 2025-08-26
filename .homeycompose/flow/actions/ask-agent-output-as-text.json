@@ -1,0 +1,37 @@
+{
+  "title": {
+    "en": "Ask assistant. Output as text"
+  },
+  "titleFormatted": {
+    "en": "Ask assistant '[[Question]]'. Output as text"
+  },
+  "hint": {
+    "en": "Send an inquiry to the AI assistant, the response will be in a text variable"
+  },
+  "args": [
+    {
+      "type": "device",
+      "name": "device",
+      "title": {
+        "en": "Device"
+      },
+      "filter": "driver_id=home-assistant-voice-preview-edition|driver_id=xiaozhi-ai"
+    },
+    {
+      "type": "text",
+      "name": "Question",
+      "placeholder": {
+        "en": "Question"
+      }
+    }
+  ],
+  "tokens": [
+    {
+      "type": "string",
+      "name": "ai-output",
+      "title": {
+        "en": "Assistant response"
+      }
+    }
+  ]
+}
