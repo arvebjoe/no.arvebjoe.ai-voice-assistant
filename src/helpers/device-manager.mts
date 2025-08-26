@@ -93,12 +93,17 @@ export class DeviceManager implements IDeviceManager {
                     types.add(device.class);
                 }
 
+                if (device.virtualClass) {
+                    types.add(device.virtualClass);
+                }
+
+
                 // Create a simplified device object with only the requested properties
                 const simplifiedDevice: Device = {
                     id: device.id,
                     name: device.name,
                     zones: zoneHierarchy,
-                    type: device.class, // We use "type" in our API but it's "class" in the original data
+                    type: device.virtualClass ?? device.class,
                     capabilities: formattedCapabilities
                 };
 

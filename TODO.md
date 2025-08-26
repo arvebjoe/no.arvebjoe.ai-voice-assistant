@@ -1,8 +1,9 @@
 # TODO before release:
     
 
-## Need to find out why device.class isn't the correct property
-    - Skrivebord #21
+## BUG - Triggering agent flows doesn't preload device manager
+
+## Add flow cards to xiazhi devices also
 
 ## REMOVE 'logger.mts' and use this.log from SimpleClass
 
