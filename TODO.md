@@ -10,16 +10,16 @@
     
 ### AND
     - is listening - DONE    
-    - is muted - Doable
+    - is muted - DONE
 
 ### THEN
     - start listening. DONE
     - set volume     - DONE 
     - set mute (on/off) - DONE
-    - begin playback for URL. Use playAudioFromUrl() - Easy
-    - begin playback of text. Use textToSpeech() - Easy
-    - give agent text prompt. Output directly to speaker - Easy
-    - give agent text prompt. Output as text - Easy
+    - begin playback for URL. Use playAudioFromUrl() - Easy             -> Play url
+    - begin playback of text. Use textToSpeech() - Easy                 -> Speak text
+    - give agent text prompt. Output directly to speaker - Easy         -> Ask agent
+    - give agent text prompt. Output as text - Easy                     -> Ask agent
 
 
 # ESPClient

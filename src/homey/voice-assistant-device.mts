@@ -27,6 +27,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
   private segmenter!: PcmSegmenter;
   private settingsUnsubscribe?: () => void; // To clean up the subscription
   private currentSettings: any = {}; // Store current settings to detect changes
+  private isMutedValue: boolean = false;
 
   /**
    * onInit is called when the device is initialized.
@@ -211,6 +212,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     // Listen for mute state changes from the device
     this.esp.on('mute', (isMuted: boolean) => {
       log.info(`Received mute state update: ${isMuted ? 'muted' : 'unmuted'}`);
+      this.isMutedValue = isMuted;
       this.setCapabilityValue('volume_mute', isMuted).catch(err => {
         log.warn('Failed to update volume_mute capability', err);
       });
@@ -274,8 +276,6 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
   private RegisterCapabilities() {
 
-
-
     this.registerCapabilityListener('listening', async (value: boolean) => {
       log.info(`Capability listening changed to: ${value}`);
 
@@ -316,6 +316,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       log.info(`Capability volume_mute changed to: ${value}`);
       // Send the mute command to the ESPHome device
       if (this.esp && this.esp.setMute) {
+        this.isMutedValue = value;
         this.esp.setMute(value);
       } else {
         log.warn('ESP client not initialized or setMute method not available');
@@ -323,10 +324,20 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     });
   }
 
-  async mute(): Promise<void> {
-    if (this.esp && this.esp.setMute) {
-      this.esp.setMute(true);
+ 
+
+  playUrl(url: string): void {
+    log.info(`Playing audio from URL: ${url}`);
+    if (this.esp && this.esp.playAudioFromUrl) {
+      this.esp.run_start();
+      this.esp.playAudioFromUrl(url, false);
+    } else {
+      log.warn('ESP client not initialized or playAudioFromUrl method not available');      
     }
+  }
+
+  isMuted(): boolean {
+    return this.isMutedValue;
   }
 
 

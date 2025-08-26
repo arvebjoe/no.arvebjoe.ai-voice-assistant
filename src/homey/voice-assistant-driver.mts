@@ -2,6 +2,7 @@ import Homey from 'homey';
 //import { createLogger } from '../../src/helpers/logger.mjs';
 import { EspVoiceAssistantClient } from '../voice_assistant/esp-voice-assistant-client.mjs';
 import { PairDevice } from '../helpers/interfaces.mjs';
+import VoiceAssistantDevice from './voice-assistant-device.mjs';
 
 //const log = createLogger('VA_DRIVER', false);
 
@@ -14,6 +15,24 @@ export default abstract class VoiceAssistantDriver extends Homey.Driver {
 
     async onInit(): Promise<void> {
         this.log('VoiceAssistantDriver has been initialized');
+
+
+        const cardIsMuted = this.homey.flow.getConditionCard('is-muted');
+        cardIsMuted.registerRunListener(async (args) => {
+            const device = args.device as VoiceAssistantDevice;
+            return device.isMuted();
+        });
+
+        const playUrlCard = this.homey.flow.getActionCard('playback-audio-from-url');
+        playUrlCard.registerRunListener(async (args) => {
+            const device = args.device as VoiceAssistantDevice;
+            const url = args.Url;
+            device.playUrl(url);
+        });
+        
+
+        //      this.agent.textToSpeech("Jeg er kong Harald av Norge!");
+
     }
 
     /**

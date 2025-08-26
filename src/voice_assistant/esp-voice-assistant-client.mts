@@ -55,7 +55,7 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
 
   // Track device state
   private currentVolume: number = 0.5;
-  private isMuted: boolean = false;
+  private isMutedValue: boolean = false;
 
 
   constructor({ host, apiPort = 6053, discoveryMode = false }: EspVoiceClientOptions) {
@@ -393,13 +393,13 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
       // Check if this is the mute switch
       const muteKey = this.entityKeys['mute'];
       if (muteKey && message.key === muteKey) {
-        const previousMuteState = this.isMuted;
-        this.isMuted = message.state;
+        const previousMuteState = this.isMutedValue;
+        this.isMutedValue = message.state;
 
         // Emit event if mute state changed
-        if (previousMuteState !== this.isMuted) {
-          this.emit('mute', this.isMuted);
-          log.info(`Mute state changed to ${this.isMuted ? 'muted' : 'unmuted'}`);
+        if (previousMuteState !== this.isMutedValue) {
+          this.emit('mute', this.isMutedValue);
+          log.info(`Mute state changed to ${this.isMutedValue ? 'muted' : 'unmuted'}`);
         }
       }
     }
@@ -640,10 +640,10 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
       });
 
       // Track state locally
-      this.isMuted = mute;
+      this.isMutedValue = mute;
 
       // Emit event
-      this.emit('mute', this.isMuted);
+      this.emit('mute', this.isMutedValue);
     } catch (error) {
       log.error('Error setting mute state:', error);
     }

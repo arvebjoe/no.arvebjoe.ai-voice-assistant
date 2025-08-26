@@ -65,17 +65,129 @@
   },
   "esm": true,
   "flow": {
-    "actions": [
+    "conditions": [
       {
-        "id": "mute",
+        "id": "is-muted",
         "title": {
-          "en": "Mute"
+          "en": "Is muted"
         },
         "args": [
           {
             "type": "device",
             "name": "device",
             "filter": "driver_id=home-assistant-voice-preview-edition"
+          }
+        ]
+      }
+    ],
+    "actions": [
+      {
+        "id": "ask-agent-output-to-speaker",
+        "title": {
+          "en": "Ask agent. Output to speaker"
+        },
+        "titleFormatted": {
+          "en": "Ask assistant '[[Question]]'. Output to speaker"
+        },
+        "hint": {
+          "en": "Send an inquiry to the AI assistant, the response will play on this device"
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=home-assistant-voice-preview-edition"
+          },
+          {
+            "type": "text",
+            "name": "Question",
+            "placeholder": {
+              "en": "a question"
+            }
+          }
+        ]
+      },
+      {
+        "id": "ask-agent-output-as-text",
+        "title": {
+          "en": "Ask assistant. Output as text"
+        },
+        "titleFormatted": {
+          "en": "Ask assistant '[[Question]]'. Output as text"
+        },
+        "hint": {
+          "en": "Send an inquiry to the AI assistant, the response will be in a text variable"
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=home-assistant-voice-preview-edition"
+          },
+          {
+            "type": "text",
+            "name": "Question",
+            "placeholder": {
+              "en": "a question"
+            }
+          }
+        ],
+        "tokens": [
+          {
+            "type": "string",
+            "name": "ai-output",
+            "title": {
+              "en": "Assistant response"
+            }
+          }
+        ]
+      },
+      {
+        "id": "playback-audio-from-url",
+        "title": {
+          "en": "Playback audio from URL"
+        },
+        "hint": {
+          "en": "Play any (local or remote) web URL as long as it's .flac format"
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=home-assistant-voice-preview-edition"
+          },
+          {
+            "type": "text",
+            "name": "Url",
+            "placeholder": {
+              "en": "Url"
+            }
+          }
+        ]
+      },
+      {
+        "id": "speak-text",
+        "title": {
+          "en": "Speak text"
+        },
+        "titleFormatted": {
+          "en": "Speak '[[text]]'"
+        },
+        "hint": {
+          "en": "Convert text to speech and play it"
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=home-assistant-voice-preview-edition"
+          },
+          {
+            "type": "text",
+            "name": "text",
+            "placeholder": {
+              "en": "text"
+            }
           }
         ]
       }
