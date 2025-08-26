@@ -16,18 +16,14 @@
     - start listening. DONE
     - set volume     - DONE 
     - set mute (on/off) - DONE
-    - begin playback for URL. Use playAudioFromUrl() - Easy             -> Play url
-    - begin playback of text. Use textToSpeech() - Easy                 -> Speak text
-    - give agent text prompt. Output directly to speaker - Easy         -> Ask agent
+    - begin playback for URL - DONE
+    - begin playback of text - DONE
+    - give agent text prompt - DONE
     - give agent text prompt. Output as text - Easy                     -> Ask agent
 
 
-# ESPClient
-    - Try to push a url at the device without it being triggered first.
-        - This works!
-          this.run_start();
-          this.playAudioFromUrl('https://github.com/RealDeco/xiaozhi-esphome/raw/refs/heads/main/sounds/timer_finished.flac', false);
-          this.run_end();
+## Need to find out why device.class isn't the correct property
+    - Skrivebord #21
 
 
 ## Homey-log

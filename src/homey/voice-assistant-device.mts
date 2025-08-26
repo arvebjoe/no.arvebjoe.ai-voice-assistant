@@ -331,8 +331,38 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     if (this.esp && this.esp.playAudioFromUrl) {
       this.esp.run_start();
       this.esp.playAudioFromUrl(url, false);
+      this.esp.run_end();
     } else {
       log.warn('ESP client not initialized or playAudioFromUrl method not available');      
+    }
+  }
+
+
+  speakText(text: string): void {
+    log.info(`Speaking text: ${text}`);
+    if (this.agent && this.agent.textToSpeech) {      
+      this.agent.textToSpeech(text);      
+    } else {
+      log.warn('Agent not initialized or textToSpeech method not available');
+    }
+  }
+
+  askAgentOutputToSpeaker(question: string): void {
+    log.info(`Asking agent to output to speaker: ${question}`);
+    if (this.agent && this.agent.sendTextForAudioResponse) {
+      this.agent.sendTextForAudioResponse(question);
+    } else {
+      log.warn('Agent not initialized or sendTextForAudioResponse method not available');
+    }
+  }
+
+
+  askAgentOutputToText(question: string): void {
+    log.info(`Asking agent to output as text: ${question}`);
+    if (this.agent && this.agent.sendTextForTextResponse) {
+      this.agent.sendTextForTextResponse(question);
+    } else {
+      log.warn('Agent not initialized or sendTextForTextResponse method not available');
     }
   }
 

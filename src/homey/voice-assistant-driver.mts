@@ -29,9 +29,33 @@ export default abstract class VoiceAssistantDriver extends Homey.Driver {
             const url = args.Url;
             device.playUrl(url);
         });
-        
 
-        //      this.agent.textToSpeech("Jeg er kong Harald av Norge!");
+        const speakTextCard = this.homey.flow.getActionCard('speak-text');
+        speakTextCard.registerRunListener(async (args) => {
+            const device = args.device as VoiceAssistantDevice;
+            const text = args.text;
+            device.speakText(text);
+        });
+
+
+        const askAgentAudioOutCard = this.homey.flow.getActionCard('ask-agent-output-to-speaker');
+        askAgentAudioOutCard.registerRunListener(async (args) => {
+            const device = args.device as VoiceAssistantDevice;
+            const question = args.Question;
+            device.askAgentOutputToSpeaker(question);
+        });
+
+
+
+        const askAgentTextOutCard = this.homey.flow.getActionCard('ask-agent-output-as-text');
+        askAgentTextOutCard.registerRunListener(async (args) => {
+            const device = args.device as VoiceAssistantDevice;
+            const question = args.Question;
+            device.askAgentOutputToText(question);
+            return {
+                'ai-output': "bolle bolle"
+            };
+        });
 
     }
 
@@ -86,8 +110,8 @@ export default abstract class VoiceAssistantDriver extends Homey.Driver {
             return result;
         };
 
-        const onCapabilities = async (mediaPlayersCount: number, subscribeVoiceAssistantCount: number, voiceAssistantConfigurationCount: number, deviceType: string | null  ) => {
-            
+        const onCapabilities = async (mediaPlayersCount: number, subscribeVoiceAssistantCount: number, voiceAssistantConfigurationCount: number, deviceType: string | null) => {
+
             this.log(`Capabilities from ${device.name}`, {
                 mediaPlayersCount,
                 subscribeVoiceAssistantCount,
