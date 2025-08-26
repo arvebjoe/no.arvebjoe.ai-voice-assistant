@@ -332,19 +332,25 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     }
   }
 
-  askAgentOutputToSpeaker(question: string): void {
+  async askAgentOutputToSpeaker(question: string): Promise<void> {
     log.info(`Asking agent to output to speaker: ${question}`);
+    
     if (this.agent && this.agent.sendTextForAudioResponse) {
+      await this.deviceManager.fetchData();
       this.agent.sendTextForAudioResponse(question);
     } else {
       log.warn('Agent not initialized or sendTextForAudioResponse method not available');
     }
+
   }
 
 
   async askAgentOutputToText(question: string): Promise<string> {
     log.info(`Asking agent to output as text: ${question}`);
+
     if (this.agent && this.agent.sendTextForTextResponse) {
+      await this.deviceManager.fetchData();
+
       return new Promise<string>((resolve, reject) => {
         // Set up a one-time event listener for text.done
         const textDoneHandler = (msg: any) => {

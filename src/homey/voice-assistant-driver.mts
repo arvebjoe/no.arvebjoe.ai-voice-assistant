@@ -42,7 +42,7 @@ export default abstract class VoiceAssistantDriver extends Homey.Driver {
         askAgentAudioOutCard.registerRunListener(async (args) => {
             const device = args.device as VoiceAssistantDevice;
             const question = args.Question;
-            device.askAgentOutputToSpeaker(question);
+            await device.askAgentOutputToSpeaker(question);
         });
 
 
