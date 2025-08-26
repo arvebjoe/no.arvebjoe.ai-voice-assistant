@@ -1,35 +1,16 @@
 # TODO before release:
     
 
-## Create flow cards for device
-
-### WHEN
-    - starts listening - DONE
-    - stops listening - DONE
-    - volum changed - DONE
-    
-### AND
-    - is listening - DONE    
-    - is muted - DONE
-
-### THEN
-    - start listening. DONE
-    - set volume     - DONE 
-    - set mute (on/off) - DONE
-    - begin playback for URL - DONE
-    - begin playback of text - DONE
-    - give agent text prompt - DONE
-    - give agent text prompt. Output as text - Easy                     -> Ask agent
-
-
 ## Need to find out why device.class isn't the correct property
     - Skrivebord #21
 
+## REMOVE 'logger.mts' and use this.log from SimpleClass
 
 ## Homey-log
     - What is it?
     - Do we need it?
     - https://www.npmjs.com/package/homey-log
+    - Remove 
 
 
 ## Use OpenAI to translate to all languages

@@ -149,7 +149,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     });
 
     this.agent.on('text.done', (msg: any) => {
-      log.info('Text processing done:', undefined, msg);
+      log.info('Text processing done:', undefined, msg.text);
     });
 
     this.segmenter.on('chunk', async (chunk: Buffer) => {
@@ -324,7 +324,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     });
   }
 
- 
+
 
   playUrl(url: string): void {
     log.info(`Playing audio from URL: ${url}`);
@@ -333,15 +333,15 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       this.esp.playAudioFromUrl(url, false);
       this.esp.run_end();
     } else {
-      log.warn('ESP client not initialized or playAudioFromUrl method not available');      
+      log.warn('ESP client not initialized or playAudioFromUrl method not available');
     }
   }
 
 
   speakText(text: string): void {
     log.info(`Speaking text: ${text}`);
-    if (this.agent && this.agent.textToSpeech) {      
-      this.agent.textToSpeech(text);      
+    if (this.agent && this.agent.textToSpeech) {
+      this.agent.textToSpeech(text);
     } else {
       log.warn('Agent not initialized or textToSpeech method not available');
     }
@@ -357,12 +357,38 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
   }
 
 
-  askAgentOutputToText(question: string): void {
+  async askAgentOutputToText(question: string): Promise<string> {
     log.info(`Asking agent to output as text: ${question}`);
     if (this.agent && this.agent.sendTextForTextResponse) {
-      this.agent.sendTextForTextResponse(question);
+      return new Promise<string>((resolve, reject) => {
+        // Set up a one-time event listener for text.done
+        const textDoneHandler = (msg: any) => {
+          log.info('Text response received:', undefined, msg.text);
+          resolve(msg.text);
+        };
+
+        // Add the event listener for this specific request
+        this.agent.once('text.done', textDoneHandler);
+
+        // Set a timeout in case the response never comes
+        const timeoutId = setTimeout(() => {
+          this.agent.off('text.done', textDoneHandler);
+          reject(new Error('Timeout waiting for text response'));
+        }, 30000); // 30 seconds timeout
+
+        try {
+          // Send the request
+          this.agent.sendTextForTextResponse(question);
+        } catch (error) {
+          // Clear the timeout and remove the listener if sending fails
+          clearTimeout(timeoutId);
+          this.agent.off('text.done', textDoneHandler);
+          reject(error);
+        }
+      });
     } else {
       log.warn('Agent not initialized or sendTextForTextResponse method not available');
+      return "";
     }
   }
 

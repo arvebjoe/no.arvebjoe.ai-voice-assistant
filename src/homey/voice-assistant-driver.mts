@@ -51,10 +51,17 @@ export default abstract class VoiceAssistantDriver extends Homey.Driver {
         askAgentTextOutCard.registerRunListener(async (args) => {
             const device = args.device as VoiceAssistantDevice;
             const question = args.Question;
-            device.askAgentOutputToText(question);
-            return {
-                'ai-output': "bolle bolle"
-            };
+            try {
+                const response = await device.askAgentOutputToText(question);
+                return {
+                    'ai-output': response
+                };
+            } catch (error: any) {
+                this.error('Error getting text response:', error);
+                return {
+                    'ai-output': `Error: ${error.message || 'Unknown error occurred'}`
+                };
+            }
         });
 
     }
