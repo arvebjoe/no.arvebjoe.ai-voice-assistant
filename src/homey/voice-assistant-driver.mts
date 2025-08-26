@@ -8,6 +8,7 @@ import VoiceAssistantDevice from './voice-assistant-device.mjs';
 
 export default abstract class VoiceAssistantDriver extends Homey.Driver {
     abstract readonly thisAssistantType: string;
+    private static flowCardsInitialized = false;
 
     constructor(...args: any[]) {
         super(...args);
@@ -16,7 +17,14 @@ export default abstract class VoiceAssistantDriver extends Homey.Driver {
     async onInit(): Promise<void> {
         this.log('VoiceAssistantDriver has been initialized');
 
+        // Only register flow card listeners once across all driver instances
+        if (!VoiceAssistantDriver.flowCardsInitialized) {
+            this.registerFlowCardListeners();
+            VoiceAssistantDriver.flowCardsInitialized = true;
+        }
+    }
 
+    private registerFlowCardListeners(): void {
         const cardIsMuted = this.homey.flow.getConditionCard('is-muted');
         cardIsMuted.registerRunListener(async (args) => {
             const device = args.device as VoiceAssistantDevice;
