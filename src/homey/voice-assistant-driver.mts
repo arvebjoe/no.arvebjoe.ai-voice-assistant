@@ -1,10 +1,8 @@
 import Homey from 'homey';
-//import { createLogger } from '../../src/helpers/logger.mjs';
 import { EspVoiceAssistantClient } from '../voice_assistant/esp-voice-assistant-client.mjs';
 import { PairDevice } from '../helpers/interfaces.mjs';
 import VoiceAssistantDevice from './voice-assistant-device.mjs';
 
-//const log = createLogger('VA_DRIVER', false);
 
 export default abstract class VoiceAssistantDriver extends Homey.Driver {
     abstract readonly thisAssistantType: string;
