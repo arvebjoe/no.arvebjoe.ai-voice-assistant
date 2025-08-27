@@ -2,10 +2,12 @@ import Homey from 'homey';
 import { EspVoiceAssistantClient } from '../voice_assistant/esp-voice-assistant-client.mjs';
 import { PairDevice } from '../helpers/interfaces.mjs';
 import VoiceAssistantDevice from './voice-assistant-device.mjs';
+import { createLogger } from '../helpers/logger.mjs';
 
 
 export default abstract class VoiceAssistantDriver extends Homey.Driver {
     abstract readonly thisAssistantType: string;
+    private logger = createLogger('Voice_Assistant_Driver');
     private static flowCardsInitialized = false;
 
     constructor(...args: any[]) {
@@ -13,7 +15,6 @@ export default abstract class VoiceAssistantDriver extends Homey.Driver {
     }
 
     async onInit(): Promise<void> {
-        this.log('VoiceAssistantDriver has been initialized');
 
         // Only register flow card listeners once across all driver instances
         if (!VoiceAssistantDriver.flowCardsInitialized) {
@@ -23,6 +24,8 @@ export default abstract class VoiceAssistantDriver extends Homey.Driver {
     }
 
     private registerFlowCardListeners(): void {
+        this.logger.info('Initializing');
+
         const cardIsMuted = this.homey.flow.getConditionCard('is-muted');
         cardIsMuted.registerRunListener(async (args) => {
             const device = args.device as VoiceAssistantDevice;
@@ -70,6 +73,7 @@ export default abstract class VoiceAssistantDriver extends Homey.Driver {
             }
         });
 
+        this.logger.info('Initialized');
     }
 
     /**
@@ -125,17 +129,15 @@ export default abstract class VoiceAssistantDriver extends Homey.Driver {
 
         const onCapabilities = async (mediaPlayersCount: number, subscribeVoiceAssistantCount: number, voiceAssistantConfigurationCount: number, deviceType: string | null) => {
 
-            this.log(`Capabilities from ${device.name}`, {
+            this.logger.info(`Capabilities from ${device.name}`, undefined, {
                 mediaPlayersCount,
                 subscribeVoiceAssistantCount,
                 voiceAssistantConfigurationCount,
                 deviceType,
-            });
-            this.log('Looking for device of type ' + this.thisAssistantType + ' and found ' + deviceType);
-
+            });        
 
             if (this.thisAssistantType == deviceType && mediaPlayersCount > 0 && subscribeVoiceAssistantCount > 0 && voiceAssistantConfigurationCount > 0) {
-                this.log('Found matching device:', deviceType);
+                this.logger.info(`Found matching device: ${deviceType}`);
                 device.store.deviceType = deviceType;
                 await finish(device);
                 return;
@@ -190,7 +192,7 @@ export default abstract class VoiceAssistantDriver extends Homey.Driver {
             while (queue.length) {
                 const d = queue.shift()!;
                 const ok = await this.checkVoiceCapabilities(d, timeoutMs);
-                this.log(`Checked device ${d.name} (${d.store.address}:${d.store.port})`, { ok });
+                this.logger.info(`Checked device ${d.name} (${d.store.address}:${d.store.port})`, undefined, { ok });
                 if (ok) results.push(ok);
             }
         };
@@ -198,7 +200,7 @@ export default abstract class VoiceAssistantDriver extends Homey.Driver {
         const workers = Array.from({ length: Math.min(concurrency, devices.length) }, worker);
         await Promise.all(workers);
 
-        this.log(`Checked ${results.length} devices for voice capabilities`, { results });
+        this.logger.info(`Checked ${results.length} devices for voice capabilities`, undefined, { results });
 
         return results;
     }
@@ -214,13 +216,11 @@ export default abstract class VoiceAssistantDriver extends Homey.Driver {
         const strategy = this.getDiscoveryStrategy();
 
         if (!strategy) {
-            this.log('No discovery strategy configured for this driver');
+            this.logger.info('No discovery strategy configured for this driver');
             return [];
         }
 
-        const results = strategy.getDiscoveryResults();
-
-        this.log(`Discovery results`, JSON.stringify({ results }));
+        const results = strategy.getDiscoveryResults();        
 
         // Step 1–2: discovery -> PairDevice[]
         const candidates: PairDevice[] = Object.values(results).map((r: any) => this.resultToDevice(r));

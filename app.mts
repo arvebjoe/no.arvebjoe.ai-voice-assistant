@@ -18,7 +18,7 @@ export default class AiVoiceAssistantApp extends Homey.App {
   async onInit() {
     this.logger.setHomey(this.homey);
 
-    this.logger.info('AI voice assistant initializing...');
+    this.logger.info('AI voice assistant initializing');
 
     // Centralized settings manager (makes global settings accessible without this.homey)
     settingsManager.init(this.homey);

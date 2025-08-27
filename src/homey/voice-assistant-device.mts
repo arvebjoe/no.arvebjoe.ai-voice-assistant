@@ -29,7 +29,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
    * onInit is called when the device is initialized.
    */
   async onInit(): Promise<void> {
-    this.logger.info('Initializing...');
+    this.logger.info('Initializing');
 
     this.setUnavailable();
 
