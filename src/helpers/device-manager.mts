@@ -4,8 +4,6 @@ import { Device, Zone, ZonesCollection, PaginatedDevices } from './interfaces.mj
 import { createLogger } from './logger.mjs';
 
 
-const log = createLogger('DeviceManager');
-
 export declare interface IDeviceManager {
     init(): Promise<void>;
     fetchData(): Promise<void>;
@@ -18,6 +16,7 @@ export class DeviceManager implements IDeviceManager {
     private zoneList: string[];
     private zones: ZonesCollection | null;
     private deviceTypes: string[];
+    private logger = createLogger('DeviceManager');
 
     constructor(homey: any) {
         this.homey = homey;
@@ -31,19 +30,19 @@ export class DeviceManager implements IDeviceManager {
 
     async init(): Promise<void> {
         this.api = await HomeyAPI.createAppAPI({ homey: this.homey });
-        log.info('DeviceManager initialized');
+        this.logger.info('DeviceManager initialized');
 
     }
 
     async fetchData(): Promise<void> {
-        log.info('Fetching devices and zones from Homey...');
+        this.logger.info('Fetching devices and zones from Homey...');
         
         const [devices, zones] = await Promise.all([
             this.api.devices.getDevices(),
             this.api.zones.getZones(),
         ]);
 
-        log.info(`Found ${Object.keys(devices).length} devices and ${Object.keys(zones).length} zones`);
+        this.logger.info(`Found ${Object.keys(devices).length} devices and ${Object.keys(zones).length} zones`);
 
         this.zones = zones;
 
@@ -114,7 +113,7 @@ export class DeviceManager implements IDeviceManager {
         this.deviceTypes = Array.from(types).sort();
 
 
-        log.info('Done processing devices and zones');
+        this.logger.info('Done processing devices and zones');
 
     }
 
@@ -128,10 +127,10 @@ export class DeviceManager implements IDeviceManager {
      */
     getZones(): string[] {
         if (!this.zoneList) {
-            log.info("No zones found");
+            this.logger.info("No zones found");
             return [];
         }
-        log.info(`Found zones: ${this.zoneList.join(', ')}`);
+        this.logger.info(`Found zones: ${this.zoneList.join(', ')}`);
         return this.zoneList;
     }
 
@@ -141,10 +140,10 @@ export class DeviceManager implements IDeviceManager {
      */
     getAllDeviceTypes(): string[] {
         if (!this.deviceTypes) {
-            log.info("No device types found");
+            this.logger.info("No device types found");
             return [];
         }
-        log.info(`Found device types: ${this.deviceTypes.join(', ')}`);
+        this.logger.info(`Found device types: ${this.deviceTypes.join(', ')}`);
         return this.deviceTypes;
     }
 
@@ -161,7 +160,7 @@ export class DeviceManager implements IDeviceManager {
     getSmartHomeDevices(zone?: string, type?: string, page_size: number = 25, page_token: string | null = null): PaginatedDevices {
 
         if (!this.devices) {
-            log.info("No devices found");
+            this.logger.info("No devices found");
             return {
                 devices: [],
                 next_page_token: null
@@ -193,7 +192,7 @@ export class DeviceManager implements IDeviceManager {
         }
 
         if (devicesList.length === 0) {
-            log.info("No devices found matching the filters");
+            this.logger.info("No devices found matching the filters");
             return {
                 devices: [],
                 next_page_token: null
@@ -206,7 +205,7 @@ export class DeviceManager implements IDeviceManager {
         const next_page_token = start + page_size < devicesList.length ? String(start + page_size) : null;
 
         for (const device of slice) {
-            log.info(`Device: ${device.name} (${device.id}) - Zone: ${device.zones.join(' > ')} - Type: ${device.type} - Capabilities: ${device.capabilities.join(', ')}`);
+            this.logger.info(`Device: ${device.name} (${device.id}) - Zone: ${device.zones.join(' > ')} - Type: ${device.type} - Capabilities: ${device.capabilities.join(', ')}`);
         }
 
         return {
