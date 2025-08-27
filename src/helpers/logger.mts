@@ -1,3 +1,4 @@
+import Homey from 'homey/lib/Homey.js';
 import util from 'util';
 
 // Type definitions
@@ -46,72 +47,54 @@ const colors: Colors = {
     bgWhite: '\x1b[47m'
 };
 
-function formatTime(): string {
-    const now = new Date();
-    return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
-}
+
 
 type Details = Record<string, any> | string | any | null;
 
 class Logger {
     private from: string;
-    private useColors: boolean;
     private disabled: boolean;
-    
+    private static homey: Homey | null = null;
+
     constructor(from: string, disabled: boolean = false) {
         this.from = from.toUpperCase();
-        this.useColors = true; // Set to false to disable colors
         this.disabled = disabled;
     }
 
     info(message: string, subFrom: string = '', details: Details = null) {
-        if (this.disabled) return;
-        const time = formatTime();
-        const subFromStr = subFrom ? `[${subFrom}]` : '';
+        if (this.disabled) {
+            return;
+        }        
         
-        if (this.useColors) {
-            // Colorized output
-            const timeStr = `${colors.dim}${time}${colors.reset}`;
-            const fromStr = `${colors.cyan}[${this.from}]${colors.reset}`;
-            const subFromColor = subFrom === 'ERROR' ? colors.red : 
-                               subFrom === 'WARN' ? colors.yellow : colors.magenta;
-            const subFromStr2 = subFrom ? `${subFromColor}[${subFrom}]${colors.reset}` : '';
-            
-            console.log(`${timeStr} ${fromStr}${subFromStr2} - ${message}`);
-        } else {
-            // Plain output without colors
-            console.log(`${time} [${this.from}]${subFromStr} - ${message}`);
-        }
-        
+        const fromStr = `${colors.cyan}[${this.from}]${colors.reset}`;
+        const subColor = subFrom === 'ERROR' ? colors.red : subFrom === 'WARN' ? colors.yellow : colors.magenta;
+        const subStr = subFrom ? `${subColor}[${subFrom}]${colors.reset}` : '';
+
+        this.output(`${fromStr}${subStr} - ${message}`);
+
         // Only output details if they exist and aren't empty
         if (details && Object.keys(details).length > 0) {
             // Add indentation for details
             const indent = '  ';
-            
+
             // Handle different types of details
             if (typeof details === 'object') {
-                if (this.useColors) {
-                    // Convert object to string with indentation for each line
-                    const detailsLines = util.inspect(details, {
-                        colors: true,
-                        depth: null,
-                        compact: false
-                    }).split('\n');
-                    
-                    // Output each line with indentation
-                    for (const line of detailsLines) {
-                        console.log(`${indent}${line}`);
-                    }
-                } else {
-                    // Format JSON with indentation
-                    const detailsLines = JSON.stringify(details, null, 2).split('\n');
-                    for (const line of detailsLines) {
-                        console.log(`${indent}${line}`);
-                    }
+
+                // Convert object to string with indentation for each line
+                const detailsLines = util.inspect(details, {
+                    colors: true,
+                    depth: null,
+                    compact: false
+                }).split('\n');
+
+                // Output each line with indentation
+                for (const line of detailsLines) {
+                    this.output(`${indent}${line}`);
                 }
+
             } else {
                 // For non-object types
-                console.log(`${indent}${details}`);
+                this.output(`${indent}${details}`);
             }
         }
     }
@@ -124,15 +107,24 @@ class Logger {
     warn(message: string, details: Details = null) {
         this.info(message, 'WARN', details);
     }
-    
+
     log(message: string, subFrom: string = '', details: Details = null) {
         this.info(message, subFrom, details);
     }
-    
-    // Method to enable/disable colors
-    setColorMode(enabled: boolean) {
-        this.useColors = enabled;
+
+
+    private output(message: string) {
+        if (Logger.homey) {
+            Logger.homey.log(message);
+        } else {
+            console.log(message);
+        }
     }
+
+    setHomey(homey: Homey) {
+        Logger.homey = homey;
+    }
+
 }
 
 // Export the createLogger function using ES modules

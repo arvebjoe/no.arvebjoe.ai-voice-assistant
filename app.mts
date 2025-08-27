@@ -3,17 +3,22 @@ import Homey from 'homey';
 import { WebServer } from './src/helpers/webserver.mjs';
 import { DeviceManager } from './src/helpers/device-manager.mjs';
 import { settingsManager } from './src/settings/settings-manager.mjs';
+import { createLogger } from './src/helpers/logger.mjs';
+
 
 export default class AiVoiceAssistantApp extends Homey.App {
   // Define class properties
   private webServer: WebServer | undefined;
   private deviceManager: DeviceManager | undefined;
+  private logger = createLogger('APP');
 
   /**
    * onInit is called when the app is initialized.
    */
   async onInit() {
-    this.log('AI voice assistant initializing...');
+    this.logger.setHomey(this.homey);
+
+    this.logger.info('AI voice assistant initializing...');
 
     // Centralized settings manager (makes global settings accessible without this.homey)
     settingsManager.init(this.homey);
@@ -30,7 +35,7 @@ export default class AiVoiceAssistantApp extends Homey.App {
   }
 
   async onUninit() {
-    this.log('AI voice assistant is being uninitialized');
+    this.logger.info('AI voice assistant is being uninitialized');
 
     // Clean up WebServer
     if (this.webServer) {

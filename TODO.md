@@ -5,10 +5,9 @@
 ## REMOVE 'logger.mts' and use this.log from SimpleClass
 
 ## Homey-log
-    - What is it?
-    - Do we need it?
     - https://www.npmjs.com/package/homey-log
-    - Remove 
+    - https://athombv.github.io/node-homey-log/
+    
 
 
 ## Use OpenAI to translate to all languages

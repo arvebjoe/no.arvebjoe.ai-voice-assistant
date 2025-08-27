@@ -1,7 +1,5 @@
 import { createLogger } from '../helpers/logger.mjs';
 
-const log = createLogger('SETTINGS');
-
 export type GlobalSettings = Record<string, any>;
 export type DeviceSettings = Record<string, any>;
 
@@ -27,10 +25,13 @@ export class SettingsManager {
   private devices: Map<string, DeviceSettings> = new Map();
   private globalSubs: Set<Subscriber<GlobalSettings>> = new Set();
   private deviceSubs: Map<string, Set<Subscriber<DeviceSettings>>> = new Map();
+  private logger = createLogger('Settings_Manager');
 
-  private constructor() {}
+  private constructor() {
+  }
 
   static getInstance(): SettingsManager {
+
     if (!this.instance) this.instance = new SettingsManager();
     return this.instance;
   }
@@ -51,14 +52,23 @@ export class SettingsManager {
 
   /** Initialize with Homey reference once (idempotent). */
   init(homey: any) {
-    if (this.homey) return; // already initialized
+
+    if (this.homey) {
+      return; // already initialized
+    }
+
+    this.logger.info('Initializing');
+
     this.homey = homey;
+
+
+
 
     // Prime global settings snapshot
     try {
       this.refreshGlobals();
     } catch (e) {
-      log.warn('Failed to read initial global settings');
+      this.logger.error('Failed to read initial global settings', e);
     }
 
     // Listen for updates from the Homey settings store
@@ -67,7 +77,7 @@ export class SettingsManager {
         const value = homey.settings.get(key);
         this.globals[key] = value;
         this.emitGlobals();
-        log.info(`Global setting updated: ${key}`);
+        this.logger.info(`Global setting updated: ${key}`);
       });
     }
   }
@@ -77,7 +87,7 @@ export class SettingsManager {
     if (!this.homey?.settings) return;
     // Homey settings API does not expose list directly; define keys we care about explicitly.
     // Extend this list as needed.
-    const knownKeys = [ 'openai_api_key', 'selected_language_code', 'selected_language_name', 'selected_voice', 'ai_instructions' ];
+    const knownKeys = ['openai_api_key', 'selected_language_code', 'selected_language_name', 'selected_voice', 'ai_instructions'];
     for (const k of knownKeys) {
       this.globals[k] = this.homey.settings.get(k);
     }
@@ -88,7 +98,7 @@ export class SettingsManager {
     if (!deviceId) return;
     this.devices.set(deviceId, { ...store });
     this.emitDevice(deviceId);
-    log.info('Registered/updated device settings', deviceId, store);
+    this.logger.info(`Registered/updated device settings, deviceId: '${deviceId}'`, undefined, store);
   }
 
   /** Merge globals + device-specific (device overrides). */
