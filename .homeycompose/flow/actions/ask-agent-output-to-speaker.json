@@ -20,6 +20,9 @@
     {
       "type": "text",
       "name": "Question",
+      "title": {
+        "en": "Question"
+      },
       "placeholder": {
         "en": "Question"
       }

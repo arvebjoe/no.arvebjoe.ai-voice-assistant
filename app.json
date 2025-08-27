@@ -106,6 +106,9 @@
           {
             "type": "text",
             "name": "Question",
+            "title": {
+              "en": "Question"
+            },
             "placeholder": {
               "en": "Question"
             }
@@ -144,6 +147,9 @@
           {
             "type": "text",
             "name": "Question",
+            "title": {
+              "en": "Question"
+            },
             "placeholder": {
               "en": "Question"
             }
@@ -173,6 +179,9 @@
           {
             "type": "text",
             "name": "Url",
+            "title": {
+              "en": "Url"
+            },
             "placeholder": {
               "en": "Url"
             }
@@ -202,6 +211,9 @@
           {
             "type": "text",
             "name": "text",
+            "title": {
+              "en": "text"
+            },
             "placeholder": {
               "en": "text"
             }

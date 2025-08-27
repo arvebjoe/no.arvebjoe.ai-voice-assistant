@@ -1,9 +1,6 @@
 # TODO before release:
     
 
-## Add flow cards to xiazhi devices also
-
-
 
 ## REMOVE 'logger.mts' and use this.log from SimpleClass
 

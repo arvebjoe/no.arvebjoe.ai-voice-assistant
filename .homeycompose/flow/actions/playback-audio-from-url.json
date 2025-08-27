@@ -4,7 +4,7 @@
   },
   "titleFormatted": {
     "en": "Playback audio from [[Url]]"
-  },  
+  },
   "hint": {
     "en": "Play any (local or remote) web URL as long as it's flac format"
   },
@@ -16,10 +16,13 @@
         "en": "Device"
       },
       "filter": "driver_id=home-assistant-voice-preview-edition|driver_id=xiaozhi-ai"
-    },    
+    },
     {
       "type": "text",
       "name": "Url",
+      "title": {
+        "en": "Url"
+      },
       "placeholder": {
         "en": "Url"
       }
