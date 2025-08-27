@@ -32,6 +32,8 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     this.logger.info('Initializing');
 
     this.setUnavailable();
+    this.setCapabilityValue('onoff', false);
+
 
     this.RegisterCapabilities();
 
