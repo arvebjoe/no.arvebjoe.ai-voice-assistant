@@ -49,8 +49,6 @@ const colors: Colors = {
 
 
 
-type Details = Record<string, any> | string | any | null;
-
 class Logger {
     private from: string;
     private disabled: boolean;
@@ -61,7 +59,7 @@ class Logger {
         this.disabled = disabled;
     }
 
-    info(message: string, subFrom: string = '', details: Details = null) {
+    info(message: string, subFrom: string = '', details: any = null) {
         if (this.disabled) {
             return;
         }        
@@ -100,15 +98,21 @@ class Logger {
     }
 
 
-    error(message: string, details: Details = null) {
-        this.info(message, 'ERROR', details);
+    error(message: string, details: any = null) {
+
+        if (Logger.homey) {
+            Logger.homey.error(message, details);
+        } else {
+            this.info(message, 'ERROR', details);
+        }
+
     }
 
-    warn(message: string, details: Details = null) {
+    warn(message: string, details: any = null) {
         this.info(message, 'WARN', details);
     }
 
-    log(message: string, subFrom: string = '', details: Details = null) {
+    log(message: string, subFrom: string = '', details: any = null) {
         this.info(message, subFrom, details);
     }
 

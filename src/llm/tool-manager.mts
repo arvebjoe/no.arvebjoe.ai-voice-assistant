@@ -19,7 +19,7 @@ interface ToolDefinition {
 export class ToolManager {
     private deviceManager: DeviceManager;
     private tools: Map<string, ToolDefinition> = new Map();
-    private logger = createLogger("ToolManager", true);
+    private logger = createLogger("ToolManager");
 
     constructor(deviceManager: DeviceManager) {
         this.deviceManager = deviceManager;
@@ -269,12 +269,7 @@ export class ToolManager {
                 const pageSizeSafe = page_size || undefined;
                 const pageTokenSafe = page_token || null;
 
-
                 var devices = this.deviceManager.getSmartHomeDevices(zoneSafe, typeSafe, pageSizeSafe, pageTokenSafe);
-
-                for (const device of devices.devices) {
-                    this.logger.info(device.name, "TOOL");
-                }
 
                 return devices;
             }

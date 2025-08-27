@@ -5,7 +5,6 @@ import { TypedEmitter } from "tiny-typed-emitter";
 import { encodeFrame, decodeFrame, VA_EVENT } from './esp-messages.mjs';
 import { createLogger } from '../helpers/logger.mjs';
 
-const log = createLogger('ESP', false);
 
 interface EspVoiceClientOptions {
   host: string;
@@ -47,6 +46,7 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
   private voiceAssistantConfigurationCount: number;
   private discoveryMode: boolean;
   private deviceType: string | null;
+  private logger = createLogger('ESP', false);
 
   // Store entity keys by object_id for easier access
   private entityKeys: {
@@ -89,7 +89,7 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
       this.reconnectTimer = null;
     }
 
-    log.info(`Connecting to ${this.host}:${this.apiPort}`);
+    this.logger.info(`Connecting to ${this.host}:${this.apiPort}`);
     this.tcp = net.createConnection(this.apiPort, this.host, () => this.onConnect());
     this.tcp.setKeepAlive(true, 1000);
     this.tcp.on('connect', () => {
@@ -97,22 +97,22 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
     });
     this.tcp.on('data', (data) => this.onTcpData(data));
     this.tcp.on('error', (err) => {
-      log.error('TCP connection error', err);
+      this.logger.error('TCP connection error', err);
       this.handleDisconnect();
     });
     this.tcp.on('close', () => {
       if (this.connected) {
-        log.warn('TCP connection closed unexpectedly');
+        this.logger.warn('TCP connection closed unexpectedly');
         this.handleDisconnect();
       }
     });
   }
 
   async stop(): Promise<void> {
-    log.info('Stopping ESP Voice Client...');
+    this.logger.info('Stopping ESP Voice Client...');
 
     // Close mic socket first
-    log.info('Closing mic socket... from stop()');
+    this.logger.info('Closing mic socket... from stop()');
     this.closeMic();
 
     if (this.reconnectTimer) {
@@ -144,7 +144,7 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
     }
 
     const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempt), this.MAX_RECONNECT_DELAY);
-    log.warn('Scheduling reconnection attempt', { attempt: this.reconnectAttempt + 1, delayMs: delay });
+    this.logger.warn('Scheduling reconnection attempt', { attempt: this.reconnectAttempt + 1, delayMs: delay });
 
     this.reconnectTimer = setTimeout(async () => {
       this.reconnectTimer = null;
@@ -154,7 +154,7 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
   }
 
   async onConnect(): Promise<void> {
-    log.info(`Connected to ${this.host}:${this.apiPort}`);
+    this.logger.info(`Connected to ${this.host}:${this.apiPort}`);
     this.reconnectAttempt = 0;
     this.startHealthCheck();
 
@@ -175,13 +175,13 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
     this.healthCheckTimer = setInterval(() => {
       const now = Date.now();
       if (this.lastMessageReceivedTime > 0 && (now - this.lastMessageReceivedTime) > this.PING_TIMEOUT) {
-        log.warn('Connection timeout - no ping received', {
+        this.logger.warn('Connection timeout - no ping received', {
           lastPing: Math.round((now - this.lastMessageReceivedTime) / 1000) + 's ago'
         });
         this.handleDisconnect();
       }
       else if (this.lastMessageReceivedTime > 0) {
-        log.info('Connection is healthy. Last ping received ' + Math.round((now - this.lastMessageReceivedTime) / 1000) + 's ago');
+        this.logger.info('Connection is healthy. Last ping received ' + Math.round((now - this.lastMessageReceivedTime) / 1000) + 's ago');
       }
     }, this.HEALTH_CHECK_INTERVAL);
   }
@@ -206,7 +206,7 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
   }
 
   async disconnect(): Promise<boolean> {
-    log.info('Disconnecting ESP Voice Client');
+    this.logger.info('Disconnecting ESP Voice Client');
 
     // Mark as disconnected before anything else to prevent reconnect attempts
     this.connected = false;
@@ -220,10 +220,10 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
 
       // Close mic socket - wrap in try-catch in case it's already closed
       try {
-        log.info('Closing mic socket... from disconnect()');
+        this.logger.info('Closing mic socket... from disconnect()');
         this.closeMic();
       } catch (err) {
-        log.warn('Error closing mic socket:', err);
+        this.logger.error('Error closing mic socket:', err);
       }
 
       // Clean up health check timer
@@ -237,17 +237,19 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
         try {
           this.tcp.destroy();
         } catch (err) {
-          log.warn('Error destroying TCP socket:', err);
+          this.logger.error('Error destroying TCP socket:', err);
         } finally {
           this.tcp = null;
         }
       }
 
-      log.info('ESP Voice Client disconnected');
+      this.logger.info('ESP Voice Client disconnected');
       return true;
+
     } catch (err) {
-      log.error('Error during disconnect:', err);
+      this.logger.error('Error during disconnect:', err);
       return false;
+
     } finally {
       // Always emit the disconnected event, but use a setTimeout to 
       // ensure it happens after the current execution context
@@ -318,9 +320,9 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
         // Store the first media player key as our default media_player entity for volume control
         if (!this.entityKeys['media_player']) {
           this.entityKeys['media_player'] = message.key;
-          log.info(`Registered media player: ${message.objectId} with key ${message.key} (primary)`);
+          this.logger.info(`Registered media player: ${message.objectId} with key ${message.key} (primary)`);
         } else {
-          log.info(`Registered media player: ${message.objectId} with key ${message.key}`);
+          this.logger.info(`Registered media player: ${message.objectId} with key ${message.key}`);
         }
       }
     }
@@ -328,20 +330,20 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
     else if (name === 'ListEntitiesSwitchResponse') {
       if (message.objectId && message.key) {
         this.entityKeys[message.objectId] = message.key;
-        log.info(`Registered switch: ${message.objectId} with key ${message.key}`);
+        this.logger.info(`Registered switch: ${message.objectId} with key ${message.key}`);
       }
     }
 
     else if (name === 'ListEntitiesNumberResponse') {
       if (message.objectId && message.key) {
         this.entityKeys[message.objectId] = message.key;
-        log.info(`Registered number: ${message.objectId} with key ${message.key}`);
+        this.logger.info(`Registered number: ${message.objectId} with key ${message.key}`);
 
         // Check if this might be a volume control entity
         const objectIdLower = message.objectId.toLowerCase();
         if (objectIdLower.includes('volume')) {
           this.entityKeys['volume'] = message.key;
-          log.info(`Found potential volume control number entity: ${message.objectId}`);
+          this.logger.info(`Found potential volume control number entity: ${message.objectId}`);
         }
       }
     }
@@ -384,7 +386,7 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
         // Emit event if volume changed
         if (Math.abs(previousVolume - this.currentVolume) > 0.01) { // Small threshold to avoid noise
           this.emit('volume', this.currentVolume);
-          log.info(`Volume changed to ${Math.round(this.currentVolume * 100)}%`);
+          this.logger.info(`Volume changed to ${Math.round(this.currentVolume * 100)}%`);
         }
       }
     }
@@ -399,7 +401,7 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
         // Emit event if mute state changed
         if (previousMuteState !== this.isMutedValue) {
           this.emit('mute', this.isMutedValue);
-          log.info(`Mute state changed to ${this.isMutedValue ? 'muted' : 'unmuted'}`);
+          this.logger.info(`Mute state changed to ${this.isMutedValue ? 'muted' : 'unmuted'}`);
         }
       }
     }
@@ -420,7 +422,7 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
         // Emit event if volume changed
         if (Math.abs(previousVolume - this.currentVolume) > 0.01) { // Small threshold to avoid noise
           this.emit('volume', this.currentVolume);
-          log.info(`Volume changed to ${Math.round(this.currentVolume * 100)}%`);
+          this.logger.info(`Volume changed to ${Math.round(this.currentVolume * 100)}%`);
         }
       }
     }
@@ -481,7 +483,7 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
 
     // Close existing mic socket if it exists
     if (this.mic) {
-      log.info('Closing mic socket... from beginVoiceSession()');
+      this.logger.info('Closing mic socket... from beginVoiceSession()');
       this.closeMic();
     }
 
@@ -489,8 +491,7 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
 
     // Add error handling
     this.mic.on('error', (err) => {
-      log.error('UDP socket error:', err);
-      log.info('Closing mic socket... from udp error()');
+      this.logger.error('UDP socket error:', err);      
       this.closeMic();
     });
 
@@ -500,7 +501,7 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
 
     this.mic.bind(() => {
       const mic_port = (this.mic.address() as net.AddressInfo).port;
-      log.info(`UDP socket bound to port: ${mic_port}`);
+      this.logger.info(`UDP socket bound to port: ${mic_port}`);
 
       this.send('VoiceAssistantResponse', {
         port: mic_port,
@@ -517,9 +518,11 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
         this.mic.removeAllListeners();
         // Close the socket
         this.mic.close();
-        log.info('UDP socket closed');
+        this.logger.info('UDP socket closed');
+
       } catch (err) {
-        log.error('Error closing UDP socket:', err);
+        this.logger.error('Error closing UDP socket:', err);
+
       } finally {
         // Always set to null to indicate it's no longer available
         this.mic = null!;
@@ -539,7 +542,7 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
     const volumeKey = this.entityKeys['volume'];
     const muteKey = this.entityKeys['mute'];
 
-    log.info('Subscribing to device state updates');
+    this.logger.info('Subscribing to device state updates');
 
     // Subscribe to the media player entity if available
     if (mediaPlayerKey) {
@@ -547,9 +550,10 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
         this.send('SubscribeMediaPlayerStateRequest', {
           key: mediaPlayerKey
         });
-        log.info(`Subscribed to media player state updates with key ${mediaPlayerKey}`);
+        this.logger.info(`Subscribed to media player state updates with key ${mediaPlayerKey}`);
+
       } catch (error) {
-        log.warn('Error subscribing to media player state:', error);
+        this.logger.warn('Error subscribing to media player state:', error);
       }
     }
 
@@ -559,9 +563,10 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
         this.send('SubscribeNumberStateRequest', {
           key: volumeKey
         });
-        log.info(`Subscribed to volume number entity state updates with key ${volumeKey}`);
+        this.logger.info(`Subscribed to volume number entity state updates with key ${volumeKey}`);
+
       } catch (error) {
-        log.warn('Error subscribing to volume number state:', error);
+        this.logger.warn('Error subscribing to volume number state:', error);
       }
     }
 
@@ -571,9 +576,10 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
         this.send('SubscribeSwitchStateRequest', {
           key: muteKey
         });
-        log.info(`Subscribed to mute switch state updates with key ${muteKey}`);
+        this.logger.info(`Subscribed to mute switch state updates with key ${muteKey}`);
+
       } catch (error) {
-        log.warn('Error subscribing to mute switch state:', error);
+        this.logger.warn('Error subscribing to mute switch state:', error);
       }
     }
   }
@@ -593,12 +599,12 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
   setVolume(volume: number): void {
     // Ensure volume is between 0 and 1
     volume = Math.max(0, Math.min(1, volume));
-    log.info(`Setting volume to ${Math.round(volume * 100)}%`);
+    this.logger.info(`Setting volume to ${Math.round(volume * 100)}%`);
 
     // Get media player entity key
     const mediaPlayerKey = this.entityKeys['media_player'];
     if (!mediaPlayerKey) {
-      log.warn('No media player entity found for volume control');
+      this.logger.warn('No media player entity found for volume control');
       return;
     }
 
@@ -612,8 +618,9 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
 
       // Track state locally
       this.currentVolume = volume;
+
     } catch (error) {
-      log.error('Error sending volume command:', error);
+      this.logger.error('Error sending volume command:', error);
     }
   }
 
@@ -622,13 +629,13 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
    * @param mute True to mute, false to unmute
    */
   setMute(mute: boolean): void {
-    log.info(`${mute ? 'Muting' : 'Unmuting'} device`);
+    this.logger.info(`${mute ? 'Muting' : 'Unmuting'} device`);
 
     // Find the mute switch entity key
     const muteKey = this.entityKeys['mute'];
 
     if (!muteKey) {
-      log.warn('No mute switch entity found');
+      this.logger.warn('No mute switch entity found');
       return;
     }
 
@@ -644,8 +651,9 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
 
       // Emit event
       this.emit('mute', this.isMutedValue);
+
     } catch (error) {
-      log.error('Error setting mute state:', error);
+      this.logger.error('Error setting mute state:', error);
     }
   }
 
@@ -653,7 +661,7 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
 
 
   vaEvent(type: number, extra: Record<string, any> = {}, name: string): void {
-    log.info(`VoiceAssistantEvent: ${name}`, "VoiceAssistantEvent", { ...extra });
+    this.logger.info(`VoiceAssistantEvent: ${name}`, "vaEvent", { extra });
 
     this.send('VoiceAssistantEventResponse',
       {
@@ -667,7 +675,7 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
 
   send(name: string, payload: any, doLog: boolean = true): void {
     if (doLog) {
-      log.info(name, 'TX', payload);
+      this.logger.info(name, 'TX', payload);
     }
     this.tcp?.write(encodeFrame(name, payload));
   }
@@ -678,9 +686,9 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
       return;
     }
 
-    log.info(f.name || `unknown#${f.id}`, 'RX', f.message || { length: f.payload.length });
+    this.logger.info(f.name || `unknown#${f.id}`, 'RX', f.message || { length: f.payload.length });
   }
 
 }
 
-export { EspVoiceAssistantClient , EspVoiceClientOptions };
+export { EspVoiceAssistantClient, EspVoiceClientOptions };
