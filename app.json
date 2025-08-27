@@ -101,7 +101,7 @@
             "title": {
               "en": "Device"
             },
-            "filter": "driver_id=home-assistant-voice-preview-edition|driver_id=xiaozhi-ai"
+            "filter": "driver_id=home-assistant-voice-preview-edition|xiaozhi-ai"
           },
           {
             "type": "text",
@@ -142,7 +142,7 @@
             "title": {
               "en": "Device"
             },
-            "filter": "driver_id=home-assistant-voice-preview-edition|driver_id=xiaozhi-ai"
+            "filter": "driver_id=home-assistant-voice-preview-edition|xiaozhi-ai"
           },
           {
             "type": "text",
@@ -174,7 +174,7 @@
             "title": {
               "en": "Device"
             },
-            "filter": "driver_id=home-assistant-voice-preview-edition|driver_id=xiaozhi-ai"
+            "filter": "driver_id=home-assistant-voice-preview-edition|xiaozhi-ai"
           },
           {
             "type": "text",
@@ -206,7 +206,7 @@
             "title": {
               "en": "Device"
             },
-            "filter": "driver_id=home-assistant-voice-preview-edition|driver_id=xiaozhi-ai"
+            "filter": "driver_id=home-assistant-voice-preview-edition|xiaozhi-ai"
           },
           {
             "type": "text",
@@ -268,7 +268,9 @@
       "class": "other",
       "discovery": "esphome",
       "capabilities": [
-        "onoff"
+        "volume_set",
+        "onoff",
+        "volume_mute"
       ],
       "platforms": [
         "local"

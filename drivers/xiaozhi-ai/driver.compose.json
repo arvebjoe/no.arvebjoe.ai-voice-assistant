@@ -5,7 +5,9 @@
   "class": "other",
   "discovery": "esphome",
   "capabilities": [
-    "onoff"
+    "volume_set",
+    "onoff",    
+    "volume_mute"
   ],
   "platforms": [
     "local"

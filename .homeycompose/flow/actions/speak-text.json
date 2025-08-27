@@ -15,7 +15,7 @@
       "title": {
         "en": "Device"
       },
-      "filter": "driver_id=home-assistant-voice-preview-edition|driver_id=xiaozhi-ai"
+      "filter": "driver_id=home-assistant-voice-preview-edition|xiaozhi-ai"
     },
     {
       "type": "text",
