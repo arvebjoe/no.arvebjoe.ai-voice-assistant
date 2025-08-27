@@ -3,12 +3,10 @@ import { createLogger } from './logger.mjs';
 import { AudioData } from './interfaces.mjs';
 import { saveAudioData } from './file-helper.mjs';
 
-
-const log = createLogger('WEB');
-
 export class WebServer {
     private homey: any;
     private ip: string | null;
+    private logger = createLogger('Web');
 
     constructor(homey: any) {
         this.homey = homey;
@@ -35,7 +33,7 @@ export class WebServer {
 
     getLanIP(): string {
 
-        log.info('Determining LAN IP address...', 'IP');
+        this.logger.info('Determining LAN IP address...', 'IP');
         let bestChoice: {
             address: string | null,
             name: string | null
@@ -58,21 +56,21 @@ export class WebServer {
             }
 
             if (ip4 && wired) {
-                log.info(`Using wired interface ${name} with IP ${ip4.address}`, 'IP');
+                this.logger.info(`Using wired interface ${name} with IP ${ip4.address}`, 'IP');
                 return ip4.address;
             } else if (ip4) {
-                log.info(`Found IPv4 address on interface ${name} with IP ${ip4.address}`, 'IP');
+                this.logger.info(`Found IPv4 address on interface ${name} with IP ${ip4.address}`, 'IP');
                 bestChoice.address = ip4.address;
                 bestChoice.name = name;
             }
         }
 
         if (bestChoice.address) {
-            log.info(`Using best available interface ${bestChoice.name} with IP ${bestChoice.address}`, 'IP');
+            this.logger.info(`Using best available interface ${bestChoice.name} with IP ${bestChoice.address}`, 'IP');
             return bestChoice.address;
         }
 
-        log.warn('Could not determine LAN IP, defaulting to localhost');
+        this.logger.warn('Could not determine LAN IP, defaulting to localhost');
         return '127.0.0.1';
     }
 }
