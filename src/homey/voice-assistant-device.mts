@@ -9,6 +9,7 @@ import { PcmSegmenter } from '../helpers/pcm-segmenter.mjs';
 import { AudioData } from '../helpers/interfaces.mjs';
 import { ToolManager } from '../llm/tool-manager.mjs';
 import { DeviceStore } from '../helpers/interfaces.mjs';
+import { createLogger } from '../helpers/logger.mjs';
 
 
 export default abstract class VoiceAssistantDevice extends Homey.Device {
@@ -22,12 +23,13 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
   private settingsUnsubscribe?: () => void; // To clean up the subscription
   private currentSettings: any = {}; // Store current settings to detect changes
   private isMutedValue: boolean = false;
+  private logger = createLogger('Voice_Assistant_Device');
 
   /**
    * onInit is called when the device is initialized.
    */
   async onInit(): Promise<void> {
-    this.log('EspVoiceDevice is initializing...');
+    this.logger.info('Initializing...');
 
     this.setUnavailable();
 
@@ -45,7 +47,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       const store = this.getStore() as DeviceStore;
       settingsManager.registerDevice(deviceId, store);
     } catch (e) {
-      this.log('Failed to register device settings');
+      this.logger.error('Failed to register device settings', e);
     }
 
 
@@ -69,7 +71,6 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
     // TODO: Pass this.homey and this.toolMaker to the agent
     this.agent = new OpenAIRealtimeAgent(this.toolManager, agentOptions);
-    this.log('Agent initialized with tools');
 
     // Store initial settings
     this.currentSettings = {
@@ -93,15 +94,11 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       apiPort: store.port
     });
 
-    this.log('ESP Voice Assistant Client initialized');
-
-
+    
     this.segmenter = new PcmSegmenter();
-    this.log('PCM Segmenter initialized');
-
 
     this.esp.on('start', async () => {
-      this.log("Voice session started");
+      this.logger.info("Voice session started");
       this.devicePromise = this.deviceManager.fetchData();
       this.setCapabilityValue('onoff', true);
       this.esp.run_start();
@@ -116,24 +113,17 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     });
 
     this.agent.on("open", () => {
-      this.log('Agent connection opened');
+      this.logger.info('Agent connection opened');
     });
 
     this.esp.on('connected', async () => {
-      this.log('ESP Voice Client connected');
+      this.logger.info('ESP Voice Client connected');
       this.setAvailable();
     });
 
     this.agent.on('silence', (source: string) => {
-      this.log(`Silence detected by agent (${source}), closing microphone.`);
-
+      this.logger.info(`Silence detected by agent (${source}), closing microphone.`);
       this.esp.closeMic();
-
-      // Save collected audio buffer to WAV file
-      //save_mic_buffer(audioBuffer);
-      // Reset the buffer for next recording
-      //audioBuffer = [];
-
       this.esp.stt_vad_end('');
       this.esp.tts_start();
     });
@@ -143,11 +133,11 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     });
 
     this.agent.on('text.done', (msg: any) => {
-      this.log('Text processing done:', msg);
+      this.logger.info('Text processing done:', undefined, msg);
     });
 
     this.segmenter.on('chunk', async (chunk: Buffer) => {
-      this.log(`New TX chunk: ${chunk.length} bytes`);
+      this.logger.info(`New TX chunk: ${chunk.length} bytes`);
 
       // TODO: Do not store sample rate, channels, and bits per sample here!
       const flac = await pcmToFlacBuffer(chunk, {
@@ -168,13 +158,13 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
 
     this.agent.on('tool.called', async (d: { callId: string; name: string; args: any }) => {
-      this.log(`${d.name}`, d.args);
+      this.logger.info(`${d.name}`, 'TOOL_CALLED', d.args);
       await this.devicePromise;
 
     });
 
     this.agent.on('response.done', () => {
-      this.log("Conversation completed");
+      this.logger.info("Conversation completed");
       this.segmenter.flush();
       this.esp.tts_end();
       this.esp.closeMic();
@@ -183,32 +173,29 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     });
 
     this.agent.on('error', (error: Error) => {
-      this.error("Realtime agent error:", error);
+      this.logger.error("Realtime agent error:", error);
     });
 
     this.esp.on('disconnected', () => {
-      this.log('ESP Voice Client disconnected');
+      this.logger.info('ESP Voice Client disconnected');
       this.setUnavailable('Disconnected from ESP Voice Client');
     });
 
-    this.agent.on('open', () => {
-      this.log("Realtime agent connection opened");
-    });
 
     // Listen for volume changes from the device
     this.esp.on('volume', (level: number) => {
-      this.log(`Received volume update: ${Math.round(level * 100)}%`);
+      this.logger.info(`Received volume update: ${Math.round(level * 100)}%`);
       this.setCapabilityValue('volume_set', level).catch(err => {
-        this.error('Failed to update volume_set capability', err);
+        this.logger.error('Failed to update volume_set capability', err);
       });
     });
 
     // Listen for mute state changes from the device
     this.esp.on('mute', (isMuted: boolean) => {
-      this.log(`Received mute state update: ${isMuted ? 'muted' : 'unmuted'}`);
+      this.logger.info(`Received mute state update: ${isMuted ? 'muted' : 'unmuted'}`);
       this.isMutedValue = isMuted;
       this.setCapabilityValue('volume_mute', isMuted).catch(err => {
-        this.error('Failed to update volume_mute capability', err);
+        this.logger.error('Failed to update volume_mute capability', err);
       });
     });
 
@@ -223,20 +210,20 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     await this.esp.start();
     await this.agent.start();
 
-    this.log('EspVoiceDevice has initialized');
+    this.logger.info('Initialized');
   }
 
   /**
    * Handle settings changes and update agent accordingly
    */
   private async handleSettingsChange(newSettings: any): Promise<void> {
-    this.log('Settings changed, updating agent...', newSettings);
+    this.logger.info('Settings changed, updating agent...', undefined, newSettings);
 
     try {
       // Check if voice changed
       const newVoice = newSettings.selected_voice;
       if (newVoice && newVoice !== this.currentSettings.voice) {
-        this.log(`Voice changed from ${this.currentSettings.voice} to ${newVoice}`);
+        this.logger.info(`Voice changed from ${this.currentSettings.voice} to ${newVoice}`);
         this.currentSettings.voice = newVoice;
         this.agent.updateVoiceWithReconnect(this.currentSettings.voice);
       }
@@ -245,8 +232,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       const newLanguageCode = newSettings.selected_language_code;
       const newLanguageName = newSettings.selected_language_name;
       if (newLanguageCode && newLanguageCode !== this.currentSettings.languageCode) {
-        this.log(`Language code changed from ${this.currentSettings.languageCode} to ${newLanguageCode}`);
-        this.log(`Language name changed from ${this.currentSettings.languageName} to ${newLanguageName}`);
+        this.logger.info(`Language code changed from ${this.currentSettings.languageCode} to ${newLanguageCode}`);
         // TODO: Add updateLanguage method to OpenAIRealtimeWS or restart connection
         this.currentSettings.languageCode = newLanguageCode;
         this.currentSettings.languageName = newLanguageName || 'English';
@@ -256,13 +242,13 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       // Check if AI instructions changed
       const newInstructions = newSettings.ai_instructions;
       if (newInstructions !== this.currentSettings.additionalInstructions) {
-        this.log('AI instructions changed, updating...');
+        this.logger.info('AI instructions changed, updating...');
         this.currentSettings.additionalInstructions = newInstructions || '';
         this.agent.updateAdditionalInstructions(this.currentSettings.additionalInstructions);
       }
 
     } catch (error) {
-      this.error('Failed to update agent settings:', error);
+      this.logger.error('Failed to update agent settings:', error);
     }
   }
 
@@ -272,7 +258,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
 
     this.registerCapabilityListener('onoff', async (value: boolean) => {
-      this.log(`Capability onoff changed to: ${value}`);
+      this.logger.info(`Capability onoff changed to: ${value}`);
 
       if (this.esp && value) {
         this.esp.run_start();
@@ -282,23 +268,23 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     });
 
     this.registerCapabilityListener('volume_set', async (value: number) => {
-      this.log(`Capability volume_set changed to: ${value}`);
+      this.logger.info(`Capability volume_set changed to: ${value}`);
       // Send the volume command to the ESPHome device
       if (this.esp && this.esp.setVolume) {
         this.esp.setVolume(value);
       } else {
-        this.error('ESP client not initialized or setVolume method not available');
+        this.logger.error('ESP client not initialized or setVolume method not available');
       }
     });
 
     this.registerCapabilityListener('volume_mute', async (value: boolean) => {
-      this.log(`Capability volume_mute changed to: ${value}`);
+      this.logger.info(`Capability volume_mute changed to: ${value}`);
       // Send the mute command to the ESPHome device
       if (this.esp && this.esp.setMute) {
         this.isMutedValue = value;
         this.esp.setMute(value);
       } else {
-        this.error('ESP client not initialized or setMute method not available');
+        this.logger.error('ESP client not initialized or setMute method not available');
       }
     });
   }
@@ -306,41 +292,41 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
 
   playUrl(url: string): void {
-    this.log(`Playing audio from URL: ${url}`);
+    this.logger.info(`Playing audio from URL: ${url}`);
     if (this.esp && this.esp.playAudioFromUrl) {
       this.esp.run_start();
       this.esp.playAudioFromUrl(url, false);
       this.esp.run_end();
     } else {
-      this.error('ESP client not initialized or playAudioFromUrl method not available');
+      this.logger.error('ESP client not initialized or playAudioFromUrl method not available');
     }
   }
 
 
   speakText(text: string): void {
-    this.log(`Speaking text: ${text}`);
+    this.logger.info(`Speaking text: ${text}`);
     if (this.agent && this.agent.textToSpeech) {
       this.agent.textToSpeech(text);
     } else {
-      this.error('Agent not initialized or textToSpeech method not available');
+      this.logger.error('Agent not initialized or textToSpeech method not available');
     }
   }
 
   async askAgentOutputToSpeaker(question: string): Promise<void> {
-    this.log(`Asking agent to output to speaker: ${question}`);
+    this.logger.info(`Asking agent to output to speaker: ${question}`);
 
     if (this.agent && this.agent.sendTextForAudioResponse) {
       await this.deviceManager.fetchData();
       this.agent.sendTextForAudioResponse(question);
     } else {
-      this.error('Agent not initialized or sendTextForAudioResponse method not available');
+      this.logger.error('Agent not initialized or sendTextForAudioResponse method not available');
     }
 
   }
 
 
   async askAgentOutputToText(question: string): Promise<string> {
-    this.log(`Asking agent to output as text: ${question}`);
+    this.logger.info(`Asking agent to output as text: ${question}`);
 
     if (this.agent && this.agent.sendTextForTextResponse) {
       await this.deviceManager.fetchData();
@@ -348,7 +334,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       return new Promise<string>((resolve, reject) => {
         // Set up a one-time event listener for text.done
         const textDoneHandler = (msg: any) => {
-          this.log('Text response received:', msg.text);
+          this.logger.info('Text response received:', undefined, msg.text);
           resolve(msg.text);
         };
 
@@ -372,7 +358,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
         }
       });
     } else {
-      this.error('Agent not initialized or sendTextForTextResponse method not available');
+      this.logger.error('Agent not initialized or sendTextForTextResponse method not available');
       return "";
     }
   }
@@ -395,7 +381,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
   // IP changed (e.g., DHCP lease renewal)
   onDiscoveryAddressChanged(r: any) {
-    this.log('Device address changed, updating ESP client', r);
+    this.logger.info('Device address changed, updating ESP client', undefined, r);
     this.setStoreValue('address', r.address).catch(this.error);
     this.esp.stop();
     this.esp.setHost(r.address);
@@ -414,7 +400,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
    * onAdded is called when the user adds the device, called just after pairing.
    */
   async onAdded(): Promise<void> {
-    this.log('EspVoiceDevice has been added');
+    this.logger.info('Device has been added');
   }
 
   /**
@@ -434,13 +420,13 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     newSettings: { [key: string]: boolean | string | number | undefined | null };
     changedKeys: string[];
   }): Promise<string | void> {
-    this.log("EspVoiceDevice settings where changed");
+    this.logger.info("Settings where changed");
     try {
       const deviceId = (this.getData() as any)?.id || (this as any).id || this.getName();
       const store = this.getStore() as DeviceStore;
       settingsManager.registerDevice(deviceId, store);
     } catch (e) {
-      this.error('Failed to update device settings in manager');
+      this.logger.error('Failed to update device settings in manager', e);
     }
   }
 
@@ -450,14 +436,14 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
    * @param {string} name The new name
    */
   async onRenamed(name: string): Promise<void> {
-    this.log('EspVoiceDevice was renamed');
+    this.logger.info('Device was renamed');
   }
 
   /**
    * onDeleted is called when the user deleted the device.
    */
   async onDeleted(): Promise<void> {
-    this.log('EspVoiceDevice has been deleted');
+    this.logger.info('Device has been deleted');
 
     // Clean up settings subscription
     if (this.settingsUnsubscribe) {
@@ -471,11 +457,11 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
         // Remove event listeners before disconnecting to prevent any event-triggered actions
         this.esp.removeAllListeners();
         await this.esp.disconnect().catch(err => {
-          this.error('Error while disconnecting ESP client:', err);
+          this.logger.error('Error while disconnecting ESP client:', err);
         });
       }
     } catch (err) {
-      this.error('Failed to properly disconnect ESP client:', err);
+      this.logger.error('Failed to properly disconnect ESP client:', err);
     } finally {
       this.esp = null!;
     }

@@ -93,7 +93,7 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
     this.tcp = net.createConnection(this.apiPort, this.host, () => this.onConnect());
     this.tcp.setKeepAlive(true, 1000);
     this.tcp.on('connect', () => {
-      this.emit('connected');
+      // Nothing to do here?
     });
     this.tcp.on('data', (data) => this.onTcpData(data));
     this.tcp.on('error', (err) => {
