@@ -6,16 +6,14 @@
     - src/helpers/agent-instructions.mts and 
     - src/helpers/custom-instructions.mts
 
-## Homey-log
-    - https://www.npmjs.com/package/homey-log
-    - https://athombv.github.io/node-homey-log/
-    
+## Add "follow-up" tool?
 
 
 
 
 
-## Add tool for follow ups?
+
+
 
 
 
