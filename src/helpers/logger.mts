@@ -121,7 +121,8 @@ class Logger {
      */
     reportError(error: Error, context?: string) {
         const homeyLog = Logger.homeyLog;
-        if (homeyLog && homeyLog.captureException) {
+        if (homeyLog && homeyLog.captureException) {            
+            (error as any).context = context;
             homeyLog.captureException(error).catch((_: Error) => { });
         }
     }

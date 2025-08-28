@@ -199,6 +199,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       this.setCapabilityValue('volume_mute', isMuted).catch(err => {
         this.logger.error('Failed to update volume_mute capability', err);
       });
+      //this.logger.error('Mute test2', 'Jælle balle2');
     });
 
     this.agent.on('connectionHealthy', () => {
