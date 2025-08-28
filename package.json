@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "homey-api": "^3.13.3",
+    "homey-log": "^2.1.0",
     "libflacjs": "^5.4.0",
     "protobufjs": "^7.5.3",
     "uuid": "^11.1.0",

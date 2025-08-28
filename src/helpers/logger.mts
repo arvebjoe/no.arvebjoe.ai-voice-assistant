@@ -1,31 +1,8 @@
 import Homey from 'homey/lib/Homey.js';
 import util from 'util';
 
-// Type definitions
-interface Colors {
-    reset: string;
-    bright: string;
-    dim: string;
-    black: string;
-    red: string;
-    green: string;
-    yellow: string;
-    blue: string;
-    magenta: string;
-    cyan: string;
-    white: string;
-    bgBlack: string;
-    bgRed: string;
-    bgGreen: string;
-    bgYellow: string;
-    bgBlue: string;
-    bgMagenta: string;
-    bgCyan: string;
-    bgWhite: string;
-}
-
 // ANSI color codes
-const colors: Colors = {
+const colors = {
     reset: '\x1b[0m',
     bright: '\x1b[1m',
     dim: '\x1b[2m',
@@ -53,17 +30,23 @@ class Logger {
     private from: string;
     private disabled: boolean;
     private static homey: Homey | null = null;
+    private static homeyLog: any;
 
     constructor(from: string, disabled: boolean = false) {
         this.from = from.toUpperCase();
         this.disabled = disabled;
     }
 
+    setHomey(homey: Homey, homeyLog: any = null) {
+        Logger.homey = homey;
+        Logger.homeyLog = homeyLog;
+    }
+
     info(message: string, subFrom: string = '', details: any = null) {
         if (this.disabled) {
             return;
-        }        
-        
+        }
+
         const fromStr = `${colors.cyan}[${this.from}]${colors.reset}`;
         const subColor = subFrom === 'ERROR' ? colors.red : subFrom === 'WARN' ? colors.yellow : colors.magenta;
         const subStr = subFrom ? `${subColor}[${subFrom}]${colors.reset}` : '';
@@ -100,10 +83,16 @@ class Logger {
 
     error(message: string, details: any = null) {
 
-        if (Logger.homey) {
-            Logger.homey.error(message, details);
-        } else {
-            this.info(message, 'ERROR', details);
+        try {
+            this.reportError(details instanceof Error ? details : new Error(String(details)), message);
+
+            if (Logger.homey) {
+                Logger.homey.error(message, details);
+            } else {
+                this.info(message, 'ERROR', details);
+            }
+        } catch (_) {
+            // Ignore it, will be fine
         }
 
     }
@@ -125,8 +114,26 @@ class Logger {
         }
     }
 
-    setHomey(homey: Homey) {
-        Logger.homey = homey;
+
+    /**
+     * Report an error to Sentry if homey-log is available
+     * This provides a centralized way to report errors throughout your app
+     */
+    reportError(error: Error, context?: string) {
+        const homeyLog = Logger.homeyLog;
+        if (homeyLog && homeyLog.captureException) {
+            homeyLog.captureException(error).catch((_: Error) => { });
+        }
+    }
+
+    /**
+     * Report a message to Sentry if homey-log is available
+     */
+    reportMessage(message: string) {
+        const homeyLog = Logger.homeyLog;
+        if (homeyLog && homeyLog.captureMessage) {
+            homeyLog.captureMessage(message).catch((_: Error) => { });
+        }
     }
 
 }

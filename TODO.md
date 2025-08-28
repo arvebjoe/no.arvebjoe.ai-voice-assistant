@@ -1,8 +1,10 @@
 # TODO before release:
     
+## App craches if ApiKey is missing
 
-
-## REMOVE 'logger.mts' and use this.log from SimpleClass
+## Move instructions from helpers to llm
+    - src/helpers/agent-instructions.mts and 
+    - src/helpers/custom-instructions.mts
 
 ## Homey-log
     - https://www.npmjs.com/package/homey-log
@@ -10,14 +12,10 @@
     
 
 
-## Use OpenAI to translate to all languages
 
 
 
-
-
-
-
+## Add tool for follow ups?
 
 
 

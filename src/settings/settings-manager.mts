@@ -62,13 +62,11 @@ export class SettingsManager {
     this.homey = homey;
 
 
-
-
     // Prime global settings snapshot
     try {
       this.refreshGlobals();
     } catch (e) {
-      this.logger.error('Failed to read initial global settings', e);
+      this.logger.error('Failed to read initial global settings', e);      
     }
 
     // Listen for updates from the Homey settings store
