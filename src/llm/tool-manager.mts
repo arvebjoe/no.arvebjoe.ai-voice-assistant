@@ -19,7 +19,7 @@ interface ToolDefinition {
 export class ToolManager {
     private deviceManager: DeviceManager;
     private tools: Map<string, ToolDefinition> = new Map();
-    private logger = createLogger("ToolManager");
+    private logger = createLogger('ToolManage', true);
 
     constructor(deviceManager: DeviceManager) {
         this.deviceManager = deviceManager;

@@ -80,7 +80,12 @@ export type RealtimeOptions = {
      * Set to { type: 'server_vad' } to let the server auto-commit the input turn.
      * Set to null to disable server VAD (you can still use local VAD below).
      */
-    turnDetection?: { type: "server_vad";[k: string]: any } | null;
+    turnDetection: {
+        type: "server_vad";
+        //threshold: number;
+        //prefix_padding_ms: number;
+        //silence_duration_ms: number;            
+    } | null;
 
     /**
      * Hint STT language using ISO-639-1 code. Norwegian = 'no'.
@@ -159,14 +164,14 @@ type PendingToolCall = {
 
 export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter<RealtimeEvents>) {
     private ws?: WebSocket;
-    private logger = createLogger("AGENT", false);
+    private logger = createLogger('AGENT', false);
     private resample_prev: number | null = null; // last input sample from previous chunk
     private resample_frac: number = 0;           // fractional read position into the source for next call
     private toolManager: ToolManager;
 
     private options: Required<
         Pick<
-            RealtimeOptions,            
+            RealtimeOptions,
             | "voice"
             | "outputAudioFormat"
             | "turnDetection"
@@ -220,10 +225,7 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
             url: `wss://api.openai.com/v1/realtime?model=gpt-realtime`,
             voice: opts.voice ?? "alloy",
             outputAudioFormat: opts.outputAudioFormat ?? "pcm16",
-            turnDetection:
-                typeof opts.turnDetection === "undefined"
-                    ? { type: "server_vad" }
-                    : opts.turnDetection,
+            turnDetection: opts.turnDetection,
             languageCode: opts.languageCode ?? "en", // English
             languageName: opts.languageName ?? "English",
             additionalInstructions: opts.additionalInstructions ?? "",
@@ -278,8 +280,7 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
 
             this.ws = new WebSocket(this.options.url, {
                 headers: {
-                    Authorization: `Bearer ${this.options.apiKey}`,
-                    "OpenAI-Beta": "realtime=v1", // required during beta
+                    Authorization: `Bearer ${this.options.apiKey}`
                 },
             });
 
@@ -289,8 +290,6 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
                 this.isReconnecting = false;
                 this.lastPongTime = Date.now();
 
-                this.emit("open");
-                this.sendSessionUpdate();
                 this.startConnectionHealthCheck();
 
                 if (this.reconnectAttempts > 0) {
@@ -423,7 +422,7 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
         const evt = {
             type: "response.create",
             response: {
-                modalities: ["audio", "text"],
+                modalities: ["audio"], //, "text"],
                 instructions: "Respond with exactly the text the user asked you to say, without any additional words, commentary, or changes. Do not add greetings, confirmations, or explanations.",
             },
         };
@@ -443,7 +442,7 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
         this.assertOpen();
 
         // Default to audio output when receiving audio input (unless explicitly set to text mode)
-        if (this.outputMode !== "text") {
+        if (this.outputMode !== "audio") {
             this.setOutputMode("audio");
         }
 
@@ -503,12 +502,12 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
         this.assertOpen();
 
         // Determine modalities based on output mode
-        const modalities = this.outputMode === "text" ? ["text"] : ["audio", "text"];
+        const modalities = this.outputMode === "text" ? ["text"] : ["audio"]; //, "text"];
 
         const evt = {
             type: "response.create",
             response: {
-                modalities,           // Use appropriate modalities based on output mode
+               // modalities,           // Use appropriate modalities based on output mode
                 // voice comes from the session (session.voice)
                 instructions:
                     getResponseInstructions(),
@@ -614,8 +613,15 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
 
         switch (t) {
             /* ---------- Session & rate-limits ---------- */
+
+            case "session.created":
+                //this.emit("session.created", msg);                
+                this.sendSessionUpdate();
+                break;
+
             case "session.updated":
                 this.emit("session.updated", msg);
+                this.emit("open");
                 break;
 
             case "rate_limits.updated":
@@ -641,6 +647,7 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
                 break;
 
             /* ---------- Model response: audio ---------- */
+            case "response.output_audio.delta":
             case "response.audio.delta": {
                 // Base64-encoded audio chunk of the selected output format
                 // (pcm16 by default).
@@ -857,15 +864,37 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
         // Configure session: model, voice, audio formats, STT language, VAD, instructions.
         const payload = {
             type: "session.update",
-            session: {                
-                voice: this.options.voice,
-                output_audio_format: this.options.outputAudioFormat, // default 'pcm16'
-                input_audio_format: "pcm16", // we will send PCM16 mono 24kHz
-                input_audio_transcription: {
-                    language: this.options.languageCode, // 'no' for Norwegian
-                    model: "whisper-1", // default STT model
-                },
-                turn_detection: this.options.turnDetection ?? null,
+            session: {
+                type: "realtime",
+                output_modalities: ["audio"],
+                audio: {
+                    input: {
+                        format: {
+                            type: "audio/pcm",
+                            rate: 24000
+                        },
+                        transcription: null,
+                        noise_reduction: null,
+                        turn_detection: {
+                            type: "server_vad",
+                            threshold: 0.5,
+                            prefix_padding_ms: 300,
+                            silence_duration_ms: 200,
+                            idle_timeout_ms: null,
+                            create_response: true,
+                            interrupt_response: true
+                        }
+                    },
+                    output: {
+                        format: {
+                            type: "audio/pcm",
+                            rate: 24000
+                        },
+                        voice: this.options.voice,
+                        speed: 1.0,
+                        //instructions: "You have a slow and sleepy voice. Sometimes you make strange noises while you speak"
+                    }
+                },                                                                
                 instructions: this.options.instructions,
                 tools,
             },
@@ -906,7 +935,7 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
             this.logger.info(msg.type, direction);
             return;
         }
-        if (msg.type === "response.audio.delta" && msg.delta) {
+        if ((msg.type === "response.audio.delta" || msg.type === "response.output_audio.delta") && msg.delta) {
             this.logger.info(msg.type, direction);
             return;
         }

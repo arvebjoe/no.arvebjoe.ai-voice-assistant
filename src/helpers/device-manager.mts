@@ -16,7 +16,7 @@ export class DeviceManager implements IDeviceManager {
     private zoneList: string[];
     private zones: ZonesCollection | null;
     private deviceTypes: string[];
-    private logger = createLogger('DeviceManager');
+    private logger = createLogger('DeviceManager', true);
 
     constructor(homey: any) {
         this.homey = homey;

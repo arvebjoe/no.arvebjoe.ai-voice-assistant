@@ -6,7 +6,7 @@ import { saveAudioData } from './file-helper.mjs';
 export class WebServer {
     private homey: any;
     private ip: string | null;
-    private logger = createLogger('Web');
+    private logger = createLogger('Web', true);
 
     constructor(homey: any) {
         this.homey = homey;

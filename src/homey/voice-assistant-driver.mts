@@ -7,7 +7,7 @@ import { createLogger } from '../helpers/logger.mjs';
 
 export default abstract class VoiceAssistantDriver extends Homey.Driver {
     abstract readonly thisAssistantType: string;
-    private logger = createLogger('Voice_Assistant_Driver');
+    private logger = createLogger('Voice_Assistant_Driver', true);
     private static flowCardsInitialized = false;
 
     constructor(...args: any[]) {

@@ -1,6 +1,20 @@
 # TODO before release:
 
-## TEST - Need to restart agent when setting Api Key
+## TEST - Our session object might be all wrong
+https://platform.openai.com/docs/api-reference/realtime_sessions/create-secret-response
+
+
+## Remove all unneccecery options for the agent in voice-assistant-device.
+    Only keep this
+    const agentOptions: RealtimeOptions = {
+      apiKey: settingsManager.getGlobal('openai_api_key'),
+      voice: settingsManager.getGlobal('selected_voice') || 'alloy',
+      languageCode: settingsManager.getGlobal('selected_language_code') || 'en',
+      languageName: settingsManager.getGlobal('selected_language_name') || 'English',
+      additionalInstructions: settingsManager.getGlobal('ai_instructions') || '',
+    };
+
+    Remove all unused types from RealtimeOptions 
 
 ## Look at the description one more time.
 

@@ -24,7 +24,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
   private settingsUnsubscribe?: () => void; // To clean up the subscription
   private currentSettings: any = {}; // Store current settings to detect changes
   private isMutedValue: boolean = false;
-  private logger = createLogger('Voice_Assistant_Device');
+  private logger = createLogger('Voice_Assistant_Device', true);
 
   /**
    * onInit is called when the device is initialized.
@@ -56,13 +56,19 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
 
     const agentOptions: RealtimeOptions = {
-      apiKey: settingsManager.getGlobal('openai_api_key'),      
+      apiKey: settingsManager.getGlobal('openai_api_key'),
       voice: settingsManager.getGlobal('selected_voice') || 'alloy',
       languageCode: settingsManager.getGlobal('selected_language_code') || 'en',
       languageName: settingsManager.getGlobal('selected_language_name') || 'English',
       additionalInstructions: settingsManager.getGlobal('ai_instructions') || '',
       outputAudioFormat: "pcm16",
-      turnDetection: { type: "server_vad" }, // server VAD on
+      turnDetection:
+      {
+        type: "server_vad",
+        //threshold: 0.5,
+        //prefix_padding_ms: 100,
+        //silence_duration_ms: 500
+      },
       enableLocalVAD: false,                  // local VAD also on
       //localVADSilenceThreshold: 0.5,
       //localVADSilenceMs: 2000,
@@ -76,11 +82,11 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
     // Store initial settings
     this.currentSettings = {
-  apiKey: agentOptions.apiKey,
-  voice: agentOptions.voice,
-  languageCode: agentOptions.languageCode,
-  languageName: agentOptions.languageName,
-  additionalInstructions: agentOptions.additionalInstructions
+      apiKey: agentOptions.apiKey,
+      voice: agentOptions.voice,
+      languageCode: agentOptions.languageCode,
+      languageName: agentOptions.languageName,
+      additionalInstructions: agentOptions.additionalInstructions
     };
 
     // Subscribe to settings changes to update agent on the fly
@@ -90,7 +96,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
 
     const store = this.getStore() as DeviceStore;
-    
+
     this.esp = new EspVoiceAssistantClient({
       host: store.address,
       apiPort: store.port
