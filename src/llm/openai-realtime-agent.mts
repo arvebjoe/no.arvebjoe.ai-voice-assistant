@@ -228,7 +228,7 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
             url:
                 opts.url ??
                 `wss://api.openai.com/v1/realtime?model=${encodeURIComponent(
-                    opts.model ?? "gpt-realtime"
+                    opts.model ?? "gpt-realtime-preview"
                 )}`,
             voice: opts.voice ?? "alloy",
             outputAudioFormat: opts.outputAudioFormat ?? "pcm16",
@@ -579,6 +579,12 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
         this.options.languageName = newLanguageName;
         this.options.instructions = getDefaultInstructions(this.options.languageName, this.options.additionalInstructions);
 
+        await this.restart();
+    }
+
+    async updateApiKeyWithRestart(newApiKey: string): Promise<void> {
+        this.logger.info('Updating API key and restarting agent...');
+        this.options.apiKey = newApiKey;
         await this.restart();
     }
 

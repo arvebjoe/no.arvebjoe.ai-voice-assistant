@@ -77,10 +77,11 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
     // Store initial settings
     this.currentSettings = {
-      voice: agentOptions.voice,
-      languageCode: agentOptions.languageCode,
-      languageName: agentOptions.languageName,
-      additionalInstructions: agentOptions.additionalInstructions
+  apiKey: agentOptions.apiKey,
+  voice: agentOptions.voice,
+  languageCode: agentOptions.languageCode,
+  languageName: agentOptions.languageName,
+  additionalInstructions: agentOptions.additionalInstructions
     };
 
     // Subscribe to settings changes to update agent on the fly
@@ -239,6 +240,14 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     this.logger.info('Settings changed, updating agent...', undefined, newSettings);
 
     try {
+      // Check if API key changed
+      const newApiKey = newSettings.openai_api_key;
+      if (newApiKey && newApiKey !== this.currentSettings.apiKey) {
+        this.logger.info(`API key changed, updating agent and restarting.`);
+        this.currentSettings.apiKey = newApiKey;
+        await this.agent.updateApiKeyWithRestart(newApiKey);
+      }
+
       // Check if voice changed
       const newVoice = newSettings.selected_voice;
       if (newVoice && newVoice !== this.currentSettings.voice) {
