@@ -3,7 +3,7 @@
     "en": "Ask agent. Output to speaker"
   },
   "titleFormatted": {
-    "en": "Ask assistant '[[Question]]'. Output to speaker"
+    "en": "Ask assistant [[Question]]. Output to speaker"
   },
   "hint": {
     "en": "Send an inquiry to the AI assistant, the response will play on this device"

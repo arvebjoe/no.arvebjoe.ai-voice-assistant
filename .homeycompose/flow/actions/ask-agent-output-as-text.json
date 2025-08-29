@@ -3,7 +3,7 @@
     "en": "Ask assistant. Output as text"
   },
   "titleFormatted": {
-    "en": "Ask assistant '[[Question]]'. Output as text"
+    "en": "Ask assistant [[Question]]. Output as text"
   },
   "hint": {
     "en": "Send an inquiry to the AI assistant, the response will be in a text variable"

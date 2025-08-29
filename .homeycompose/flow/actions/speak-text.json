@@ -1,9 +1,9 @@
 {
   "title": {
-    "en": "Speak text"
+    "en": "Say"
   },
   "titleFormatted": {
-    "en": "Speak '[[text]]'"
+    "en": "Say [[text]]"
   },
   "hint": {
     "en": "Convert text to speech and play it"

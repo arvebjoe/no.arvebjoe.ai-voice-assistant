@@ -10,6 +10,7 @@ import { AudioData } from '../helpers/interfaces.mjs';
 import { ToolManager } from '../llm/tool-manager.mjs';
 import { DeviceStore } from '../helpers/interfaces.mjs';
 import { createLogger } from '../helpers/logger.mjs';
+import { SOUND_URLS } from '../helpers/sound-urls.mjs';
 
 
 export default abstract class VoiceAssistantDevice extends Homey.Device {
@@ -89,17 +90,23 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
 
     const store = this.getStore() as DeviceStore;
-    // Initialize and start EspVoiceAssistantClient
-
+    
     this.esp = new EspVoiceAssistantClient({
       host: store.address,
       apiPort: store.port
     });
 
-    
+
     this.segmenter = new PcmSegmenter();
 
     this.esp.on('start', async () => {
+      if (!this.agent.isConnected()) {
+        const hasKey = this.agent.hasApiKey();
+        const url = hasKey ? SOUND_URLS.agent_not_connected : SOUND_URLS.missing_api_key;
+        this.playUrl(url);
+        return;
+      }
+
       this.logger.info("Voice session started");
       this.devicePromise = this.deviceManager.fetchData();
       this.setCapabilityValue('onoff', true);
@@ -113,6 +120,15 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       const pcm24 = this.agent.upsample16kTo24k(data);
       this.agent.sendAudioChunk(pcm24);
     });
+
+
+    this.agent.on("missing_api_key", async () => {
+
+      await this.homey.notifications.createNotification({
+        excerpt: 'AI Assistant: Please set **api key** in app settings.'
+      });
+    });
+
 
     this.agent.on("open", () => {
       this.logger.info('Agent connection opened');
@@ -265,7 +281,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
       if (this.esp && value) {
         this.esp.run_start();
-        this.esp.playAudioFromUrl('https://github.com/esphome/home-assistant-voice-pe/raw/dev/sounds/wake_word_triggered.flac', true);
+        this.esp.playAudioFromUrl(SOUND_URLS.wake_word_triggered, true);
       }
 
     });

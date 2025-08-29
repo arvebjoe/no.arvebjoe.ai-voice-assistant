@@ -89,7 +89,7 @@
           "en": "Ask assistant. Output as text"
         },
         "titleFormatted": {
-          "en": "Ask assistant '[[Question]]'. Output as text"
+          "en": "Ask assistant [[Question]]. Output as text"
         },
         "hint": {
           "en": "Send an inquiry to the AI assistant, the response will be in a text variable"
@@ -130,7 +130,7 @@
           "en": "Ask agent. Output to speaker"
         },
         "titleFormatted": {
-          "en": "Ask assistant '[[Question]]'. Output to speaker"
+          "en": "Ask assistant [[Question]]. Output to speaker"
         },
         "hint": {
           "en": "Send an inquiry to the AI assistant, the response will play on this device"
@@ -191,10 +191,10 @@
       },
       {
         "title": {
-          "en": "Speak text"
+          "en": "Say"
         },
         "titleFormatted": {
-          "en": "Speak '[[text]]'"
+          "en": "Say [[text]]"
         },
         "hint": {
           "en": "Convert text to speech and play it"

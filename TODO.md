@@ -1,16 +1,10 @@
 # TODO before release:
     
-## App craches if ApiKey is missing
+## Need to restart agent when setting Api Key
 
-## Move instructions from helpers to llm
-    - src/helpers/agent-instructions.mts and 
-    - src/helpers/custom-instructions.mts
+## When running the agent or speak from flow, set pcm-segmenter to a high MIN_SILENCE_MS value. So that only one .flac file is created.
 
 ## Add "follow-up" tool?
-
-
-
-
 
 
 

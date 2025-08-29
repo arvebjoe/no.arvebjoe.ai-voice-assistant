@@ -3,7 +3,7 @@ import { EventEmitter } from "events";
 import { TypedEmitter } from "tiny-typed-emitter";
 import { createLogger } from '../helpers/logger.mjs';
 import { ToolManager } from './tool-manager.mjs';
-import { getDefaultInstructions, getResponseInstructions, getErrorResponseInstructions } from '../helpers/agent-instructions.mjs';
+import { getDefaultInstructions, getResponseInstructions, getErrorResponseInstructions } from './agent-instructions.mjs';
 
 /**
  * Minimal shape of Realtime events we care about.
@@ -25,6 +25,8 @@ type RealtimeEvents = {
     reconnectFailed: (attempt: number, error: Error) => void;
     connectionHealthy: () => void;
     connectionUnhealthy: () => void;
+
+    missing_api_key: () => void;
 
     "input_audio_buffer.committed": () => void;
 
@@ -264,7 +266,17 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
      * (voice, output format, STT language, server VAD, tools, instructions).
      */
     async start(): Promise<void> {
-        if (this.ws && this.ws.readyState === WebSocket.OPEN) return;
+        
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            return;
+        }
+
+        if (!this.options.apiKey) {
+            this.emit("missing_api_key");
+            return;
+        }
+
+
 
         // Clear any existing reconnect timeout
         if (this.reconnectTimeoutId) {
@@ -275,13 +287,14 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
         this.logger.info("Connecting WS:", 'START', this.options.url);
 
         try {
+            
             this.ws = new WebSocket(this.options.url, {
                 headers: {
                     Authorization: `Bearer ${this.options.apiKey}`,
                     "OpenAI-Beta": "realtime=v1", // required during beta
                 },
-            });
-
+            });                    
+            
             this.ws.on("open", () => {
                 this.logger.info("WebSocket open");
                 this.reconnectAttempts = 0; // Reset reconnect attempts on successful connection
@@ -403,16 +416,16 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
      */
     textToSpeech(text: string) {
         this.assertOpen();
-        
+
         // Send a user message asking the AI to simply repeat the text
         const userMsg = {
             type: "conversation.item.create",
             item: {
                 type: "message",
                 role: "user",
-                content: [{ 
-                    type: "input_text", 
-                    text: `Please say exactly: "${text}"` 
+                content: [{
+                    type: "input_text",
+                    text: `Please say exactly: "${text}"`
                 }],
             },
         };
@@ -422,7 +435,7 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
         const evt = {
             type: "response.create",
             response: {
-                modalities: ["audio", "text"], 
+                modalities: ["audio", "text"],
                 instructions: "Respond with exactly the text the user asked you to say, without any additional words, commentary, or changes. Do not add greetings, confirmations, or explanations.",
             },
         };
@@ -500,10 +513,10 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
      */
     createResponse(extra?: Record<string, any>) {
         this.assertOpen();
-        
+
         // Determine modalities based on output mode
         const modalities = this.outputMode === "text" ? ["text"] : ["audio", "text"];
-        
+
         const evt = {
             type: "response.create",
             response: {
@@ -1011,6 +1024,18 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
             lastPongTime: this.lastPongTime,
             timeSinceLastPong: this.lastPongTime > 0 ? Date.now() - this.lastPongTime : -1,
         };
+    }
+
+    public isConnected(): boolean {
+        return this.ws?.readyState === WebSocket.OPEN;
+    }
+
+    public hasApiKey(): boolean {
+        
+        if (this.options.apiKey) {
+            return true;
+        }
+        return false;
     }
 
     /**
