@@ -46,7 +46,9 @@ export class SettingsManager {
       { value: 'echo', name: 'Echo' },
       { value: 'sage', name: 'Sage' },
       { value: 'shimmer', name: 'Shimmer' },
-      { value: 'verse', name: 'Verse' }
+      { value: 'verse', name: 'Verse' },
+      { value: 'cedar', name: 'Cedar' },
+      { value: 'marin', name: 'Marin' }
     ];
   }
 
