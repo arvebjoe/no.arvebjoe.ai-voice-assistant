@@ -56,8 +56,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
 
     const agentOptions: RealtimeOptions = {
-      apiKey: settingsManager.getGlobal('openai_api_key'),
-      model: "gpt-4o-realtime-preview", //"gpt-4o-realtime-preview-2025-06-03"
+      apiKey: settingsManager.getGlobal('openai_api_key'),      
       voice: settingsManager.getGlobal('selected_voice') || 'alloy',
       languageCode: settingsManager.getGlobal('selected_language_code') || 'en',
       languageName: settingsManager.getGlobal('selected_language_name') || 'English',

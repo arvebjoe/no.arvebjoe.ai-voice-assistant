@@ -69,12 +69,6 @@ export type RealtimeOptions = {
     /** Your OpenAI API key */
     apiKey: string;
 
-    /** Realtime model id, e.g. 'gpt-4o-realtime-preview' */
-    model?: string;
-
-    /** Optional: pass a fully custom WebSocket URL */
-    url?: string;
-
     /** Choose the server voice, e.g. 'alloy', 'ash', 'verse'... */
     voice?: string;
 
@@ -172,8 +166,7 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
 
     private options: Required<
         Pick<
-            RealtimeOptions,
-            | "model"
+            RealtimeOptions,            
             | "voice"
             | "outputAudioFormat"
             | "turnDetection"
@@ -224,12 +217,7 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
 
         this.options = {
             apiKey: opts.apiKey,
-            model: opts.model ?? "gpt-4o-realtime-preview",
-            url:
-                opts.url ??
-                `wss://api.openai.com/v1/realtime?model=${encodeURIComponent(
-                    opts.model ?? "gpt-realtime-preview"
-                )}`,
+            url: `wss://api.openai.com/v1/realtime?model=gpt-realtime`,
             voice: opts.voice ?? "alloy",
             outputAudioFormat: opts.outputAudioFormat ?? "pcm16",
             turnDetection:
@@ -266,7 +254,7 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
      * (voice, output format, STT language, server VAD, tools, instructions).
      */
     async start(): Promise<void> {
-        
+
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
             return;
         }
@@ -287,14 +275,14 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
         this.logger.info("Connecting WS:", 'START', this.options.url);
 
         try {
-            
+
             this.ws = new WebSocket(this.options.url, {
                 headers: {
                     Authorization: `Bearer ${this.options.apiKey}`,
                     "OpenAI-Beta": "realtime=v1", // required during beta
                 },
-            });                    
-            
+            });
+
             this.ws.on("open", () => {
                 this.logger.info("WebSocket open");
                 this.reconnectAttempts = 0; // Reset reconnect attempts on successful connection
@@ -869,8 +857,7 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
         // Configure session: model, voice, audio formats, STT language, VAD, instructions.
         const payload = {
             type: "session.update",
-            session: {
-                model: this.options.model,
+            session: {                
                 voice: this.options.voice,
                 output_audio_format: this.options.outputAudioFormat, // default 'pcm16'
                 input_audio_format: "pcm16", // we will send PCM16 mono 24kHz
@@ -1037,7 +1024,7 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
     }
 
     public hasApiKey(): boolean {
-        
+
         if (this.options.apiKey) {
             return true;
         }
