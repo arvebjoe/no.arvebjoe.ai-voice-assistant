@@ -228,7 +228,7 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
             url:
                 opts.url ??
                 `wss://api.openai.com/v1/realtime?model=${encodeURIComponent(
-                    opts.model ?? "gpt-4o-realtime-preview"
+                    opts.model ?? "gpt-realtime"
                 )}`,
             voice: opts.voice ?? "alloy",
             outputAudioFormat: opts.outputAudioFormat ?? "pcm16",
