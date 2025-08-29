@@ -1,14 +1,10 @@
 # TODO before release:
 
-## Update to new real time model
-    - Add new voices
+## TEST - Need to restart agent when setting Api Key
 
-## Need to restart agent when setting Api Key
+## Look at the description one more time.
 
-## When running the agent or speak from flow, set pcm-segmenter to a high MIN_SILENCE_MS value. So that only one .flac file is created.
-
-## Add "follow-up" tool?
-
+## Create Homey Community Topic
 
 
 
@@ -18,7 +14,10 @@
 
 # TODO after release
 
-## Create Homey Community Topic ?
+
+## When running the agent or speak from flow, set pcm-segmenter to a high MIN_SILENCE_MS value. So that only one .flac file is created.
+
+## Add "follow-up" tool?
 
 
 ## Locally hosted AI
@@ -73,11 +72,8 @@
         - Creating text files would also work.
     - Then delete the alarm
 
-# Support ESPHome Api key
-    - If anyone asks for it...
-
-
-## Voice Box
+# ESPHome Voice assistant
+    - Support esphome Api key, if anyone asks for it...
     - Needs to know where it is (zone). So it can controll devices within it's own zone if the user didn't specify the zone.
     - Still some issue with silence detection
     - Still issue with LED feedback when playing multiple URL's
