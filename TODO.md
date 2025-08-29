@@ -1,5 +1,8 @@
 # TODO before release:
-    
+
+## Update to new real time model
+    - Add new voices
+
 ## Need to restart agent when setting Api Key
 
 ## When running the agent or speak from flow, set pcm-segmenter to a high MIN_SILENCE_MS value. So that only one .flac file is created.
