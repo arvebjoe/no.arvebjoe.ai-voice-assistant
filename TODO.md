@@ -3,6 +3,9 @@
 ## TEST - Our session object might be all wrong
 https://platform.openai.com/docs/api-reference/realtime_sessions/create-secret-response
 
+## TEST - Trigger from flow (text, speak, output)
+    - All the flow cards
+
 ## Look at the description one more time.
 
 ## Create Homey Community Topic

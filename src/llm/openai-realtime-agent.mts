@@ -105,7 +105,7 @@ type PendingToolCall = {
 export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter<RealtimeEvents>) {
     private ws?: WebSocket;
     private homey: any;
-    private logger = createLogger('AGENT', true);
+    private logger = createLogger('AGENT', false);
     private resample_prev: number | null = null; // last input sample from previous chunk
     private resample_frac: number = 0;           // fractional read position into the source for next call
     private toolManager: ToolManager;
@@ -150,7 +150,7 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
             apiKey: opts.apiKey ?? '',
             url: opts.url ?? `wss://api.openai.com/v1/realtime?model=gpt-realtime`,
             voice: opts.voice ?? "ash",
-            languageCode: opts.languageCode ?? "en", 
+            languageCode: opts.languageCode ?? "en",
             languageName: opts.languageName ?? "English",
             additionalInstructions: opts.additionalInstructions ?? "",
         };
@@ -758,7 +758,11 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
                             type: "audio/pcm",
                             rate: 24000
                         },
-                        transcription: null,
+                        transcription: {                            
+                            model: "gpt-4o-mini-transcribe",                                                        // pick one: "gpt-4o-mini-transcribe" (fast) | "gpt-4o-transcribe" (quality) | "whisper-1"                                                        
+                            language: this.options.languageCode,                                                    // "nb" (Bokmål), "nn" (Nynorsk), or "no" (generic)                            
+                            //prompt: "Homey, ESPHome, "                                                            // optional biasing for names/terms. Need to look into this
+                        },
                         noise_reduction: null,
                         turn_detection: {
                             type: "server_vad",
