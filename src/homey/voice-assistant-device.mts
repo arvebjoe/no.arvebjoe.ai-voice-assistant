@@ -28,9 +28,13 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
   private skippedBytes: number = 0;
   private skipInitialBytes: number | null = null;
 
-  private inputBufferDebug: boolean = true;
+  private inputBufferDebug: boolean = false;
   private inputBuffer: Buffer[] = [];
   private inputPlaybackUrl?: string | null = null;
+
+  private hasIntent: boolean = false;
+  private announceUrls: string[] = [];
+  private isPlaying: boolean = false;
 
 
   /**
@@ -174,9 +178,9 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     this.agent.on('silence', async (source: string) => {
       this.logger.info(`Silence detected by agent (${source}), closing microphone.`);
       this.esp.closeMic();
-      this.esp.stt_vad_end(''); // TODO: Which we had some text to pass back here. Will look into this.
-      this.esp.tts_start();
-
+      this.esp.stt_vad_end(''); // TODO: Which we had some text to pass back here. Will look into this.      
+      this.esp.intent_start();
+      this.hasIntent = true;
 
       // Save input buffer to file, used for debugging to hear what was captured
       if (this.inputBufferDebug) {
@@ -217,9 +221,42 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
         prefix: 'tx'
       }
 
+      if (this.hasIntent) {
+        this.esp.intent_end('');
+        this.hasIntent = false;
+        this.esp.tts_start();
+      }
+
       const url = await this.webServer.buildStream(audioData);
-      this.esp.playAudioFromUrl(url, false);
+
+      if(this.isPlaying){
+        this.announceUrls.push(url);
+        return;
+      }
+
+      this.isPlaying = true;
+      this.esp.playAudioFromUrl(url, false);      
+
     });
+
+
+    this.esp.on('announce_finished', () => {
+      this.logger.info('Announcement finished');
+      
+      if (this.announceUrls.length === 0) {
+        this.isPlaying = false;
+        this.esp.tts_end()
+        this.esp.run_end();
+        this.agent.resetUpsampler();
+        this.setCapabilityValue('onoff', false);        
+        return;
+      }
+
+      const url = this.announceUrls.shift()!;
+      this.esp.playAudioFromUrl(url, false);
+
+    });
+
 
     // The agent want's to use a tool. We need to make sure we have all the data from the API now.    
     this.agent.on('tool.called', async (d: { callId: string; name: string; args: any }) => {
@@ -237,9 +274,6 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     // The segmenter has emitted all its chunks, so tell the esp to stop and clean all resources.
     this.segmenter.on('done', async () => {
       this.esp.closeMic();
-      this.esp.run_end();
-      this.agent.resetUpsampler();
-      this.setCapabilityValue('onoff', false);
     });
 
 
@@ -523,18 +557,6 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     return Math.floor((ms / 1000) * sampleRate * channels * bytesPerSample);
   }
 
-  /**
-   * Calculate the duration of PCM audio data in milliseconds
-   * @param buffer The PCM audio buffer
-   * @param sampleRate Sample rate in Hz (default: 24000)
-   * @param channels Number of channels (default: 1)
-   * @param bytesPerSample Bytes per sample (default: 2)
-   * @returns Duration in milliseconds
-   */
-  private pcmDurationMs(buffer: Buffer, sampleRate: number = 24000, channels: number = 1, bytesPerSample: number = 2): number {
-    const totalSamples = buffer.length / (channels * bytesPerSample);
-    return (totalSamples / sampleRate) * 1000;
-  }
 
 
 

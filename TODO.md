@@ -3,9 +3,6 @@
 ## TEST - Our session object might be all wrong
 https://platform.openai.com/docs/api-reference/realtime_sessions/create-secret-response
 
-
-
-
 ## Look at the description one more time.
 
 ## Create Homey Community Topic
