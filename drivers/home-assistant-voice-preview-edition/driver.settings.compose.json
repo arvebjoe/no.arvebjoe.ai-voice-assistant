@@ -1,0 +1,15 @@
+[
+    {
+        "id": "initial_audio_skip",
+        "type": "number",
+        "label": {
+            "en": "Initial audio skip"
+        },
+        "value": 350,
+        "min": 0,
+        "max": 2000,
+        "units": {
+            "en": "ms"
+        }
+    }
+]

@@ -22,6 +22,7 @@ const MIN_CHUNK_BYTES = Math.round(SAMPLE_RATE * (MIN_CHUNK_MS / 1000) * CHANNEL
 
 type SegmenterEvents = {
     chunk: (data: Buffer) => void;
+    done: () => void;
 }
 
 
@@ -54,6 +55,8 @@ export class PcmSegmenter extends (EventEmitter as new () => TypedEmitter<Segmen
             this.silenceFrames = 0;
             this.trailingBuffer = Buffer.alloc(0);
         }
+        
+        this.emit('done');
     }
 
     // feed() with arbitrary PCM chunk boundaries

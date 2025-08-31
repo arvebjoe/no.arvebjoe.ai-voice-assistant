@@ -9,8 +9,6 @@ import { getDefaultInstructions, getResponseInstructions, getErrorResponseInstru
  * Minimal shape of Realtime events we care about.
  * We keep them loose to stay forward-compatible with the evolving Realtime API.
  */
-
-
 type RealtimeEvents = {
     connected: () => void;
     open: () => void;
@@ -25,7 +23,6 @@ type RealtimeEvents = {
     reconnectFailed: (attempt: number, error: Error) => void;
     connectionHealthy: () => void;
     connectionUnhealthy: () => void;
-
     missing_api_key: () => void;
 
     "input_audio_buffer.committed": () => void;
@@ -66,69 +63,12 @@ type RealtimeEvent = {
 
 
 export type RealtimeOptions = {
-    /** Your OpenAI API key */
-    apiKey: string;
-
-    /** Choose the server voice, e.g. 'alloy', 'ash', 'verse'... */
-    voice?: string;
-
-    /** Output audio format. 'pcm16' by default. */
-    outputAudioFormat?: "pcm16" | "g711_ulaw" | "g711_alaw" | "wav";
-
-    /**
-     * Configure server-side VAD / turn detection.
-     * Set to { type: 'server_vad' } to let the server auto-commit the input turn.
-     * Set to null to disable server VAD (you can still use local VAD below).
-     */
-    turnDetection: {
-        type: "server_vad";
-        //threshold: number;
-        //prefix_padding_ms: number;
-        //silence_duration_ms: number;            
-    } | null;
-
-    /**
-     * Hint STT language using ISO-639-1 code. Norwegian = 'no'.
-     * This improves ASR accuracy & latency.
-     */
-    languageCode?: string; // e.g., 'no'
-
-    // Used in the agent instructions to refer to the language to communicate in
-    languageName?: string; // e.g., 'Norwegian'
-
-    additionalInstructions?: string;
-
-    /** Custom system instructions . */
-    instructions?: string;
-
-    /** Enable a simple local energy-based VAD to detect silences client-side. */
-    enableLocalVAD?: boolean;
-
-    /** RMS threshold for local VAD (0..1-ish); tweak to your mic. */
-    localVADSilenceThreshold?: number;
-
-    /** How long silence must persist (ms) before we emit 'silence' locally. */
-    localVADSilenceMs?: number;
-
-    /** Emit extra debug logs */
-    verbose?: boolean;
-
-    /* ----------------- Reconnection options ----------------- */
-
-    /** Maximum number of reconnection attempts (default: Infinity) */
-    maxReconnectAttempts?: number;
-
-    /** Initial reconnection delay in milliseconds (default: 1000) */
-    reconnectDelay?: number;
-
-    /** Maximum reconnection delay in milliseconds (default: 30000) */
-    maxReconnectDelay?: number;
-
-    /** Connection health check interval in milliseconds (default: 30000) */
-    connectionHealthCheckInterval?: number;
-
-    /** Enable automatic reconnection on connection loss (default: true) */
-    enableAutoReconnect?: boolean;
+    url?: string;
+    apiKey?: string | null;
+    voice: string;
+    languageCode: string; // e.g., 'no'
+    languageName: string; // e.g., 'Norwegian'
+    additionalInstructions: string | null;
 };
 
 type PendingToolCall = {
@@ -164,39 +104,24 @@ type PendingToolCall = {
 
 export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter<RealtimeEvents>) {
     private ws?: WebSocket;
-    private logger = createLogger('AGENT', false);
+    private homey: any;
+    private logger = createLogger('AGENT', true);
     private resample_prev: number | null = null; // last input sample from previous chunk
     private resample_frac: number = 0;           // fractional read position into the source for next call
     private toolManager: ToolManager;
+    private instructions: string;
 
     private options: Required<
         Pick<
             RealtimeOptions,
+            | "url"
+            | "apiKey"
             | "voice"
-            | "outputAudioFormat"
-            | "turnDetection"
             | "languageCode"
             | "languageName"
             | "additionalInstructions"
-            | "instructions"
-            | "enableLocalVAD"
-            | "localVADSilenceThreshold"
-            | "localVADSilenceMs"
-            | "verbose"
-            | "maxReconnectAttempts"
-            | "reconnectDelay"
-            | "maxReconnectDelay"
-            | "connectionHealthCheckInterval"
-            | "enableAutoReconnect"
         >
-    > & {
-        apiKey: string;
-        url: string;
-    };
-
-    // buffer local-VAD state
-    private lastNonSilentTs = 0;
-
+    >;
     // keep your existing maps, but store full records keyed by callId
     private pendingToolCalls: Map<string, PendingToolCall> = new Map();
 
@@ -215,41 +140,25 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
     // Output mode configuration
     private outputMode: "audio" | "text" = "audio"; // Default to audio output
 
-    constructor(toolManager: ToolManager, opts: RealtimeOptions) {
+    constructor(homey: any, toolManager: ToolManager, opts: RealtimeOptions) {
         super();
 
+        this.homey = homey;
         this.toolManager = toolManager;
 
         this.options = {
-            apiKey: opts.apiKey,
-            url: `wss://api.openai.com/v1/realtime?model=gpt-realtime`,
-            voice: opts.voice ?? "alloy",
-            outputAudioFormat: opts.outputAudioFormat ?? "pcm16",
-            turnDetection: opts.turnDetection,
-            languageCode: opts.languageCode ?? "en", // English
+            apiKey: opts.apiKey ?? '',
+            url: opts.url ?? `wss://api.openai.com/v1/realtime?model=gpt-realtime`,
+            voice: opts.voice ?? "ash",
+            languageCode: opts.languageCode ?? "en", 
             languageName: opts.languageName ?? "English",
             additionalInstructions: opts.additionalInstructions ?? "",
-            instructions: getDefaultInstructions(opts.languageName ?? "English", opts.additionalInstructions),
-            enableLocalVAD: opts.enableLocalVAD ?? true,
-            localVADSilenceThreshold: opts.localVADSilenceThreshold ?? 0.01,
-            localVADSilenceMs: opts.localVADSilenceMs ?? 800,
-            verbose: !!opts.verbose,
-            // Reconnection options
-            maxReconnectAttempts: opts.maxReconnectAttempts ?? Infinity,
-            reconnectDelay: opts.reconnectDelay ?? 1000,
-            maxReconnectDelay: opts.maxReconnectDelay ?? 30000,
-            connectionHealthCheckInterval: opts.connectionHealthCheckInterval ?? 30000,
-            enableAutoReconnect: opts.enableAutoReconnect ?? true,
         };
 
-        // Initialize reconnection properties from options
-        this.maxReconnectAttempts = this.options.maxReconnectAttempts;
-        this.reconnectDelay = this.options.reconnectDelay;
-        this.maxReconnectDelay = this.options.maxReconnectDelay;
-        this.connectionHealthCheckInterval = this.options.connectionHealthCheckInterval;
+        this.instructions = getDefaultInstructions(this.options.languageName, this.options.additionalInstructions);
+
     }
 
-    /* ----------------- Public API ----------------- */
 
     /**
      * Connect to OpenAI Realtime WebSocket and configure the session
@@ -265,8 +174,6 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
             this.emit("missing_api_key");
             return;
         }
-
-
 
         // Clear any existing reconnect timeout
         if (this.reconnectTimeoutId) {
@@ -448,28 +355,6 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
 
         const b64 = pcm16Mono24k.toString("base64");
 
-        // local VAD (optional)
-        if (this.options.enableLocalVAD) {
-            const rms = getPCM16RMS(pcm16Mono24k);
-
-            if (this.lastNonSilentTs === 0) {
-                this.lastNonSilentTs = Date.now() + 1e9;
-            } else if (rms > 0) {
-                const silent = rms < this.options.localVADSilenceThreshold;
-                const now = Date.now();
-                if (!silent) this.lastNonSilentTs = now;
-                const diff = now - this.lastNonSilentTs;
-                if (silent && diff >= this.options.localVADSilenceMs) {
-                    // We've been silent long enough
-                    this.logger.info("Local silence detected, emitting 'silence' event", "VAD", { rms, diff });
-                    this.emit("silence", "local");
-
-                    // To avoid repeated emits during a long silence:
-                    this.lastNonSilentTs = now + 1e9;
-                }
-            }
-        }
-
         const evt = {
             type: "input_audio_buffer.append",
             audio: b64,
@@ -507,7 +392,7 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
         const evt = {
             type: "response.create",
             response: {
-               // modalities,           // Use appropriate modalities based on output mode
+                // modalities,           // Use appropriate modalities based on output mode
                 // voice comes from the session (session.voice)
                 instructions:
                     getResponseInstructions(),
@@ -542,7 +427,7 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
      */
     updateAllInstructions(instructions: string) {
         this.assertOpen();
-        this.options.instructions = instructions;
+        this.instructions = instructions;
         this.sendSessionUpdate();
     }
 
@@ -552,10 +437,10 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
         await this.restart();
     }
 
-    async updateAdditionalInstructions(newAdditionalInstructions: string): Promise<void> {
+    async updateAdditionalInstructions(newAdditionalInstructions: string | null): Promise<void> {
         this.assertOpen();
         this.options.additionalInstructions = newAdditionalInstructions;
-        this.options.instructions = getDefaultInstructions(this.options.languageName, this.options.additionalInstructions);
+        this.instructions = getDefaultInstructions(this.options.languageName, this.options.additionalInstructions);
 
         await this.restart();
     }
@@ -564,7 +449,7 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
         this.assertOpen();
         this.options.languageCode = newLanguageCode;
         this.options.languageName = newLanguageName;
-        this.options.instructions = getDefaultInstructions(this.options.languageName, this.options.additionalInstructions);
+        this.instructions = getDefaultInstructions(this.options.languageName, this.options.additionalInstructions);
 
         await this.restart();
     }
@@ -894,8 +779,8 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
                         speed: 1.0,
                         //instructions: "You have a slow and sleepy voice. Sometimes you make strange noises while you speak"
                     }
-                },                                                                
-                instructions: this.options.instructions,
+                },
+                instructions: this.instructions,
                 tools,
             },
         };
@@ -951,7 +836,7 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
      * Schedule a reconnection attempt with exponential backoff
      */
     private scheduleReconnect() {
-        if (this.isManuallyClosing || this.reconnectTimeoutId || !this.options.enableAutoReconnect) {
+        if (this.isManuallyClosing || this.reconnectTimeoutId) {
             return; // Don't reconnect if manually closing, already scheduled, or auto-reconnect disabled
         }
 
@@ -1117,7 +1002,10 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
      * Streaming-safe: preserves phase + last sample across calls to avoid clicks at chunk boundaries.
      */
     upsample16kTo24k(pcm16_16k: Buffer): Buffer {
-        if (!pcm16_16k || pcm16_16k.length === 0) return Buffer.alloc(0);
+
+        if (!pcm16_16k || pcm16_16k.length === 0) {
+            return Buffer.alloc(0);
+        }
 
         // Ratio: 16k -> 24k (×1.5). Each 24k output sample advances 2/3 of a 16k input sample.
         const step = 16000 / 24000; // 2/3
@@ -1164,33 +1052,18 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
         this.resample_frac = pos - last;        // carry fractional position into the next chunk
 
         // Return only the filled portion as a Buffer (Int16 LE)
-        return Buffer.from(out.buffer, 0, outIdx * 2);
+        //return Buffer.from(out.buffer, 0, outIdx * 2);
+        const buf = Buffer.allocUnsafe(outIdx * 2);
+        for (let i = 0; i < outIdx; i++) {
+            buf.writeInt16LE(out[i], i << 1);
+        }
+        return buf;
+    }
+
+    resetUpsampler(): void {
+        this.resample_prev = null;
+        this.resample_frac = 0;
     }
 
 }
 
-/* ----------------- Tool definitions (JSON Schemas) ----------------- */
-
-/* ----------------- Helpers ----------------- */
-
-/**
- * Simple energy-based VAD on PCM16 mono.
- * Returns true if below threshold (i.e., likely silent).
- * threshold ~0.005..0.02 are typical; tune per mic/noise.
- */
-function getPCM16RMS(buf: Buffer): number {
-
-    if (buf.length < 2) {
-        return -1;
-    }
-
-    const sampleCount = buf.length / 2;
-    let sumSquares = 0;
-    for (let i = 0; i < sampleCount; i++) {
-        const s = buf.readInt16LE(i * 2);
-        const norm = s / 32768; // -1..1
-        sumSquares += norm * norm;
-    }
-    const rms = Math.sqrt(sumSquares / sampleCount);
-    return rms;
-}

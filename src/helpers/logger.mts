@@ -105,7 +105,6 @@ class Logger {
         this.info(message, subFrom, details);
     }
 
-
     private output(message: string) {
         if (Logger.homey) {
             Logger.homey.log(message);

@@ -21,10 +21,17 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
   private toolManager!: ToolManager;
   private agent!: OpenAIRealtimeAgent;
   private segmenter!: PcmSegmenter;
-  private settingsUnsubscribe?: () => void; // To clean up the subscription
-  private currentSettings: any = {}; // Store current settings to detect changes
+  private settingsUnsubscribe?: () => void;
+  private agentOptions!: RealtimeOptions;
   private isMutedValue: boolean = false;
-  private logger = createLogger('Voice_Assistant_Device', true);
+  private logger = createLogger('Voice_Assistant_Device', false);
+  private skippedBytes: number = 0;
+  private skipInitialBytes: number | null = null;
+
+  private inputBufferDebug: boolean = true;
+  private inputBuffer: Buffer[] = [];
+  private inputPlaybackUrl?: string | null = null;
+
 
   /**
    * onInit is called when the device is initialized.
@@ -34,105 +41,123 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
     this.setUnavailable();
     this.setCapabilityValue('onoff', false);
-
-
     this.RegisterCapabilities();
 
+    const store = this.getStore() as DeviceStore;
+    const settings = this.getSettings();
+
+    // Subscribe to global settings changes to update agent on the fly
+    this.settingsUnsubscribe = settingsManager.onGlobals((newSettings) => {
+      this.handleSettingsChange(newSettings);
+    });
 
     this.webServer = (this.homey as any).app.webServer as InstanceType<typeof WebServer>;
     this.deviceManager = (this.homey as any).app.deviceManager as InstanceType<typeof DeviceManager>;
 
 
-
-    // Register device-specific settings snapshot so utilities without this.homey can reference it
-    try {
-      const deviceId = (this.getData() as any)?.id || (this as any).id || this.getName();
-      const store = this.getStore() as DeviceStore;
-      settingsManager.registerDevice(deviceId, store);
-    } catch (e) {
-      this.logger.error('Failed to register device settings', e);
+    if (settings.initial_audio_skip) {
+      this.skipInitialBytes = this.msToBytes(settings.initial_audio_skip, 16000, 1, 2);
     }
 
 
-
-    const agentOptions: RealtimeOptions = {
+    this.agentOptions = {
       apiKey: settingsManager.getGlobal('openai_api_key'),
       voice: settingsManager.getGlobal('selected_voice') || 'alloy',
       languageCode: settingsManager.getGlobal('selected_language_code') || 'en',
       languageName: settingsManager.getGlobal('selected_language_name') || 'English',
-      additionalInstructions: settingsManager.getGlobal('ai_instructions') || '',
-      outputAudioFormat: "pcm16",
-      turnDetection:
-      {
-        type: "server_vad",
-        //threshold: 0.5,
-        //prefix_padding_ms: 100,
-        //silence_duration_ms: 500
-      },
-      enableLocalVAD: false,                  // local VAD also on
-      //localVADSilenceThreshold: 0.5,
-      //localVADSilenceMs: 2000,
-      verbose: true,
+      additionalInstructions: settingsManager.getGlobal('ai_instructions') || ''
     };
 
-    this.toolManager = new ToolManager(this.deviceManager);
+    // Initialize tool manager - This will define all the function the agent can call.
+    this.toolManager = new ToolManager(this.homey, this.deviceManager);
 
-    // TODO: Pass this.homey and this.toolMaker to the agent
-    this.agent = new OpenAIRealtimeAgent(this.toolManager, agentOptions);
+    // Initialize open ai agent - Will use the tool manager for function calls
+    this.agent = new OpenAIRealtimeAgent(this.homey, this.toolManager, this.agentOptions);
 
-    // Store initial settings
-    this.currentSettings = {
-      apiKey: agentOptions.apiKey,
-      voice: agentOptions.voice,
-      languageCode: agentOptions.languageCode,
-      languageName: agentOptions.languageName,
-      additionalInstructions: agentOptions.additionalInstructions
-    };
-
-    // Subscribe to settings changes to update agent on the fly
-    this.settingsUnsubscribe = settingsManager.onGlobals((newSettings) => {
-      this.handleSettingsChange(newSettings);
-    });
-
-
-    const store = this.getStore() as DeviceStore;
-
+    // Initialize ESP voice client - Uses stored address and port
     this.esp = new EspVoiceAssistantClient({
       host: store.address,
       apiPort: store.port
     });
 
-
+    // Initialize PCM segmenter for audio processing - This will split long audio streams into manageable chunks -> Makes response quicker
     this.segmenter = new PcmSegmenter();
 
+
+    //
+    //
+    // Handlers between agent, esp and segmenter
+    //
+    //
+
+    // The esp voice client has woken (by wake word or user action)
     this.esp.on('start', async () => {
+
       if (!this.agent.isConnected()) {
+        // The agent doesn't have an active web socket. Either the API Key is missing or the internet connection failed.
+        // Play a pre-recorded message to inform the user.
         const hasKey = this.agent.hasApiKey();
         const url = hasKey ? SOUND_URLS.agent_not_connected : SOUND_URLS.missing_api_key;
         this.playUrl(url);
         return;
       }
 
+      // Initialize input buffer, only used for debugging.
+      this.inputBuffer = [];
+
+      // Reset skipped bytes counter for new session
+      this.skippedBytes = 0;
+
       this.logger.info("Voice session started");
+      // Let's start getting device state over the API, this might take a while, but should be done when we actually need it
       this.devicePromise = this.deviceManager.fetchData();
+
+
       this.setCapabilityValue('onoff', true);
       this.esp.run_start();
       this.esp.stt_vad_start();
       this.esp.begin_mic_capture();
     });
 
-    // Bind the event handler to this class instance
+
+    // There is some audio data available from the microphone
     this.esp.on('chunk', (data: Buffer) => {
+
+      // Skip initial bytes to eliminate microphone noise at the start - This is a problem on the PE.
+      if (this.skipInitialBytes && this.skippedBytes < this.skipInitialBytes) {
+        const remainingToSkip = this.skipInitialBytes - this.skippedBytes;
+        const bytesToSkip = Math.min(data.length, remainingToSkip);
+        this.skippedBytes += bytesToSkip;
+
+        // If we need to skip the entire chunk, return early
+        if (bytesToSkip >= data.length) {
+          return;
+        }
+
+        // If we only need to skip part of the chunk, slice it
+        data = data.slice(bytesToSkip);
+      }
+
+      // ESP voice client return a PCM 16bit mono audio stream at 16khz, but OpenAI expects 24khz
       const pcm24 = this.agent.upsample16kTo24k(data);
+
+      // Add pcm24 to input buffer, used for debugging.
+      if (this.inputBufferDebug) {
+        this.inputBuffer.push(pcm24);
+      }
+
+      // Send audio chunk to agent
       this.agent.sendAudioChunk(pcm24);
     });
 
 
+    // Handle missing API key
     this.agent.on("missing_api_key", async () => {
 
       await this.homey.notifications.createNotification({
         excerpt: 'AI Assistant: Please set **api key** in app settings.'
       });
+
     });
 
 
@@ -145,13 +170,22 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       this.setAvailable();
     });
 
-    this.agent.on('silence', (source: string) => {
+    // The agent has detected that the user has stopped speaking.
+    this.agent.on('silence', async (source: string) => {
       this.logger.info(`Silence detected by agent (${source}), closing microphone.`);
       this.esp.closeMic();
-      this.esp.stt_vad_end('');
+      this.esp.stt_vad_end(''); // TODO: Which we had some text to pass back here. Will look into this.
       this.esp.tts_start();
+
+
+      // Save input buffer to file, used for debugging to hear what was captured
+      if (this.inputBufferDebug) {
+        await this.saveInputBuffer();
+      }
+
     });
 
+    // The agent is sending audio data back. We can't play each chunk individually, so we need to buffer them.
     this.agent.on('audio.delta', (audioBuffer: Buffer) => {
       this.segmenter.feed(audioBuffer);
     });
@@ -160,10 +194,17 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       this.logger.info('Text processing done:', undefined, msg);
     });
 
+    // The segmenter has detected a small silent gap in what the agent said and has produced a new chunk of audio data for us to play.
     this.segmenter.on('chunk', async (chunk: Buffer) => {
       this.logger.info(`New TX chunk: ${chunk.length} bytes`);
 
-      // TODO: Do not store sample rate, channels, and bits per sample here!
+
+      // If we have an input buffer to play, do that first, before playing the new chunk from the segmenter
+      if (this.inputBufferDebug && this.inputPlaybackUrl) {
+        this.esp.playAudioFromUrl(this.inputPlaybackUrl, false);
+        this.inputPlaybackUrl = null;
+      }
+
       const flac = await pcmToFlacBuffer(chunk, {
         sampleRate: 24_000,
         channels: 1,
@@ -172,29 +213,35 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
       const audioData: AudioData = {
         data: flac,
-        extension: 'flac'
+        extension: 'flac',
+        prefix: 'tx'
       }
 
       const url = await this.webServer.buildStream(audioData);
-
       this.esp.playAudioFromUrl(url, false);
     });
 
-
+    // The agent want's to use a tool. We need to make sure we have all the data from the API now.    
     this.agent.on('tool.called', async (d: { callId: string; name: string; args: any }) => {
       this.logger.info(`${d.name}`, 'TOOL_CALLED', d.args);
       await this.devicePromise;
-
     });
 
+    // The agent has finished processing the response. Tell the segmenter there is no more data coming.
     this.agent.on('response.done', () => {
       this.logger.info("Conversation completed");
-      this.segmenter.flush();
-      this.esp.tts_end();
+      this.segmenter.flush(); // If there is anything left in the segmenter, flush it. This will force it to play on the speaker.
+
+    });
+
+    // The segmenter has emitted all its chunks, so tell the esp to stop and clean all resources.
+    this.segmenter.on('done', async () => {
       this.esp.closeMic();
       this.esp.run_end();
+      this.agent.resetUpsampler();
       this.setCapabilityValue('onoff', false);
     });
+
 
     this.agent.on('error', (error: Error) => {
       this.logger.error("Realtime agent error:", error);
@@ -224,6 +271,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       //this.logger.error('Mute test2', 'Jælle balle2');
     });
 
+    // This will toggle the device in homey available or not
     this.agent.on('connectionHealthy', () => {
       this.setAvailable();
     });
@@ -232,11 +280,15 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       this.setUnavailable();
     });
 
+
+    // Actually start the ESP and agent.
     await this.esp.start();
     await this.agent.start();
 
     this.logger.info('Initialized');
   }
+
+
 
   /**
    * Handle settings changes and update agent accordingly
@@ -244,40 +296,48 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
   private async handleSettingsChange(newSettings: any): Promise<void> {
     this.logger.info('Settings changed, updating agent...', undefined, newSettings);
 
+    if (this.agentOptions == null) {
+      return;
+    }
+
     try {
       // Check if API key changed
       const newApiKey = newSettings.openai_api_key;
-      if (newApiKey && newApiKey !== this.currentSettings.apiKey) {
+
+      this.logger.info(`New API key: ${newApiKey}`);
+      this.logger.info(`Current API key: ${this.agentOptions.apiKey ?? 'NULL'}`);
+
+      if (newApiKey && newApiKey !== this.agentOptions.apiKey) {
         this.logger.info(`API key changed, updating agent and restarting.`);
-        this.currentSettings.apiKey = newApiKey;
+        this.agentOptions.apiKey = newApiKey;
         await this.agent.updateApiKeyWithRestart(newApiKey);
       }
 
       // Check if voice changed
       const newVoice = newSettings.selected_voice;
-      if (newVoice && newVoice !== this.currentSettings.voice) {
-        this.logger.info(`Voice changed from ${this.currentSettings.voice} to ${newVoice}`);
-        this.currentSettings.voice = newVoice;
-        this.agent.updateVoiceWithReconnect(this.currentSettings.voice);
+      if (newVoice && newVoice !== this.agentOptions.voice) {
+        this.logger.info(`Voice changed from ${this.agentOptions.voice} to ${newVoice}`);
+        this.agentOptions.voice = newVoice;
+        this.agent.updateVoiceWithReconnect(this.agentOptions.voice);
       }
 
       // Check if language changed
       const newLanguageCode = newSettings.selected_language_code;
       const newLanguageName = newSettings.selected_language_name;
-      if (newLanguageCode && newLanguageCode !== this.currentSettings.languageCode) {
-        this.logger.info(`Language code changed from ${this.currentSettings.languageCode} to ${newLanguageCode}`);
+      if (newLanguageCode && newLanguageCode !== this.agentOptions.languageCode) {
+        this.logger.info(`Language code changed from ${this.agentOptions.languageCode} to ${newLanguageCode}`);
         // TODO: Add updateLanguage method to OpenAIRealtimeWS or restart connection
-        this.currentSettings.languageCode = newLanguageCode;
-        this.currentSettings.languageName = newLanguageName || 'English';
-        this.agent.updateLanguage(this.currentSettings.languageCode, this.currentSettings.languageName);
+        this.agentOptions.languageCode = newLanguageCode;
+        this.agentOptions.languageName = newLanguageName || 'English';
+        this.agent.updateLanguage(this.agentOptions.languageCode, this.agentOptions.languageName);
       }
 
       // Check if AI instructions changed
       const newInstructions = newSettings.ai_instructions;
-      if (newInstructions !== this.currentSettings.additionalInstructions) {
+      if (newInstructions !== this.agentOptions.additionalInstructions) {
         this.logger.info('AI instructions changed, updating...');
-        this.currentSettings.additionalInstructions = newInstructions || '';
-        this.agent.updateAdditionalInstructions(this.currentSettings.additionalInstructions);
+        this.agentOptions.additionalInstructions = newInstructions || '';
+        this.agent.updateAdditionalInstructions(this.agentOptions.additionalInstructions);
       }
 
     } catch (error) {
@@ -401,6 +461,29 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
   }
 
 
+  private async saveInputBuffer() {
+
+    if (!this.inputBuffer || this.inputBuffer.length === 0) {
+      this.logger.warn('No input buffer available to play');
+      return;
+    }
+
+    const flac = await pcmToFlacBuffer(Buffer.concat(this.inputBuffer), {
+      sampleRate: 24000,
+      channels: 1,
+      bitsPerSample: 16
+    });
+
+    var inputData: AudioData = {
+      data: flac,
+      extension: 'flac',
+      prefix: 'rx'
+    };
+
+    this.inputPlaybackUrl = await this.webServer.buildStream(inputData);
+  }
+
+
   // Called for every discovery result; return truthy if it’s this device
   onDiscoveryResult(r: any) {
     return r.id === this.getData().id;
@@ -428,6 +511,32 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
 
 
+  /**
+   * Convert milliseconds to bytes for PCM audio
+   * @param ms Milliseconds to convert
+   * @param sampleRate Sample rate in Hz (default: 16000)
+   * @param channels Number of channels (default: 1)
+   * @param bytesPerSample Bytes per sample (default: 2)
+   * @returns Number of bytes
+   */
+  private msToBytes(ms: number, sampleRate: number = 16000, channels: number = 1, bytesPerSample: number = 2): number {
+    return Math.floor((ms / 1000) * sampleRate * channels * bytesPerSample);
+  }
+
+  /**
+   * Calculate the duration of PCM audio data in milliseconds
+   * @param buffer The PCM audio buffer
+   * @param sampleRate Sample rate in Hz (default: 24000)
+   * @param channels Number of channels (default: 1)
+   * @param bytesPerSample Bytes per sample (default: 2)
+   * @returns Duration in milliseconds
+   */
+  private pcmDurationMs(buffer: Buffer, sampleRate: number = 24000, channels: number = 1, bytesPerSample: number = 2): number {
+    const totalSamples = buffer.length / (channels * bytesPerSample);
+    return (totalSamples / sampleRate) * 1000;
+  }
+
+
 
   /**
    * onAdded is called when the user adds the device, called just after pairing.
@@ -444,23 +553,19 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
    * @param {string[]} event.changedKeys An array of keys changed since the previous version
    * @returns {Promise<string|void>} return a custom message that will be displayed
    */
-  async onSettings({
-    oldSettings,
-    newSettings,
-    changedKeys,
-  }: {
+  async onSettings({ oldSettings, newSettings, changedKeys, }: {
     oldSettings: { [key: string]: boolean | string | number | undefined | null };
     newSettings: { [key: string]: boolean | string | number | undefined | null };
     changedKeys: string[];
   }): Promise<string | void> {
     this.logger.info("Settings where changed");
-    try {
-      const deviceId = (this.getData() as any)?.id || (this as any).id || this.getName();
-      const store = this.getStore() as DeviceStore;
-      settingsManager.registerDevice(deviceId, store);
-    } catch (e) {
-      this.logger.error('Failed to update device settings in manager', e);
+
+    // Yeah, i'm a bit lazy
+    const settings = this.getSettings();
+    if (settings.initial_audio_skip) {
+      this.skipInitialBytes = this.msToBytes(settings.initial_audio_skip, 16000, 1, 2);
     }
+
   }
 
   /**

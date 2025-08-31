@@ -259,7 +259,22 @@
           "template": "add_devices"
         }
       ],
-      "id": "home-assistant-voice-preview-edition"
+      "id": "home-assistant-voice-preview-edition",
+      "settings": [
+        {
+          "id": "initial_audio_skip",
+          "type": "number",
+          "label": {
+            "en": "Initial audio skip"
+          },
+          "value": 350,
+          "min": 0,
+          "max": 2000,
+          "units": {
+            "en": "ms"
+          }
+        }
+      ]
     },
     {
       "name": {

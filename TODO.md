@@ -4,17 +4,7 @@
 https://platform.openai.com/docs/api-reference/realtime_sessions/create-secret-response
 
 
-## Remove all unneccecery options for the agent in voice-assistant-device.
-    Only keep this
-    const agentOptions: RealtimeOptions = {
-      apiKey: settingsManager.getGlobal('openai_api_key'),
-      voice: settingsManager.getGlobal('selected_voice') || 'alloy',
-      languageCode: settingsManager.getGlobal('selected_language_code') || 'en',
-      languageName: settingsManager.getGlobal('selected_language_name') || 'English',
-      additionalInstructions: settingsManager.getGlobal('ai_instructions') || '',
-    };
 
-    Remove all unused types from RealtimeOptions 
 
 ## Look at the description one more time.
 
@@ -52,6 +42,9 @@ https://platform.openai.com/docs/api-reference/realtime_sessions/create-secret-r
     - Start flow by name, "start <flow name>"
     - Start flow by synonym, "i'm going to bed" -> starts flow "night mode" - Need some way of letting user create connections between synonym and flow name
 
+
+## Try to look at agent transcription.delta
+    - Pass whatever we got back with agen.emit('silence')
 
 
 ## New AI tool - Change settings (lot's of work, but would be cool)

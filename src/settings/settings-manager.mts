@@ -1,7 +1,7 @@
 import { createLogger } from '../helpers/logger.mjs';
 
 export type GlobalSettings = Record<string, any>;
-export type DeviceSettings = Record<string, any>;
+//export type DeviceSettings = Record<string, any>;
 
 interface Subscriber<T> { (value: T): void; }
 
@@ -22,9 +22,9 @@ export class SettingsManager {
   private static instance: SettingsManager | null = null;
   private homey: any | null = null;
   private globals: GlobalSettings = {};
-  private devices: Map<string, DeviceSettings> = new Map();
+  //private devices: Map<string, DeviceSettings> = new Map();
   private globalSubs: Set<Subscriber<GlobalSettings>> = new Set();
-  private deviceSubs: Map<string, Set<Subscriber<DeviceSettings>>> = new Map();
+  //private deviceSubs: Map<string, Set<Subscriber<DeviceSettings>>> = new Map();
   private logger = createLogger('Settings_Manager');
 
   private constructor() {
@@ -84,16 +84,28 @@ export class SettingsManager {
 
   /** Refresh all globals from Homey. */
   refreshGlobals() {
-    if (!this.homey?.settings) return;
+    if (!this.homey?.settings) {
+      return;
+    }
+    
     // Homey settings API does not expose list directly; define keys we care about explicitly.
     // Extend this list as needed.
     const knownKeys = ['openai_api_key', 'selected_language_code', 'selected_language_name', 'selected_voice', 'ai_instructions'];
+
     for (const k of knownKeys) {
       this.globals[k] = this.homey.settings.get(k);
     }
+
   }
 
-  /** Register or update a device's settings snapshot. */
+
+  // Get a single global setting value. 
+  getGlobal<T = any>(key: string, fallback?: T): T {
+    return (this.globals[key] ?? fallback) as T;
+  }
+
+  /*
+  // Register or update a device's settings snapshot. 
   registerDevice(deviceId: string, store: DeviceSettings) {
     if (!deviceId) return;
     this.devices.set(deviceId, { ...store });
@@ -101,22 +113,17 @@ export class SettingsManager {
     this.logger.info(`Registered/updated device settings, deviceId: '${deviceId}'`, undefined, store);
   }
 
-  /** Merge globals + device-specific (device overrides). */
+// Merge globals + device-specific (device overrides). 
   getDeviceContext(deviceId: string): Readonly<GlobalSettings & DeviceSettings> {
     const device = this.devices.get(deviceId) || {};
     return Object.freeze({ ...this.globals, ...device });
   }
 
-  /** Get a single global setting value. */
-  getGlobal<T = any>(key: string, fallback?: T): T {
-    return (this.globals[key] ?? fallback) as T;
-  }
-
-  /** Raw device settings (unmerged). */
+  // Raw device settings (unmerged). 
   getDeviceSettings(deviceId: string): Readonly<DeviceSettings> {
     return Object.freeze({ ...(this.devices.get(deviceId) || {}) });
   }
-
+*/
   /** Subscribe to global settings changes. */
   onGlobals(sub: Subscriber<GlobalSettings>): () => void {
     this.globalSubs.add(sub);
@@ -124,7 +131,8 @@ export class SettingsManager {
     return () => this.globalSubs.delete(sub);
   }
 
-  /** Subscribe to device settings changes. */
+  /*
+  // Subscribe to device settings changes. 
   onDevice(deviceId: string, sub: Subscriber<DeviceSettings>): () => void {
     if (!this.deviceSubs.has(deviceId)) this.deviceSubs.set(deviceId, new Set());
     const set = this.deviceSubs.get(deviceId)!;
@@ -132,18 +140,19 @@ export class SettingsManager {
     sub({ ...(this.devices.get(deviceId) || {}) }); // initial
     return () => set.delete(sub);
   }
-
+*/
   private emitGlobals() {
     const snapshot = { ...this.globals };
     for (const sub of this.globalSubs) sub(snapshot);
   }
 
+  /*
   private emitDevice(deviceId: string) {
     const snapshot = { ...(this.devices.get(deviceId) || {}) };
     const set = this.deviceSubs.get(deviceId);
     if (!set) return;
     for (const sub of set) sub(snapshot);
-  }
+  }*/
 }
 
 // Export a convenient singleton instance

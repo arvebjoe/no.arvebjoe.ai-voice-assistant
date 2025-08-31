@@ -2,6 +2,8 @@
 export declare interface AudioData {
     data: Buffer;
     extension: string; // File extension, e.g., 'wav', 'flac'
+    prefix: string;
+    deleteAfterMs?: number; // Optional: time in milliseconds after which the file should be deleted
 }
 
 export declare interface StreamInfo {

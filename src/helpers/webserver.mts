@@ -23,7 +23,7 @@ export class WebServer {
 
     async buildStream(audioData: AudioData): Promise<string> {
 
-        const { filename } = await saveAudioData(this.homey, 'tx', audioData);
+        const { filename } = await saveAudioData(this.homey, audioData);
 
         const publicUrl = `http://${this.ip}/app/${this.homey.manifest.id}/userdata/audio/${filename}`;
         return publicUrl;

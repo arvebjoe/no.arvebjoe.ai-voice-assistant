@@ -3,7 +3,7 @@
  * These instructions define the agent's personality, behavior, and capabilities.
  */
 
-export function getDefaultInstructions(languageName : string, additionalInstructions?: string): string {
+export function getDefaultInstructions(languageName : string, additionalInstructions?: string | null): string {
 
    const additional = additionalInstructions ? `\n\nAdditional instructions:\n${additionalInstructions}` : '';
 

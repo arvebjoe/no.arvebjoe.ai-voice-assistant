@@ -17,11 +17,13 @@ interface ToolDefinition {
 }
 
 export class ToolManager {
+    private homey: any;
     private deviceManager: DeviceManager;
     private tools: Map<string, ToolDefinition> = new Map();
     private logger = createLogger('ToolManage', true);
 
-    constructor(deviceManager: DeviceManager) {
+    constructor(homey:any, deviceManager: DeviceManager) {
+        this.homey = homey;
         this.deviceManager = deviceManager;
         this.registerDefaultTools();
     }
