@@ -432,36 +432,27 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
         this.sendSessionUpdate();
     }
 
-    async updateVoiceWithReconnect(newVoice: string): Promise<void> {
+    async updateVoice(newVoice: string): Promise<void> {
         this.options.voice = newVoice;
-
-        await this.restart();
     }
 
-    async updateAdditionalInstructions(newAdditionalInstructions: string | null): Promise<void> {
-        this.assertOpen();
+    async updateAdditionalInstructions(newAdditionalInstructions: string | null): Promise<void> {        
         this.options.additionalInstructions = newAdditionalInstructions;
-        this.instructions = getDefaultInstructions(this.options.languageName, this.options.additionalInstructions);
-
-        await this.restart();
+        this.instructions = getDefaultInstructions(this.options.languageName, this.options.additionalInstructions);        
     }
 
-    async updateLanguage(newLanguageCode: string, newLanguageName: string): Promise<void> {
-        this.assertOpen();
+    async updateLanguage(newLanguageCode: string, newLanguageName: string): Promise<void> {        
         this.options.languageCode = newLanguageCode;
         this.options.languageName = newLanguageName;
-        this.instructions = getDefaultInstructions(this.options.languageName, this.options.additionalInstructions);
-
-        await this.restart();
+        this.instructions = getDefaultInstructions(this.options.languageName, this.options.additionalInstructions);        
     }
 
-    async updateApiKeyWithRestart(newApiKey: string): Promise<void> {
+    async updateApiKey(newApiKey: string): Promise<void> {
         this.logger.info('Updating API key and restarting agent...');
-        this.options.apiKey = newApiKey;
-        await this.restart();
+        this.options.apiKey = newApiKey;        
     }
 
-    private async restart() {
+    async restart() {
         // Set flag to prevent automatic reconnection during manual restart
         const wasManuallyClosing = this.isManuallyClosing;
         this.isManuallyClosing = true;

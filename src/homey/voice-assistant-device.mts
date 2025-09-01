@@ -367,35 +367,35 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     }
 
     try {
+      let needRestart: boolean = false;
+
       // Check if API key changed
-      const newApiKey = newSettings.openai_api_key;
+      const newApiKey = newSettings.openai_api_key;     
 
-      this.logger.info(`New API key: ${newApiKey}`);
-      this.logger.info(`Current API key: ${this.agentOptions.apiKey ?? 'NULL'}`);
-
-      if (newApiKey && newApiKey !== this.agentOptions.apiKey) {
+      if (newApiKey !== this.agentOptions.apiKey) {
         this.logger.info(`API key changed, updating agent and restarting.`);
         this.agentOptions.apiKey = newApiKey;
-        await this.agent.updateApiKeyWithRestart(newApiKey);
+        await this.agent.updateApiKey(newApiKey);
+        needRestart = true;
       }
-
-      // Check if voice changed
+      
       const newVoice = newSettings.selected_voice;
       if (newVoice && newVoice !== this.agentOptions.voice) {
         this.logger.info(`Voice changed from ${this.agentOptions.voice} to ${newVoice}`);
         this.agentOptions.voice = newVoice;
-        this.agent.updateVoiceWithReconnect(this.agentOptions.voice);
+        this.agent.updateVoice(this.agentOptions.voice);
+        needRestart = true;
       }
 
       // Check if language changed
       const newLanguageCode = newSettings.selected_language_code;
       const newLanguageName = newSettings.selected_language_name;
       if (newLanguageCode && newLanguageCode !== this.agentOptions.languageCode) {
-        this.logger.info(`Language code changed from ${this.agentOptions.languageCode} to ${newLanguageCode}`);
-        // TODO: Add updateLanguage method to OpenAIRealtimeWS or restart connection
+        this.logger.info(`Language code changed from ${this.agentOptions.languageCode} to ${newLanguageCode}`);        
         this.agentOptions.languageCode = newLanguageCode;
         this.agentOptions.languageName = newLanguageName || 'English';
         this.agent.updateLanguage(this.agentOptions.languageCode, this.agentOptions.languageName);
+        needRestart = true;
       }
 
       // Check if AI instructions changed
@@ -404,7 +404,13 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
         this.logger.info('AI instructions changed, updating...');
         this.agentOptions.additionalInstructions = newInstructions || '';
         this.agent.updateAdditionalInstructions(this.agentOptions.additionalInstructions);
+        needRestart = true;
       }
+
+      if(needRestart){
+        this.agent.restart();
+      }
+
 
     } catch (error) {
       this.logger.error('Failed to update agent settings:', error);
