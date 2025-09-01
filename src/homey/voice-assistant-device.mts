@@ -25,7 +25,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
   private settingsUnsubscribe?: () => void;
   private agentOptions!: RealtimeOptions;
   private isMutedValue: boolean = false;
-  private logger = createLogger('Voice_Assistant_Device', false);
+  private logger = createLogger('Voice_Assistant_Device', true);
   private skippedBytes: number = 0;
   private skipInitialBytes: number | null = null;
   abstract readonly needDelayedPlayback: boolean;

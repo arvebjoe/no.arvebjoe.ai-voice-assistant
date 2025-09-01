@@ -2,13 +2,15 @@
  
 
 ## TEST all flow cards (text, speak, output)    
-    - Mute OK
-    - Ask, output to speaker OK
-    - Play URL OK
-
+    - Mute                      OK
+    - Ask, output to speaker    OK
+    - Ask, output to text       OK
+    - Play URL                  OK
+    - Say                       OK
+    
     - Turn On doesn't work    
-    - Ask output to text doesn't work 
-    - Say doesn't work
+    
+    
      
 
 ## Set timeout, use this.homey.setTimeout() and setInterval()

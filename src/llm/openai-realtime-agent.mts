@@ -36,6 +36,7 @@ type RealtimeEvents = {
     "text.done": (msg: any) => void;
 
     "transcript.delta": (delta: string) => void;
+    "transcript.done": (transcript: string) => void;
 
     "response.output_item.added": () => void;
     "response.progress": () => void;
@@ -105,7 +106,7 @@ type PendingToolCall = {
 export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter<RealtimeEvents>) {
     private ws?: WebSocket;
     private homey: any;
-    private logger = createLogger('AGENT', true);
+    private logger = createLogger('AGENT', false);
     private resample_prev: number | null = null; // last input sample from previous chunk
     private resample_frac: number = 0;           // fractional read position into the source for next call
     private toolManager: ToolManager;
@@ -267,8 +268,21 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
      * @param mode - "audio" for audio output, "text" for text output
      */
     setOutputMode(mode: "audio" | "text") {
+        if (this.outputMode === mode) {
+            return;
+        }
         this.outputMode = mode;
         this.logger.info(`Output mode set to: ${mode}`);
+
+
+        this.send({
+            type: "session.update",
+            session: {
+                type: "realtime",
+                output_modalities: [this.outputMode]
+            }
+        });
+
     }
 
     /**
@@ -290,11 +304,47 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
     /**
      * Send text input and get text response (Text -> Text).
      */
-    sendTextForTextResponse(text: string) {
+    sendTextForTextResponse(question: string) {
+
         this.setOutputMode("text");
-        this.sendUserText(text);
-        this.createResponse();
+
+        this.send({
+            type: "conversation.item.create",
+            item: {
+                type: "message",
+                role: "user",
+                content: [{ type: "input_text", text: "Hvor mye er klokka i Norge?" }]
+            }
+        });
+
+        this.send({
+            type: "response.create",
+            response: {
+                instructions: "Answer in short text. Do not generate audio."
+            }
+        });
+
     }
+
+
+    /**
+     * Ask the model to respond (streaming audio + text).
+     * You typically do this after a commit, or when sending pure text input.
+     */
+    createResponse(extra?: Record<string, any>) {
+        this.assertOpen();
+
+        const evt = {
+            type: "response.create",
+            response: {
+                instructions: getResponseInstructions(),
+                ...extra,
+            },
+        };
+
+        this.send(evt);
+    }
+
 
     /**
      * Send audio chunk and expect text response (Audio -> Text).
@@ -312,30 +362,24 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
     textToSpeech(text: string) {
         this.assertOpen();
 
-        // Send a user message asking the AI to simply repeat the text
-        const userMsg = {
+        this.send({
             type: "conversation.item.create",
             item: {
                 type: "message",
                 role: "user",
-                content: [{
-                    type: "input_text",
-                    text: `Please say exactly: "${text}"`
-                }],
-            },
-        };
-        this.send(userMsg);
+                content: [{ type: "input_text", text }]   // if this errors, use { type: "text", text }
+            }
+        });
 
-        // Request response with only audio and very specific instructions
-        const evt = {
+        this.send({
             type: "response.create",
             response: {
-                modalities: ["audio"], //, "text"],
-                instructions: "Respond with exactly the text the user asked you to say, without any additional words, commentary, or changes. Do not add greetings, confirmations, or explanations.",
-            },
-        };
-        this.send(evt);
+                //temperature: 0,
+                instructions: "Speak the previous user message verbatim in Norwegian Bokmål. Do not add or change anything."
+            }
+        });
     }
+
 
     /**
      * Push a PCM16 mono 24kHz chunk into the input buffer.
@@ -380,28 +424,7 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
         this.send({ type: "input_audio_buffer.clear" });
     }
 
-    /**
-     * Ask the model to respond (streaming audio + text).
-     * You typically do this after a commit, or when sending pure text input.
-     */
-    createResponse(extra?: Record<string, any>) {
-        this.assertOpen();
 
-        // Determine modalities based on output mode
-        const modalities = this.outputMode === "text" ? ["text"] : ["audio"]; //, "text"];
-
-        const evt = {
-            type: "response.create",
-            response: {
-                // modalities,           // Use appropriate modalities based on output mode
-                // voice comes from the session (session.voice)
-                instructions:
-                    getResponseInstructions(),
-                ...extra,
-            },
-        };
-        this.send(evt);
-    }
 
 
     /**
@@ -436,20 +459,20 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
         this.options.voice = newVoice;
     }
 
-    async updateAdditionalInstructions(newAdditionalInstructions: string | null): Promise<void> {        
+    async updateAdditionalInstructions(newAdditionalInstructions: string | null): Promise<void> {
         this.options.additionalInstructions = newAdditionalInstructions;
-        this.instructions = getDefaultInstructions(this.options.languageName, this.options.additionalInstructions);        
+        this.instructions = getDefaultInstructions(this.options.languageName, this.options.additionalInstructions);
     }
 
-    async updateLanguage(newLanguageCode: string, newLanguageName: string): Promise<void> {        
+    async updateLanguage(newLanguageCode: string, newLanguageName: string): Promise<void> {
         this.options.languageCode = newLanguageCode;
         this.options.languageName = newLanguageName;
-        this.instructions = getDefaultInstructions(this.options.languageName, this.options.additionalInstructions);        
+        this.instructions = getDefaultInstructions(this.options.languageName, this.options.additionalInstructions);
     }
 
     async updateApiKey(newApiKey: string): Promise<void> {
         this.logger.info('Updating API key and restarting agent...');
-        this.options.apiKey = newApiKey;        
+        this.options.apiKey = newApiKey;
     }
 
     async restart() {
@@ -541,10 +564,13 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
             case "conversation.item.input_audio_transcription.delta":
             case "item.input_audio_transcription.delta":
             case "input_audio_transcription.delta":
+            case "response.output_audio_transcript.delta":
                 this.emit("transcript.delta", msg.delta);
                 break;
 
-
+            case "response.output_audio_transcript.done":
+                this.emit("transcript.done", msg.transcript);
+                break;
 
             // A function_call item shows up in the response stream:
             case "response.output_item.added": {
@@ -617,7 +643,7 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
                 this.emit("response.progress");
                 break;
 
-            case "response.completed":
+            //case "response.completed":
             case "response.done":
                 this.emit("response.done");
                 break;
@@ -750,7 +776,7 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
                             type: "audio/pcm",
                             rate: 24000
                         },
-                        transcription: {                            
+                        transcription: {
                             model: "gpt-4o-mini-transcribe",                                                        // pick one: "gpt-4o-mini-transcribe" (fast) | "gpt-4o-transcribe" (quality) | "whisper-1"                                                        
                             language: this.options.languageCode,                                                    // "nb" (Bokmål), "nn" (Nynorsk), or "no" (generic)                            
                             //prompt: "Homey, ESPHome, "                                                            // optional biasing for names/terms. Need to look into this
@@ -894,7 +920,7 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
                     // Send ping to check connection
                     try {
                         this.logger.info("Sending ping", 'HEALTH');
-                        this.ws.ping();                        
+                        this.ws.ping();
                     } catch (error) {
                         this.logger.info("Failed to send ping:", 'HEALTH', error);
                         this.ws.close(1006, "ping-failed");
