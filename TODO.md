@@ -1,16 +1,15 @@
 # TODO before release:  
  
 
-## Fix issue with Xiaozhi play url. 
-    - Needs a 500ms delay before playing next clip.
+## TEST all flow cards (text, speak, output)    
+    - Mute OK
+    - Ask, output to speaker OK
+    - Play URL OK
 
-
-## TEST - Trigger from flow (text, speak, output)
-    - All the flow cards
-
-## TEST with Ziaozhi devices
-    - Doesn't work with many URLs?
-    - Need to handle this. PE works just fine. X doesn't. Wants it all in one fat file.
+    - Turn On doesn't work    
+    - Ask output to text doesn't work 
+    - Say doesn't work
+     
 
 ## Set timeout, use this.homey.setTimeout() and setInterval()
 
