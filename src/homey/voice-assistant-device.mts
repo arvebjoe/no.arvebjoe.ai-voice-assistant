@@ -36,6 +36,8 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
   private announceUrls: string[] = [];
   private isPlaying: boolean = false;
 
+  private isAgentHealthy: boolean = false;
+  private isEspClientHealthy: boolean = false;
 
   /**
    * onInit is called when the device is initialized.
@@ -169,10 +171,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       this.logger.info('Agent connection opened');
     });
 
-    this.esp.on('connected', async () => {
-      this.logger.info('ESP Voice Client connected');
-      this.setAvailable();
-    });
+
 
     // The agent has detected that the user has stopped speaking.
     this.agent.on('silence', async (source: string) => {
@@ -229,26 +228,26 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
       const url = await this.webServer.buildStream(audioData);
 
-      if(this.isPlaying){
+      if (this.isPlaying) {
         this.announceUrls.push(url);
         return;
       }
 
       this.isPlaying = true;
-      this.esp.playAudioFromUrl(url, false);      
+      this.esp.playAudioFromUrl(url, false);
 
     });
 
 
     this.esp.on('announce_finished', () => {
       this.logger.info('Announcement finished');
-      
+
       if (this.announceUrls.length === 0) {
         this.isPlaying = false;
         this.esp.tts_end()
         this.esp.run_end();
         this.agent.resetUpsampler();
-        this.setCapabilityValue('onoff', false);        
+        this.setCapabilityValue('onoff', false);
         return;
       }
 
@@ -281,10 +280,6 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       this.logger.error("Realtime agent error:", error);
     });
 
-    this.esp.on('disconnected', () => {
-      this.logger.info('ESP Voice Client disconnected');
-      this.setUnavailable('Disconnected from ESP Voice Client');
-    });
 
 
     // Listen for volume changes from the device
@@ -307,12 +302,24 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
     // This will toggle the device in homey available or not
     this.agent.on('connectionHealthy', () => {
-      this.setAvailable();
+      this.isAgentHealthy = true;
+      this.updateAvailable();
     });
 
     this.agent.on('connectionUnhealthy', () => {
-      this.setUnavailable();
+      this.isAgentHealthy = false;
+      this.updateAvailable();      
     });
+
+    this.esp.on('connected', async () => {
+      this.isEspClientHealthy = true;
+      this.updateAvailable();
+    });
+
+        this.esp.on('disconnected', () => {      
+      this.isEspClientHealthy = false;
+      this.updateAvailable();
+    });    
 
 
     // Actually start the ESP and agent.
@@ -515,6 +522,17 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     };
 
     this.inputPlaybackUrl = await this.webServer.buildStream(inputData);
+  }
+
+
+
+  private updateAvailable() {
+    if (this.isAgentHealthy && this.isEspClientHealthy) {
+      this.setAvailable();
+      return;
+    }
+
+    this.setUnavailable();
   }
 
 

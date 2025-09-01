@@ -225,6 +225,7 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
             this.ws.on("pong", () => {
                 this.logger.info("Received pong", 'HEALTH');
                 this.lastPongTime = Date.now();
+                this.emit("connectionHealthy");
             });
 
         } catch (error) {
@@ -902,8 +903,7 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
                     // Send ping to check connection
                     try {
                         this.logger.info("Sending ping", 'HEALTH');
-                        this.ws.ping();
-                        this.emit("connectionHealthy");
+                        this.ws.ping();                        
                     } catch (error) {
                         this.logger.info("Failed to send ping:", 'HEALTH', error);
                         this.ws.close(1006, "ping-failed");
