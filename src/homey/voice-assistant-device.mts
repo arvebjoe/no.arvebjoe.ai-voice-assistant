@@ -6,11 +6,12 @@ import { settingsManager } from '../settings/settings-manager.mjs';
 import { OpenAIRealtimeAgent, RealtimeOptions } from '../llm/openai-realtime-agent.mjs';
 import { pcmToFlacBuffer } from '../helpers/audio-encoders.mjs';
 import { PcmSegmenter } from '../helpers/pcm-segmenter.mjs';
-import { AudioData } from '../helpers/interfaces.mjs';
+import { AudioData, FileInfo } from '../helpers/interfaces.mjs';
 import { ToolManager } from '../llm/tool-manager.mjs';
 import { DeviceStore } from '../helpers/interfaces.mjs';
 import { createLogger } from '../helpers/logger.mjs';
 import { SOUND_URLS } from '../helpers/sound-urls.mjs';
+import { scheduleAudioFileDeletion } from '../helpers/file-helper.mjs';
 
 
 export default abstract class VoiceAssistantDevice extends Homey.Device {
@@ -24,16 +25,17 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
   private settingsUnsubscribe?: () => void;
   private agentOptions!: RealtimeOptions;
   private isMutedValue: boolean = false;
-  private logger = createLogger('Voice_Assistant_Device', true);
+  private logger = createLogger('Voice_Assistant_Device', false);
   private skippedBytes: number = 0;
   private skipInitialBytes: number | null = null;
+  abstract readonly needDelayedPlayback: boolean;
 
   private inputBufferDebug: boolean = false;
   private inputBuffer: Buffer[] = [];
-  private inputPlaybackUrl?: string | null = null;
+  private inputPlaybackUrl?: FileInfo | null = null;
 
   private hasIntent: boolean = false;
-  private announceUrls: string[] = [];
+  private announceUrls: FileInfo[] = [];
   private isPlaying: boolean = false;
 
   private isAgentHealthy: boolean = false;
@@ -169,6 +171,8 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
     this.agent.on("open", () => {
       this.logger.info('Agent connection opened');
+      this.isAgentHealthy = true;
+      this.updateAvailable();
     });
 
 
@@ -204,7 +208,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
       // If we have an input buffer to play, do that first, before playing the new chunk from the segmenter
       if (this.inputBufferDebug && this.inputPlaybackUrl) {
-        this.esp.playAudioFromUrl(this.inputPlaybackUrl, false);
+        this.playUrlByFileInfo(this.inputPlaybackUrl, false);        
         this.inputPlaybackUrl = null;
       }
 
@@ -226,15 +230,16 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
         this.esp.tts_start();
       }
 
-      const url = await this.webServer.buildStream(audioData);
+      const fileInfo = await this.webServer.buildStream(audioData);
 
       if (this.isPlaying) {
-        this.announceUrls.push(url);
+        this.announceUrls.push(fileInfo);
         return;
       }
 
       this.isPlaying = true;
-      this.esp.playAudioFromUrl(url, false);
+      this.logger.info(`Playing FIRST announcement from URL: ${fileInfo.url}`);
+      this.playUrlByFileInfo(fileInfo, false);
 
     });
 
@@ -248,11 +253,25 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
         this.esp.run_end();
         this.agent.resetUpsampler();
         this.setCapabilityValue('onoff', false);
+        this.logger.info(`Done playing announcements`);
         return;
       }
 
-      const url = this.announceUrls.shift()!;
-      this.esp.playAudioFromUrl(url, false);
+      const fileInfo = this.announceUrls.shift()!;
+      this.logger.info(`Playing NEXT announcement from URL: ${fileInfo.url}`);
+
+      if (this.needDelayedPlayback) {
+        this.homey.setTimeout(() => {
+          this.esp.tts_start();
+          this.playUrlByFileInfo(fileInfo, false);
+        }, 500);
+
+      } else {
+        this.playUrlByFileInfo(fileInfo, false);
+
+      }
+
+
 
     });
 
@@ -301,25 +320,29 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     });
 
     // This will toggle the device in homey available or not
-    this.agent.on('connectionHealthy', () => {
+    this.agent.on('Healthy', () => {
+      this.logger.info('Agent connection healthy');
       this.isAgentHealthy = true;
       this.updateAvailable();
     });
 
-    this.agent.on('connectionUnhealthy', () => {
+    this.agent.on('Unhealthy', () => {
+      this.logger.info('Agent connection unhealthy');
       this.isAgentHealthy = false;
-      this.updateAvailable();      
+      this.updateAvailable();
     });
 
-    this.esp.on('connected', async () => {
+    this.esp.on('Healthy', async () => {
+      this.logger.info('ESP Voice Client healthy');
       this.isEspClientHealthy = true;
       this.updateAvailable();
     });
 
-        this.esp.on('disconnected', () => {      
+    this.esp.on('Unhealthy', () => {
+      this.logger.info('ESP Voice Client unhealthy');
       this.isEspClientHealthy = false;
       this.updateAvailable();
-    });    
+    });
 
 
     // Actually start the ESP and agent.
@@ -328,6 +351,8 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
     this.logger.info('Initialized');
   }
+
+
 
 
 
@@ -436,6 +461,11 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     }
   }
 
+  private playUrlByFileInfo(fileInfo: FileInfo, startConversation: boolean) {
+    this.esp.playAudioFromUrl(fileInfo.url, startConversation);
+    scheduleAudioFileDeletion(this.homey, fileInfo);
+  }
+
 
   speakText(text: string): void {
     this.logger.info(`Speaking text: ${text}`);
@@ -527,12 +557,14 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
 
   private updateAvailable() {
+    var current = this.getAvailable();
     if (this.isAgentHealthy && this.isEspClientHealthy) {
-      this.setAvailable();
-      return;
+      if (current === false) {
+        this.setAvailable();
+      }
+    } else if (current === true) {
+      this.setUnavailable();
     }
-
-    this.setUnavailable();
   }
 
 

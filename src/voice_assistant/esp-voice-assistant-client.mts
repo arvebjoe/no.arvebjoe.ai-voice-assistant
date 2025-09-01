@@ -13,8 +13,8 @@ interface EspVoiceClientOptions {
 }
 
 type EspVoiceEvents = {
-  connected: () => void;
-  disconnected: () => void;
+  Healthy: () => void;
+  Unhealthy: () => void;
   announce_finished: () => void;
   start: () => void;
   chunk: (data: Buffer) => void;
@@ -130,7 +130,7 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
     }
 
     this.connected = false;
-    this.emit('disconnected');
+    this.emit('Unhealthy');
   }
 
   setHost(address: any) {
@@ -189,7 +189,7 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
   handleDisconnect(): void {
 
     this.connected = false;
-    this.emit('disconnected');
+    this.emit('Unhealthy');
 
     if (this.healthCheckTimer) {
       clearInterval(this.healthCheckTimer);
@@ -255,7 +255,7 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
       // ensure it happens after the current execution context
       setTimeout(() => {
         try {
-          this.emit('disconnected');
+          this.emit('Unhealthy');
         } catch (err) {
           // Ignore errors during event emit on cleanup
         }
@@ -301,7 +301,7 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
 
     else if (name === 'ConnectResponse') {
       this.connected = true;
-      this.emit('connected');
+      this.emit('Healthy');
 
       this.mediaPlayersCount = 0;
       this.subscribeVoiceAssistantCount = 0;

@@ -21,8 +21,8 @@ type RealtimeEvents = {
     reconnecting: (attempt: number, delay: number) => void;
     reconnected: () => void;
     reconnectFailed: (attempt: number, error: Error) => void;
-    connectionHealthy: () => void;
-    connectionUnhealthy: () => void;
+    Healthy: () => void;
+    Unhealthy: () => void;
     missing_api_key: () => void;
 
     "input_audio_buffer.committed": () => void;
@@ -105,7 +105,7 @@ type PendingToolCall = {
 export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter<RealtimeEvents>) {
     private ws?: WebSocket;
     private homey: any;
-    private logger = createLogger('AGENT', false);
+    private logger = createLogger('AGENT', true);
     private resample_prev: number | null = null; // last input sample from previous chunk
     private resample_frac: number = 0;           // fractional read position into the source for next call
     private toolManager: ToolManager;
@@ -225,7 +225,7 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
             this.ws.on("pong", () => {
                 this.logger.info("Received pong", 'HEALTH');
                 this.lastPongTime = Date.now();
-                this.emit("connectionHealthy");
+                this.emit("Healthy");
             });
 
         } catch (error) {
@@ -895,7 +895,7 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
                 if (timeSinceLastPong > this.connectionHealthCheckInterval * 2) {
                     // No pong received for too long - connection might be unhealthy
                     this.logger.info("Connection appears unhealthy - no pong received", 'HEALTH');
-                    this.emit("connectionUnhealthy");
+                    this.emit("Unhealthy");
 
                     // Force reconnection
                     this.ws.close(1006, "connection-health-check-failed");

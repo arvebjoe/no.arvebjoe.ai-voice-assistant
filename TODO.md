@@ -1,15 +1,24 @@
-# TODO before release:
+# TODO before release:  
+ 
 
-## TEST - Our session object might be all wrong
-https://platform.openai.com/docs/api-reference/realtime_sessions/create-secret-response
+## Fix issue with Xiaozhi play url. 
+    - Needs a 500ms delay before playing next clip.
+
 
 ## TEST - Trigger from flow (text, speak, output)
     - All the flow cards
 
-## Look at the description one more time.
+## TEST with Ziaozhi devices
+    - Doesn't work with many URLs?
+    - Need to handle this. PE works just fine. X doesn't. Wants it all in one fat file.
+
+## Set timeout, use this.homey.setTimeout() and setInterval()
 
 ## Create Homey Community Topic
+- https://community.homey.app/t/app-pro-flow-checker/50986
 
+
+## PUBLISH!
 
 
 
@@ -86,6 +95,10 @@ https://platform.openai.com/docs/api-reference/realtime_sessions/create-secret-r
     - Still issue with LED feedback when playing multiple URL's
         - Voice box should tell when it's done playing the last URL 
 
+
+# Customer ESP Home firmware
+    - Homey look?
+    - "hey homey" wake word?
 
 # Phase 2
 

@@ -1,6 +1,6 @@
 import { networkInterfaces } from 'os';
 import { createLogger } from './logger.mjs';
-import { AudioData } from './interfaces.mjs';
+import { AudioData, FileInfo } from './interfaces.mjs';
 import { saveAudioData } from './file-helper.mjs';
 
 export class WebServer {
@@ -21,12 +21,10 @@ export class WebServer {
 
     }
 
-    async buildStream(audioData: AudioData): Promise<string> {
-
-        const { filename } = await saveAudioData(this.homey, audioData);
-
-        const publicUrl = `http://${this.ip}/app/${this.homey.manifest.id}/userdata/audio/${filename}`;
-        return publicUrl;
+    async buildStream(audioData: AudioData): Promise<FileInfo> {
+        const fileInfo = await saveAudioData(this.homey, audioData);
+        fileInfo.url = `http://${this.ip}/app/${this.homey.manifest.id}/userdata/audio/${fileInfo.filename}`;
+        return fileInfo;
     }
 
 

@@ -115,7 +115,7 @@ export default abstract class VoiceAssistantDriver extends Homey.Driver {
                 intentionalDisconnect = true;
                 // Detach listeners first (if your client supports it)
                 client?.off?.('capabilities', onCapabilities as any);
-                client?.off?.('disconnected', onDisconnected as any);
+                client?.off?.('Unhealthy', onDisconnected as any);
 
             } catch { }
 
@@ -164,7 +164,7 @@ export default abstract class VoiceAssistantDriver extends Homey.Driver {
                 });
 
                 client.on('capabilities', onCapabilities as any);
-                client.on?.('disconnected', onDisconnected as any);
+                client.on?.('Unhealthy', onDisconnected as any);
 
                 await client.start();
 
