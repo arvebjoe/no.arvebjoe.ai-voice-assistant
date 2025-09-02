@@ -151,7 +151,7 @@ This app uses OpenAI for speech‑to‑text, reasoning, and text‑to‑speech.
 
 ## Roadmap
 
-Planned features and ideas live in **[todo.md](./todo.md)**.
+Planned features and ideas live in **[todo.md](./TODO.md)**.
 
 ---
 
