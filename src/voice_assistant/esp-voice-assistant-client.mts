@@ -90,7 +90,7 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
   async start(): Promise<void> {
 
     if (this.reconnectTimer) {
-      clearTimeout(this.reconnectTimer);
+      this.homey.clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
 
@@ -113,30 +113,7 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
     });
   }
 
-  async stop(): Promise<void> {
-    this.logger.info('Stopping ESP Voice Client...');
 
-    // Close mic socket first
-    this.logger.info('Closing mic socket... from stop()');
-    this.closeMic();
-
-    if (this.reconnectTimer) {
-      clearTimeout(this.reconnectTimer);
-      this.reconnectTimer = null;
-    }
-    if (this.healthCheckTimer) {
-      this.homey.clearInterval(this.healthCheckTimer);
-      this.healthCheckTimer = null;
-    }
-
-    if (this.tcp) {
-      this.tcp.destroy();
-      this.tcp = null;
-    }
-
-    this.connected = false;
-    this.emit('Unhealthy');
-  }
 
   setHost(address: any) {
     this.host = address;
@@ -175,6 +152,7 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
 
     if (this.healthCheckTimer) {
       this.homey.clearInterval(this.healthCheckTimer);
+      this.healthCheckTimer = null;
     }
 
     this.healthCheckTimer = this.homey.setInterval(() => {
@@ -219,9 +197,15 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
     try {
       // Clean up timers
       if (this.reconnectTimer) {
-        clearTimeout(this.reconnectTimer);
+        this.homey.clearTimeout(this.reconnectTimer);
         this.reconnectTimer = null;
       }
+
+      // Clean up health check timer
+      if (this.healthCheckTimer) {
+        this.homey.clearInterval(this.healthCheckTimer);
+        this.healthCheckTimer = null;
+      }      
 
       // Close mic socket - wrap in try-catch in case it's already closed
       try {
@@ -231,11 +215,7 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
         this.logger.error('Error closing mic socket:', err);
       }
 
-      // Clean up health check timer
-      if (this.healthCheckTimer) {
-        this.homey.clearInterval(this.healthCheckTimer);
-        this.healthCheckTimer = null;
-      }
+
 
       // Close TCP socket - wrap in try-catch in case it's already closed
       if (this.tcp) {
@@ -385,11 +365,11 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
     }
 
     else if (name === 'VoiceAssistantAnnounceFinished') {
-      if(this.shouldAnnounceFinished){
+      if (this.shouldAnnounceFinished) {
         this.emit('announce_finished');
       }
       this.shouldAnnounceFinished = true;
-      
+
     }
 
     else if (name === 'MediaPlayerStateResponse') {
@@ -455,7 +435,7 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
 
 
   send_voice_assistant_request(): void {
-    
+
     this.shouldAnnounceFinished = false;
 
     /* 
@@ -475,7 +455,7 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
     this.send('VoiceAssistantAnnounceRequest', {
       startConversation: true,
       media_id: '',
-      
+
     });
 
   }
@@ -548,7 +528,7 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
 
       this.send('VoiceAssistantResponse', {
         port: mic_port,
-        error: false        
+        error: false
       });
     });
   }
@@ -724,11 +704,11 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
 
   logRx(f: any): void {
 
-    
+
     if (f.name === 'VoiceAssistantAudio') {
       return;
     }
-    
+
     this.logger.info(f.name || `unknown#${f.id}`, 'RX', f.message || { length: f.payload.length });
   }
 

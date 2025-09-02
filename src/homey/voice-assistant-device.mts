@@ -526,6 +526,11 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       return new Promise<string>((resolve, reject) => {
         // Set up a one-time event listener for text.done
         const textDoneHandler = (msg: any) => {
+          // Clear the timeout on successful response
+          if (timeoutId) {
+            this.homey.clearTimeout(timeoutId);
+            timeoutId = null;
+          }
           this.logger.info('Text response received:', undefined, msg.text);
           resolve(msg.text);
         };
@@ -534,7 +539,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
         this.agent.once('text.done', textDoneHandler);
 
         // Set a timeout in case the response never comes
-        const timeoutId = this.homey.setTimeout(() => {
+        let timeoutId: any = this.homey.setTimeout(() => {
           this.agent.off('text.done', textDoneHandler);
           reject(new Error('Timeout waiting for text response'));
         }, 30000); // 30 seconds timeout
@@ -544,7 +549,8 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
           this.agent.sendTextForTextResponse(question);
         } catch (error) {
           // Clear the timeout and remove the listener if sending fails
-          clearTimeout(timeoutId);
+          this.homey.clearTimeout(timeoutId);
+          timeoutId = null;
           this.agent.off('text.done', textDoneHandler);
           reject(error);
         }
@@ -611,7 +617,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
   onDiscoveryAddressChanged(r: any) {
     this.logger.info('Device address changed, updating ESP client', undefined, r);
     this.setStoreValue('address', r.address).catch(this.error);
-    this.esp.stop();
+    this.esp.disconnect();
     this.esp.setHost(r.address);
     this.esp.start().catch(this.error);
   }

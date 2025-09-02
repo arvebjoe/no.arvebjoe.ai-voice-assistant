@@ -178,7 +178,7 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
 
         // Clear any existing reconnect timeout
         if (this.reconnectTimeoutId) {
-            clearTimeout(this.reconnectTimeoutId);
+            this.homey.clearTimeout(this.reconnectTimeoutId);
             this.reconnectTimeoutId = undefined;
         }
 
@@ -248,7 +248,7 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
 
         // Clear any pending reconnect attempts
         if (this.reconnectTimeoutId) {
-            clearTimeout(this.reconnectTimeoutId);
+            this.homey.clearTimeout(this.reconnectTimeoutId);
             this.reconnectTimeoutId = undefined;
         }
 
@@ -994,7 +994,7 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
         // Clear all timers
         this.stopConnectionHealthCheck();
         if (this.reconnectTimeoutId) {
-            clearTimeout(this.reconnectTimeoutId);
+            this.homey.clearTimeout(this.reconnectTimeoutId);
             this.reconnectTimeoutId = undefined;
         }
 

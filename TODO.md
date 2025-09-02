@@ -1,6 +1,8 @@
 # TODO before release:  
     
 
+## See if the Xiazhi has a listening image. Try to trigger it!
+
 ## Create Homey Community Topic
 - https://community.homey.app/t/app-pro-flow-checker/50986
 
