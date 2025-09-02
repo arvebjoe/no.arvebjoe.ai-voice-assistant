@@ -99,7 +99,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     //
 
     // The esp voice client has woken (by wake word or user action)
-    this.esp.on('start', async () => {
+    this.esp.on('starting', async () => {
 
       if (!this.agent.isConnected()) {
         // The agent doesn't have an active web socket. Either the API Key is missing or the internet connection failed.
@@ -127,6 +127,8 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       this.esp.begin_mic_capture();
     });
 
+    this.esp.on('started', async () => {
+    });
 
     // There is some audio data available from the microphone
     this.esp.on('chunk', (data: Buffer) => {
@@ -208,7 +210,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
       // If we have an input buffer to play, do that first, before playing the new chunk from the segmenter
       if (this.inputBufferDebug && this.inputPlaybackUrl) {
-        this.playUrlByFileInfo(this.inputPlaybackUrl, false);        
+        this.playUrlByFileInfo(this.inputPlaybackUrl, false);
         this.inputPlaybackUrl = null;
       }
 
@@ -370,7 +372,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       let needRestart: boolean = false;
 
       // Check if API key changed
-      const newApiKey = newSettings.openai_api_key;     
+      const newApiKey = newSettings.openai_api_key;
 
       if (newApiKey !== this.agentOptions.apiKey) {
         this.logger.info(`API key changed, updating agent and restarting.`);
@@ -378,7 +380,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
         await this.agent.updateApiKey(newApiKey);
         needRestart = true;
       }
-      
+
       const newVoice = newSettings.selected_voice;
       if (newVoice && newVoice !== this.agentOptions.voice) {
         this.logger.info(`Voice changed from ${this.agentOptions.voice} to ${newVoice}`);
@@ -391,7 +393,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       const newLanguageCode = newSettings.selected_language_code;
       const newLanguageName = newSettings.selected_language_name;
       if (newLanguageCode && newLanguageCode !== this.agentOptions.languageCode) {
-        this.logger.info(`Language code changed from ${this.agentOptions.languageCode} to ${newLanguageCode}`);        
+        this.logger.info(`Language code changed from ${this.agentOptions.languageCode} to ${newLanguageCode}`);
         this.agentOptions.languageCode = newLanguageCode;
         this.agentOptions.languageName = newLanguageName || 'English';
         this.agent.updateLanguage(this.agentOptions.languageCode, this.agentOptions.languageName);
@@ -407,7 +409,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
         needRestart = true;
       }
 
-      if(needRestart){
+      if (needRestart) {
         this.agent.restart();
       }
 
@@ -426,8 +428,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       this.logger.info(`Capability onoff changed to: ${value}`);
 
       if (this.esp && value) {
-        this.esp.run_start();
-        this.esp.playAudioFromUrl(SOUND_URLS.wake_word_triggered, true);
+        this.esp.send_voice_assistant_request();
       }
 
     });

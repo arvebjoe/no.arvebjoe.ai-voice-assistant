@@ -4,6 +4,7 @@ import dgram from 'node:dgram';
 import { TypedEmitter } from "tiny-typed-emitter";
 import { encodeFrame, decodeFrame, VA_EVENT } from './esp-messages.mjs';
 import { createLogger } from '../helpers/logger.mjs';
+import { SOUND_URLS } from '../helpers/sound-urls.mjs';
 
 
 interface EspVoiceClientOptions {
@@ -16,7 +17,8 @@ type EspVoiceEvents = {
   Healthy: () => void;
   Unhealthy: () => void;
   announce_finished: () => void;
-  start: () => void;
+  starting: () => void;
+  started: () => void;
   chunk: (data: Buffer) => void;
   capabilities: (mediaPlayersCount: number, subscribeVoiceAssistantCount: number, voiceAssistantConfigurationCount: number, deviceType: string | null) => void;
   volume: (level: number) => void; // Volume change event
@@ -46,7 +48,8 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
   private voiceAssistantConfigurationCount: number;
   private discoveryMode: boolean;
   private deviceType: string | null;
-  private logger = createLogger('ESP', true);
+  private logger = createLogger('ESP', false);
+  private shouldAnnounceFinished: boolean = true;
 
   // Store entity keys by object_id for easier access
   private entityKeys: {
@@ -349,7 +352,13 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
     }
 
     else if (name === 'ListEntitiesDoneResponse') {
-      this.send('SubscribeVoiceAssistantRequest', { subscribe: true });
+
+      const subscribe = {
+        subscribe: true,
+        flags: 0    // 0 = UDP
+      };
+
+      this.send('SubscribeVoiceAssistantRequest', subscribe);
 
       // Subscribe to media player state updates to track volume changes
       this.subscribeToMediaPlayerState();
@@ -374,7 +383,11 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
     }
 
     else if (name === 'VoiceAssistantAnnounceFinished') {
-      this.emit('announce_finished');
+      if(this.shouldAnnounceFinished){
+        this.emit('announce_finished');
+      }
+      this.shouldAnnounceFinished = true;
+      
     }
 
     else if (name === 'MediaPlayerStateResponse') {
@@ -428,14 +441,42 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
     }
 
     else if (name === 'VoiceAssistantRequest' && message.start) {
-      this.emit('start');
-    }
+      this.emit('starting');
 
-    else if (name === 'PingRequest') {
+    } else if (name === 'VoiceAssistantRequest') {
+      this.emit('started');
+
+    } else if (name === 'PingRequest') {
       this.send('PingResponse', {});
     }
   }
 
+
+  send_voice_assistant_request(): void {
+    
+    this.shouldAnnounceFinished = false;
+
+    /* 
+      Note to self:
+      
+      Strange behavior when announcing media
+      The message must contain either "media_id" or "mediaId" for this to work.
+      However, the "mediaId" field must be populated with a valid sound (flac) URL. Which the ESP then will play.
+            mediaId: SOUND_URLS.wake_word_triggered   -> Works
+      While "media_id" can be an empty string. It must be defined however.
+            media_id: ''      -> Works also
+      If none of these are included in the message, then it will not work.
+      
+      This could be a bug in firmware, be on the look out for this.
+    */
+
+    this.send('VoiceAssistantAnnounceRequest', {
+      startConversation: true,
+      media_id: '',
+      
+    });
+
+  }
 
   run_start(): void {
     this.vaEvent(VA_EVENT.VOICE_ASSISTANT_RUN_START, {}, 'RUN_START');
@@ -491,7 +532,7 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
 
     // Add error handling
     this.mic.on('error', (err) => {
-      this.logger.error('UDP socket error:', err);      
+      this.logger.error('UDP socket error:', err);
       this.closeMic();
     });
 
@@ -505,8 +546,7 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
 
       this.send('VoiceAssistantResponse', {
         port: mic_port,
-        error: false,
-        useUdpAudio: true,
+        error: false        
       });
     });
   }
@@ -661,16 +701,16 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
 
 
   vaEvent(type: number, extra: Record<string, any> = {}, name: string): void {
-    this.logger.info(`VoiceAssistantEvent: ${name}`, "vaEvent", { extra });
 
-    this.send('VoiceAssistantEventResponse',
-      {
-        eventType: type,
-        streamId: this.streamId,
-        ...extra
-      },
-      false
-    );
+    const payload = {
+      eventType: type,
+      streamId: this.streamId,
+      ...extra
+    };
+
+    this.logger.info(`VoiceAssistantEvent: ${name}`, "TX", payload);
+
+    this.send('VoiceAssistantEventResponse', payload, false);
   }
 
   send(name: string, payload: any, doLog: boolean = true): void {
@@ -682,10 +722,11 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
 
   logRx(f: any): void {
 
+    
     if (f.name === 'VoiceAssistantAudio') {
       return;
     }
-
+    
     this.logger.info(f.name || `unknown#${f.id}`, 'RX', f.message || { length: f.payload.length });
   }
 
