@@ -5,7 +5,7 @@
 
 A Homey app that connects small ESP32-based voice devices to OpenAI so you can talk to your smart home. The app bridges on‑device microphones/speakers with cloud STT/LLM/TTS, exposes handy Flow cards, and keeps things simple enough to flash and use on inexpensive hardware.
 
-> **Status:** Early preview. See [todo.md](./todo.md) for planned features and open tasks.
+> **Status:** Early preview. See [todo.md](./TODO.md) for planned features and open tasks.
 
 ---
 
