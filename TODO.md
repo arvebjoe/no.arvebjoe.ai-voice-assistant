@@ -1,31 +1,22 @@
-# TODO before release:  
+# TODO
+    This is stuff i want to bake into the app over time. 
     
-
-## Create Homey Community Topic
-- https://community.homey.app/t/app-pro-flow-checker/50986
+    Please come with suggestions :) 
 
 
-## PUBLISH!
-
-
-
-
-
-
-# TODO after release
-
-
-## When running the agent or speak from flow, set pcm-segmenter to a high MIN_SILENCE_MS value. So that only one .flac file is created.
-
-## Add "follow-up" tool?
+## When asking the agent from flow, don't chunk audio
+    - Set pcm-segmenter to a high MIN_SILENCE_MS value. So that only one .flac file is created.
+    - Or don't use the pcm-segmenter at all. Just straight pipe it directly without chunking it?
+    - Having super fast response time when running this from a flow isn't necessary
+    - More like a "nice to have" 
 
 
 ## Locally hosted AI
     - Whipsper
     - Piper
     - Ollama 
-      - as an realtime agent?
-      - using gpt-oss? (omg!)
+      - As an realtime agent?
+      - Using gpt-oss? (omg!)
 
 
     Build a Simple AI Agent with OpenAI’s gpt-oss-20b 
@@ -34,16 +25,45 @@
     Build Anything with OpenAI’s New OSS Models (n8n Agents)
     https://www.youtube.com/watch?v=Myjo1amUZ08
 
-## Agent tools
-    - Start flow by name, "start <flow name>"
-    - Start flow by synonym, "i'm going to bed" -> starts flow "night mode" - Need some way of letting user create connections between synonym and flow name
+
+## Customer ESP Home firmware
+    - Homey look
+      - The PE isn't restricted to use only blue in its LED ring, what about the homey "rainbow" ring spinning around?
+<img src="./.resources/pe_rainbow.png" height="200" alt="XiaoZhi AI" />
+
+    - Custom wake word
+      - Any tool for making this?
+        - "Hey Homey"
+        - "Hei Homey" (Norwegian)
+        - "My Homey"
+        - "Major domo"  (https://www.audible.co.uk/pd/Service-Model-Audiobook/B0CMXTZZN2)
 
 
 ## Try to look at agent transcription.delta
-    - Pass whatever we got back with agen.emit('silence')
+    - Pass whatever we got back with agent.emit('silence', {text});
+    - This will fill in the empty textbox on the XiaoZhi display
 
 
-## New AI tool - Change settings (lot's of work, but would be cool)
+# ESPHome Voice assistant
+    - Support esphome Api key, if anyone asks for it...
+    - Needs to know where it is (zone). So it can controll devices within it's own zone if the user didn't specify the zone.
+    - Still some issue with silence detection
+    - Still issue with LED feedback when playing multiple URL's
+        - Voice box should tell when it's done playing the last URL 
+
+### AGENT TOOLS
+
+
+### Tool - Start flows from agent
+    * Start flow by name, "start <flow name>"
+    * Start flow by synonym, "i'm going to bed" -> starts flow "night mode" - Need some way of letting user create connections between synonym and flow name
+
+### Tool - Follow-up
+    That way you don't have to speak the wake word again if the agent asks a question. One can just answer directly
+    Need some kind of timeout if you don't have anything to say.
+
+
+### Tool - Change settings (lot's of work, but would be cool)
     - Need to expose as a tool what settings can be changed by the agent.
     - Allowed settings are 'voice', 'language' and 'optional_ai_instructions'
     - Example:
@@ -59,10 +79,10 @@
           - Socket will reconnect
         - Have the agent speak back with a new voice?
 
-## New AI Tool - Help!
+### Tool - Help!
     - Can ask agent what it can do. 
 
-## Alarm or count down
+## Tool - Alarm or count down
     - This would be really nice to have
     - Looks like i can create alarm in the homey api:
         https://athombv.github.io/node-homey-api/HomeyAPIV3Local.ManagerAlarms.html
@@ -75,25 +95,13 @@
         - Creating text files would also work.
     - Then delete the alarm
 
-# ESPHome Voice assistant
-    - Support esphome Api key, if anyone asks for it...
-    - Needs to know where it is (zone). So it can controll devices within it's own zone if the user didn't specify the zone.
-    - Still some issue with silence detection
-    - Still issue with LED feedback when playing multiple URL's
-        - Voice box should tell when it's done playing the last URL 
-
-
-# Customer ESP Home firmware
-    - Homey look?
-    - "hey homey" wake word?
 
 # Phase 2
 
 ## Image analysis?
     - Use AI agent to analyze an image together with a prompt? "Can you se any persons in the surveillance image?", "Is it dark out", "Who is at the door?"
 
-## Sound effects?
-    - Host some wav files on github, that can be played by the voice box (just push an wav url at it.) Would need some index to read..
-
-## Tools?
+## Even more tools?
     - Web search tool, have the Agent do a web search for some information. "What movies are in the cinema today?" (with geo location it could find the nearest one)
+
+  

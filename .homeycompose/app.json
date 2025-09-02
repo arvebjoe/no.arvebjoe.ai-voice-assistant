@@ -28,7 +28,7 @@
     "name": "Arve Bjørnerud",
     "email": "arvebjoe@hotmail.com"
   },
-  "support": "https://github.com/arvebjoe/no.arvebjoe.ai-voice-assistant",
+  "support": "https://github.com/arvebjoe/no.arvebjoe.ai-voice-assistant/issues",
   "source": "https://github.com/arvebjoe/no.arvebjoe.ai-voice-assistant",
   "contributing": {
     "donate": {
@@ -61,5 +61,6 @@
       "nabu",
       "xiaozhi"
     ]
-  }
+  },
+  "homeyCommunityTopicId": 142532
 }

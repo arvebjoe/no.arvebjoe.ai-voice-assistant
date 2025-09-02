@@ -14,5 +14,5 @@ There are also useful Flow cards like:
     - "Playback audio from URL", useful if you want to play a sound effect or a pre recorded message.
     - "Say" for quick text-to-speech. 
 
-Please look in the GitHub  (link below) for more details.
+Please look in the GitHub repository for more details (link below).
 
