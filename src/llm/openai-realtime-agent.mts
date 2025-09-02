@@ -313,7 +313,7 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
             item: {
                 type: "message",
                 role: "user",
-                content: [{ type: "input_text", text: "Hvor mye er klokka i Norge?" }]
+                content: [{ type: "input_text", text: question }]
             }
         });
 
@@ -355,29 +355,29 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
     }
 
     /**
-     * Direct text-to-speech conversion with minimal AI processing.
-     * Uses a simple prompt to minimize AI interference.
+     * Direct text-to-speech endpoint call.      
      * @param text - The text to convert to speech
      */
-    textToSpeech(text: string) {
-        this.assertOpen();
+    async textToSpeech(text: string) : Promise<Buffer> {
 
-        this.send({
-            type: "conversation.item.create",
-            item: {
-                type: "message",
-                role: "user",
-                content: [{ type: "input_text", text }]   // if this errors, use { type: "text", text }
-            }
-        });
+        this.logger.info(`Converting text to speech: ${text}`);
 
-        this.send({
-            type: "response.create",
-            response: {
-                //temperature: 0,
-                instructions: "Speak the previous user message verbatim in Norwegian Bokmål. Do not add or change anything."
-            }
+        const r = await fetch("https://api.openai.com/v1/audio/speech", {
+            method: "POST",
+            headers: {
+                "Authorization": `Bearer ${this.options.apiKey}`,
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+                model: "gpt-4o-mini-tts",
+                voice: this.options.voice,
+                input: text,
+                response_format: "flac" // mp3 | wav | opus | aac | flac | pcm
+            }),
         });
+        const buf = Buffer.from(await r.arrayBuffer());
+
+        return buf;
     }
 
 

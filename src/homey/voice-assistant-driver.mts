@@ -29,21 +29,34 @@ export default abstract class VoiceAssistantDriver extends Homey.Driver {
         const cardIsMuted = this.homey.flow.getConditionCard('is-muted');
         cardIsMuted.registerRunListener(async (args) => {
             const device = args.device as VoiceAssistantDevice;
-            return device.isMuted();
+            try {
+                return device.isMuted();
+            } catch (error) {
+                this.logger.error('Error checking mute status:', error);                
+                return false;
+            }
         });
 
         const playUrlCard = this.homey.flow.getActionCard('playback-audio-from-url');
         playUrlCard.registerRunListener(async (args) => {
             const device = args.device as VoiceAssistantDevice;
             const url = args.Url;
-            device.playUrl(url);
+            try {
+                await device.playUrl(url);
+            } catch (error) {
+                this.logger.error('Error playing URL:', error);
+            }
         });
 
         const speakTextCard = this.homey.flow.getActionCard('speak-text');
         speakTextCard.registerRunListener(async (args) => {
             const device = args.device as VoiceAssistantDevice;
             const text = args.text;
-            device.speakText(text);
+            try {
+                await device.speakText(text);
+            } catch (error) {
+                this.logger.error('Error speaking text:', error);
+            }
         });
 
 
@@ -51,7 +64,11 @@ export default abstract class VoiceAssistantDriver extends Homey.Driver {
         askAgentAudioOutCard.registerRunListener(async (args) => {
             const device = args.device as VoiceAssistantDevice;
             const question = args.Question;
-            await device.askAgentOutputToSpeaker(question);
+            try {
+                await device.askAgentOutputToSpeaker(question);
+            } catch (error) {
+                this.logger.error('Error asking agent output to speaker:', error);
+            }
         });
 
 
@@ -66,7 +83,7 @@ export default abstract class VoiceAssistantDriver extends Homey.Driver {
                     'ai-output': response
                 };
             } catch (error: any) {
-                this.error('Error getting text response:', error);
+                this.logger.error('Error getting text response:', error);
                 return {
                     'ai-output': `Error: ${error.message || 'Unknown error occurred'}`
                 };

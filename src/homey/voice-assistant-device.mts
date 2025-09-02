@@ -426,18 +426,24 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
     this.registerCapabilityListener('onoff', async (value: boolean) => {
       this.logger.info(`Capability onoff changed to: ${value}`);
-
       if (this.esp && value) {
-        this.esp.send_voice_assistant_request();
+        try {
+          await this.esp.send_voice_assistant_request();
+        } catch (error) {
+          this.logger.error('Error sending voice assistant request:', error);
+        }
       }
-
     });
 
     this.registerCapabilityListener('volume_set', async (value: number) => {
       this.logger.info(`Capability volume_set changed to: ${value}`);
       // Send the volume command to the ESPHome device
       if (this.esp && this.esp.setVolume) {
-        this.esp.setVolume(value);
+        try {
+          await this.esp.setVolume(value);
+        } catch (error) {
+          this.logger.error('Error setting volume:', error);
+        }
       } else {
         this.logger.error('ESP client not initialized or setVolume method not available');
       }
@@ -448,13 +454,17 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       // Send the mute command to the ESPHome device
       if (this.esp && this.esp.setMute) {
         this.isMutedValue = value;
-        this.esp.setMute(value);
+        try {
+          await this.esp.setMute(value);
+        } catch (error) {
+          this.logger.error('Error setting mute:', error);
+        }
       } else {
         this.logger.error('ESP client not initialized or setMute method not available');
       }
     });
-  }
 
+  }
 
 
   playUrl(url: string): void {
@@ -474,10 +484,21 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
   }
 
 
-  speakText(text: string): void {
+  async speakText(text: string): Promise<void> {
     this.logger.info(`Speaking text: ${text}`);
     if (this.agent && this.agent.textToSpeech) {
-      this.agent.textToSpeech(text);
+
+      const flacBuffer = await this.agent.textToSpeech(text);
+
+      const audioData: AudioData = {
+        data: flacBuffer,
+        extension: 'flac',
+        prefix: 'say'
+      };
+
+      const fileInfo = await this.webServer.buildStream(audioData);
+      this.playUrlByFileInfo(fileInfo, false);
+
     } else {
       this.logger.error('Agent not initialized or textToSpeech method not available');
     }

@@ -1,14 +1,4 @@
 # TODO before release:  
- 
-
-## TEST all flow cards (text, speak, output)    
-    - Mute                      OK
-    - Ask, output to speaker    OK
-    - Ask, output to text       OK
-    - Play URL                  OK
-    - Say                       OK
-    
-    - Turn On doesn't work    
     
     
      
