@@ -25,7 +25,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
   private settingsUnsubscribe?: () => void;
   private agentOptions!: RealtimeOptions;
   private isMutedValue: boolean = false;
-  private logger = createLogger('Voice_Assistant_Device', true);
+  private logger = createLogger('Voice_Assistant_Device', false);
   private skippedBytes: number = 0;
   private skipInitialBytes: number | null = null;
   abstract readonly needDelayedPlayback: boolean;
@@ -120,10 +120,10 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       // Let's start getting device state over the API, this might take a while, but should be done when we actually need it
       this.devicePromise = this.deviceManager.fetchData();
 
-
       this.setCapabilityValue('onoff', true);
       this.esp.run_start();
-      this.esp.stt_vad_start();
+      this.esp.stt_start();
+      this.esp.stt_vad_start();      
       this.esp.begin_mic_capture();
     });
 
@@ -184,6 +184,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       this.logger.info(`Silence detected by agent (${source}), closing microphone.`);
       this.esp.closeMic();
       this.esp.stt_vad_end(''); // TODO: Which we had some text to pass back here. Will look into this.      
+      this.esp.stt_end('');
       this.esp.intent_start();
       this.hasIntent = true;
 
