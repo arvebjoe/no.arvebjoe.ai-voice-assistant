@@ -483,7 +483,7 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
         this.close();
 
         // Wait a bit for clean closure
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise(resolve => this.homey.setTimeout(resolve, 100));
 
         // Reset the manual closing flag
         this.isManuallyClosing = wasManuallyClosing;
@@ -878,7 +878,7 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
         this.logger.info(`Scheduling reconnect attempt ${this.reconnectAttempts} in ${delay}ms`, 'RECONNECT');
         this.emit("reconnecting", this.reconnectAttempts, delay);
 
-        this.reconnectTimeoutId = setTimeout(async () => {
+        this.reconnectTimeoutId = this.homey.setTimeout(async () => {
             this.reconnectTimeoutId = undefined;
 
             try {
@@ -904,7 +904,7 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
     private startConnectionHealthCheck() {
         this.stopConnectionHealthCheck(); // Clear any existing interval
 
-        this.pingIntervalId = setInterval(() => {
+        this.pingIntervalId = this.homey.setInterval(() => {
             if (this.ws && this.ws.readyState === WebSocket.OPEN) {
                 // Check if we received a pong recently
                 const timeSinceLastPong = Date.now() - this.lastPongTime;
@@ -935,7 +935,7 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
      */
     private stopConnectionHealthCheck() {
         if (this.pingIntervalId) {
-            clearInterval(this.pingIntervalId);
+            this.homey.clearInterval(this.pingIntervalId);
             this.pingIntervalId = undefined;
         }
     }

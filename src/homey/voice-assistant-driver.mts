@@ -174,7 +174,7 @@ export default abstract class VoiceAssistantDriver extends Homey.Driver {
 
         return new Promise<PairDevice | null>(async (resolve) => {
             try {
-                client = new EspVoiceAssistantClient({
+                client = new EspVoiceAssistantClient(this.homey, {
                     host: device.store.address,
                     apiPort: device.store.port,
                     discoveryMode: true,
@@ -185,12 +185,12 @@ export default abstract class VoiceAssistantDriver extends Homey.Driver {
 
                 await client.start();
 
-                setTimeout(async () => {
+                this.homey.setTimeout(async () => {
                     if (!done) await finish(null);
                 }, timeoutMs).unref?.();
 
                 // Resolve when finish() completes with the stored result
-                const poll = () => done ? resolve(resultToReturn) : setTimeout(poll, 10);
+                const poll = () => done ? resolve(resultToReturn) : this.homey.setTimeout(poll, 10);
                 poll();
             } catch {
                 resolve(null);

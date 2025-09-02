@@ -83,7 +83,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     this.agent = new OpenAIRealtimeAgent(this.homey, this.toolManager, this.agentOptions);
 
     // Initialize ESP voice client - Uses stored address and port
-    this.esp = new EspVoiceAssistantClient({
+    this.esp = new EspVoiceAssistantClient(this.homey, {
       host: store.address,
       apiPort: store.port
     });
@@ -534,7 +534,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
         this.agent.once('text.done', textDoneHandler);
 
         // Set a timeout in case the response never comes
-        const timeoutId = setTimeout(() => {
+        const timeoutId = this.homey.setTimeout(() => {
           this.agent.off('text.done', textDoneHandler);
           reject(new Error('Timeout waiting for text response'));
         }, 30000); // 30 seconds timeout

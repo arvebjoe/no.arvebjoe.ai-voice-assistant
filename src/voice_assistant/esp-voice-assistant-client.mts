@@ -28,7 +28,7 @@ type EspVoiceEvents = {
 
 
 class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<EspVoiceEvents>) {
-
+  private homey: any;
   private host: string;
   private apiPort: number;
   private streamId: number;
@@ -61,8 +61,10 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
   private isMutedValue: boolean = false;
 
 
-  constructor({ host, apiPort = 6053, discoveryMode = false }: EspVoiceClientOptions) {
+  constructor(homey: any, { host, apiPort = 6053, discoveryMode = false }: EspVoiceClientOptions) {
     super();
+
+    this.homey = homey;
     this.host = host;
     this.apiPort = apiPort;
     this.discoveryMode = discoveryMode;
@@ -123,7 +125,7 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
       this.reconnectTimer = null;
     }
     if (this.healthCheckTimer) {
-      clearInterval(this.healthCheckTimer);
+      this.homey.clearInterval(this.healthCheckTimer);
       this.healthCheckTimer = null;
     }
 
@@ -149,7 +151,7 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
     const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempt), this.MAX_RECONNECT_DELAY);
     this.logger.warn('Scheduling reconnection attempt', { attempt: this.reconnectAttempt + 1, delayMs: delay });
 
-    this.reconnectTimer = setTimeout(async () => {
+    this.reconnectTimer = this.homey.setTimeout(async () => {
       this.reconnectTimer = null;
       this.reconnectAttempt++;
       await this.start();
@@ -172,10 +174,10 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
   startHealthCheck(): void {
 
     if (this.healthCheckTimer) {
-      clearInterval(this.healthCheckTimer);
+      this.homey.clearInterval(this.healthCheckTimer);
     }
 
-    this.healthCheckTimer = setInterval(() => {
+    this.healthCheckTimer = this.homey.setInterval(() => {
       const now = Date.now();
       if (this.lastMessageReceivedTime > 0 && (now - this.lastMessageReceivedTime) > this.PING_TIMEOUT) {
         this.logger.warn('Connection timeout - no ping received', {
@@ -195,7 +197,7 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
     this.emit('Unhealthy');
 
     if (this.healthCheckTimer) {
-      clearInterval(this.healthCheckTimer);
+      this.homey.clearInterval(this.healthCheckTimer);
       this.healthCheckTimer = null;
     }
 
@@ -231,7 +233,7 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
 
       // Clean up health check timer
       if (this.healthCheckTimer) {
-        clearInterval(this.healthCheckTimer);
+        this.homey.clearInterval(this.healthCheckTimer);
         this.healthCheckTimer = null;
       }
 
@@ -256,7 +258,7 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
     } finally {
       // Always emit the disconnected event, but use a setTimeout to 
       // ensure it happens after the current execution context
-      setTimeout(() => {
+      this.homey.setTimeout(() => {
         try {
           this.emit('Unhealthy');
         } catch (err) {
@@ -363,7 +365,7 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
       // Subscribe to media player state updates to track volume changes
       this.subscribeToMediaPlayerState();
 
-      setTimeout(() => {
+      this.homey.setTimeout(() => {
         if (this.connected) {
           this.send('DeviceInfoRequest', {});
         }

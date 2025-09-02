@@ -1,9 +1,5 @@
 # TODO before release:  
     
-    
-     
-
-## Set timeout, use this.homey.setTimeout() and setInterval()
 
 ## Create Homey Community Topic
 - https://community.homey.app/t/app-pro-flow-checker/50986
