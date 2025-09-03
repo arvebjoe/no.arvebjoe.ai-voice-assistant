@@ -106,7 +106,7 @@ type PendingToolCall = {
 export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter<RealtimeEvents>) {
     private ws?: WebSocket;
     private homey: any;
-    private logger = createLogger('AGENT', true);
+    private logger = createLogger('AGENT', false);
     private resample_prev: number | null = null; // last input sample from previous chunk
     private resample_frac: number = 0;           // fractional read position into the source for next call
     private toolManager: ToolManager;
@@ -358,7 +358,7 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
      * Direct text-to-speech endpoint call.      
      * @param text - The text to convert to speech
      */
-    async textToSpeech(text: string) : Promise<Buffer> {
+    async textToSpeech(text: string): Promise<Buffer> {
 
         this.logger.info(`Converting text to speech: ${text}`);
 
@@ -383,8 +383,7 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
 
     /**
      * Push a PCM16 mono 24kHz chunk into the input buffer.
-     * The API expects Base64-encoded audio bytes via input_audio_buffer.append.
-     * NOTE: You can call commitInputAudio() to force the end of the turn.
+     * The API expects Base64-encoded audio bytes via input_audio_buffer.append.     
      */
     sendAudioChunk(pcm16Mono24k: Buffer) {
         if (pcm16Mono24k.length === 0) {
@@ -407,14 +406,6 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
         this.send(evt);
     }
 
-    /**
-     * Force-commit the user's audio turn.
-     * (Useful when server VAD is disabled or you want to cut early.)
-     */
-    commitInputAudio() {
-        this.assertOpen();
-        this.send({ type: "input_audio_buffer.commit" });
-    }
 
     /**
      * Clear any pending input audio on the server.
@@ -529,10 +520,9 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
                 break;
 
             /* ---------- Input audio / VAD ---------- */
-            case "input_audio_buffer.committed":
+            case "input_audio_buffer.speech_stopped":
                 // Server VAD indicated end-of-utterance; useful to stop mic.
-                this.emit("silence", "server");
-                this.emit("input_audio_buffer.committed");
+                this.emit("silence", "server");                
                 break;
 
             /* ---------- Model response: text ---------- */
@@ -777,8 +767,8 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
                             rate: 24000
                         },
                         transcription: {
-                            model: "gpt-4o-mini-transcribe",                                                        // pick one: "gpt-4o-mini-transcribe" (fast) | "gpt-4o-transcribe" (quality) | "whisper-1"                                                        
-                            language: this.options.languageCode,                                                    // "nb" (Bokmål), "nn" (Nynorsk), or "no" (generic)                            
+                            model: "whisper-1",                                                        // pick one: "gpt-4o-mini-transcribe" (fast) | "gpt-4o-transcribe" (quality) | "whisper-1"                                                        
+                            language: this.options.languageCode,                                                    
                             //prompt: "Homey, ESPHome, "                                                            // optional biasing for names/terms. Need to look into this
                         },
                         noise_reduction: null,
@@ -789,7 +779,7 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
                             silence_duration_ms: 200,
                             idle_timeout_ms: null,
                             create_response: true,
-                            interrupt_response: true
+                            interrupt_response: false
                         }
                     },
                     output: {
@@ -798,8 +788,7 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
                             rate: 24000
                         },
                         voice: this.options.voice,
-                        speed: 1.0,
-                        //instructions: "You have a slow and sleepy voice. Sometimes you make strange noises while you speak"
+                        speed: 1.0                       
                     }
                 },
                 instructions: this.instructions,
@@ -818,9 +807,7 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
         this.assertOpen();
         const str = JSON.stringify(obj);
 
-        if (obj.type !== "input_audio_buffer.append") {
-            this.logMessage(obj, "SENDING");
-        }
+        this.logMessage(obj, "SENDING");
 
         this.ws!.send(str);
     }
@@ -837,15 +824,30 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
 
     private logMessage(msg: any, direction: string) {
 
+        if (msg.type.includes("delta") && msg.type.includes("transcript")) {
+            const delta = msg.delta ?? '-null-';
+            this.logger.info(`${msg.type} = ${delta}`, direction);
+            return;
+        }
 
-        if (msg.type === "input_audio_buffer.append" && msg.audio) {
-            this.logger.info(msg.type, direction);
+        if (msg.type.includes("delta") && msg.type.includes("audio")) {
+            const length = msg.delta ? msg.delta.length : -1;
+            this.logger.info(`${msg.type} = ${length} bytes`, direction);
             return;
         }
-        if ((msg.type === "response.audio.delta" || msg.type === "response.output_audio.delta") && msg.delta) {
-            this.logger.info(msg.type, direction);
+
+        if (msg.type.includes("delta") && msg.type.includes("function")) {
+            const delta = msg.delta ?? '-null-';
+            this.logger.info(`${msg.type} = ${delta}`, direction);
+            return;
+        }        
+
+        if(msg.type === 'input_audio_buffer.append'){
+            const length = msg.audio ? msg.audio.length : -1;
+            this.logger.info(`${msg.type} = ${length} bytes`, direction);
             return;
         }
+
 
         this.logger.info(msg.type, direction, msg);
     }

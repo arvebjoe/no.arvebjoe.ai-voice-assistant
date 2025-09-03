@@ -36,6 +36,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
   private hasIntent: boolean = false;
   private announceUrls: FileInfo[] = [];
+  private isSteamingMic: boolean = false;
   private isPlaying: boolean = false;
 
   private isAgentHealthy: boolean = false;
@@ -116,6 +117,8 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       // Reset skipped bytes counter for new session
       this.skippedBytes = 0;
 
+      this.isSteamingMic = true;
+
       this.logger.info("Voice session started");
       // Let's start getting device state over the API, this might take a while, but should be done when we actually need it
       this.devicePromise = this.deviceManager.fetchData();
@@ -123,7 +126,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       this.setCapabilityValue('onoff', true);
       this.esp.run_start();
       this.esp.stt_start();
-      this.esp.stt_vad_start();      
+      this.esp.stt_vad_start();
       this.esp.begin_mic_capture();
     });
 
@@ -146,6 +149,10 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
         // If we only need to skip part of the chunk, slice it
         data = data.slice(bytesToSkip);
+      }
+
+      if (!this.isSteamingMic) {
+        return;
       }
 
       // ESP voice client return a PCM 16bit mono audio stream at 16khz, but OpenAI expects 24khz
@@ -187,6 +194,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       this.esp.stt_end('');
       this.esp.intent_start();
       this.hasIntent = true;
+      this.isSteamingMic = false;
 
       // Save input buffer to file, used for debugging to hear what was captured
       if (this.inputBufferDebug) {

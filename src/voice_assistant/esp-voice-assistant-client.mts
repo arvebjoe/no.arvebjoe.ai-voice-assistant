@@ -1,10 +1,8 @@
 import EventEmitter from 'node:events';
 import net from 'node:net';
-import dgram from 'node:dgram';
 import { TypedEmitter } from "tiny-typed-emitter";
 import { encodeFrame, decodeFrame, VA_EVENT } from './esp-messages.mjs';
 import { createLogger } from '../helpers/logger.mjs';
-import { SOUND_URLS } from '../helpers/sound-urls.mjs';
 
 
 interface EspVoiceClientOptions {
@@ -35,7 +33,6 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
   private rxBuf: Buffer;
   private connected: boolean;
   private tcp: net.Socket | null;
-  private mic!: dgram.Socket;
   private reconnectTimer: NodeJS.Timeout | null;
   private reconnectAttempt: number;
   private MAX_RECONNECT_DELAY: number;
@@ -48,7 +45,7 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
   private voiceAssistantConfigurationCount: number;
   private discoveryMode: boolean;
   private deviceType: string | null;
-  private logger = createLogger('ESP', true);
+  private logger = createLogger('ESP', false);
   private shouldAnnounceFinished: boolean = true;
 
   // Store entity keys by object_id for easier access
@@ -142,7 +139,7 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
 
     this.send('HelloRequest',
       {
-        clientInfo: 'echo-test',
+        clientInfo: 'ai-voice-assistant',
         apiVersionMajor: 1,
         apiVersionMinor: 6
       });
@@ -337,7 +334,7 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
 
       const subscribe = {
         subscribe: true,
-        flags: 0    // 0 = UDP
+        flags: 1    // 1 = API (TCP)
       };
 
       this.send('SubscribeVoiceAssistantRequest', subscribe);
@@ -428,6 +425,12 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
     } else if (name === 'VoiceAssistantRequest') {
       this.emit('started');
 
+    } else if (name === 'VoiceAssistantAudio') {
+      // Handle audio data received over the API (TCP) instead of UDP
+      if (message.data && message.data.length > 0) {
+        this.emit('chunk', Buffer.from(message.data));
+      }
+
     } else if (name === 'PingRequest') {
       this.send('PingResponse', {});
     }
@@ -503,53 +506,18 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
 
 
   begin_mic_capture(): void {
+    this.logger.info('Starting voice session via API (TCP)');
 
-    // Close existing mic socket if it exists
-    if (this.mic) {
-      this.logger.info('Closing mic socket... from beginVoiceSession()');
-      this.closeMic();
-    }
-
-    this.mic = dgram.createSocket('udp4');
-
-    // Add error handling
-    this.mic.on('error', (err) => {
-      this.logger.error('UDP socket error:', err);
-      this.closeMic();
-    });
-
-    this.mic.on('message', (pcm: Buffer) => {
-      this.emit('chunk', pcm);
-    });
-
-    this.mic.bind(() => {
-      const mic_port = (this.mic.address() as net.AddressInfo).port;
-      this.logger.info(`UDP socket bound to port: ${mic_port}`);
-
-      this.send('VoiceAssistantResponse', {
-        port: mic_port,
-        error: false
-      });
+    // Send VoiceAssistantResponse to indicate we're ready to receive audio via API
+    this.send('VoiceAssistantResponse', {
+      port: 0,  // Port 0 indicates API mode, not UDP
+      error: false
     });
   }
 
   closeMic(): void {
-    if (this.mic) {
-      try {
-        // Remove all event listeners to prevent memory leaks
-        this.mic.removeAllListeners();
-        // Close the socket
-        this.mic.close();
-        this.logger.info('UDP socket closed');
-
-      } catch (err) {
-        this.logger.error('Error closing UDP socket:', err);
-
-      } finally {
-        // Always set to null to indicate it's no longer available
-        this.mic = null!;
-      }
-    }
+    // No longer needed - audio is received via API (TCP) instead of UDP
+    this.logger.info('closeMic called - no action needed (API mode)');
   }
 
 
