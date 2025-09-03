@@ -1,5 +1,8 @@
 {
   "1.0.0": {
     "en": "Initial release"
+  },
+  "1.1.0": {
+    "en": "Moved microphone audio date from UDP to API. Fixed issue with Agent timing. Switched transcription model. Set interrupt_response to false."
   }
 }

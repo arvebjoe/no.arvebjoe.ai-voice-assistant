@@ -1,6 +1,6 @@
 {
   "id": "no.arvebjoe.ai-voice-assistant",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "compatibility": ">=12.4.0",
   "sdk": 3,
   "platforms": [
