@@ -12,6 +12,7 @@ import { DeviceStore } from '../helpers/interfaces.mjs';
 import { createLogger } from '../helpers/logger.mjs';
 import { SOUND_URLS } from '../helpers/sound-urls.mjs';
 import { scheduleAudioFileDeletion } from '../helpers/file-helper.mjs';
+import { Pcm16kTo24k } from '../helpers/Pcm16kTo24k.mjs';
 
 
 export default abstract class VoiceAssistantDevice extends Homey.Device {
@@ -22,8 +23,11 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
   private toolManager!: ToolManager;
   private agent!: OpenAIRealtimeAgent;
   private segmenter!: PcmSegmenter;
+  private reSampler!: Pcm16kTo24k;
+
   private settingsUnsubscribe?: () => void;
   private agentOptions!: RealtimeOptions;
+
   private isMutedValue: boolean = false;
   private logger = createLogger('Voice_Assistant_Device', false);
   private skippedBytes: number = 0;
@@ -62,6 +66,12 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
     this.webServer = (this.homey as any).app.webServer as InstanceType<typeof WebServer>;
     this.deviceManager = (this.homey as any).app.deviceManager as InstanceType<typeof DeviceManager>;
+
+    this.reSampler = new Pcm16kTo24k({
+      outRate: 24000,
+      frameDurationMs: 20,
+      method: "cubic"
+    });
 
 
     if (settings.initial_audio_skip) {
@@ -155,16 +165,21 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
         return;
       }
 
-      // ESP voice client return a PCM 16bit mono audio stream at 16khz, but OpenAI expects 24khz
-      const pcm24 = this.agent.upsample16kTo24k(data);
 
-      // Add pcm24 to input buffer, used for debugging.
-      if (this.inputBufferDebug) {
-        this.inputBuffer.push(pcm24);
+      // ESP voice client return a PCM 16bit mono audio stream at 16khz, but OpenAI expects 24khz
+      const frames = this.reSampler.push(data);
+      for (const pcm24 of frames as Buffer[]) {
+        
+        if (this.inputBufferDebug) {
+          // Add pcm24 to input buffer, used for debugging.
+          this.inputBuffer.push(pcm24);
+        }
+
+        // Send audio chunk to agent
+        this.agent.sendAudioChunk(pcm24);
       }
 
-      // Send audio chunk to agent
-      this.agent.sendAudioChunk(pcm24);
+
     });
 
 
@@ -189,13 +204,13 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     // The agent has detected that the user has stopped speaking.
     this.agent.on('silence', async (source: string) => {
       this.logger.info(`Silence detected by agent (${source}), closing microphone.`);
-      this.esp.closeMic();
+      this.hasIntent = true;
+      this.isSteamingMic = false;
+      this.esp.closeMic();      
+      this.reSampler.reset();
       this.esp.stt_vad_end(''); // TODO: Which we had some text to pass back here. Will look into this.      
       this.esp.stt_end('');
       this.esp.intent_start();
-      this.hasIntent = true;
-      this.isSteamingMic = false;
-
       // Save input buffer to file, used for debugging to hear what was captured
       if (this.inputBufferDebug) {
         await this.saveInputBuffer();
@@ -262,7 +277,6 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
         this.isPlaying = false;
         this.esp.tts_end()
         this.esp.run_end();
-        this.agent.resetUpsampler();
         this.setCapabilityValue('onoff', false);
         this.logger.info(`Done playing announcements`);
         return;

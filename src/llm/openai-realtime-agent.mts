@@ -107,8 +107,6 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
     private ws?: WebSocket;
     private homey: any;
     private logger = createLogger('AGENT', false);
-    private resample_prev: number | null = null; // last input sample from previous chunk
-    private resample_frac: number = 0;           // fractional read position into the source for next call
     private toolManager: ToolManager;
     private instructions: string;
 
@@ -406,7 +404,6 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
         this.send(evt);
     }
 
-
     /**
      * Clear any pending input audio on the server.
      */
@@ -522,7 +519,7 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
             /* ---------- Input audio / VAD ---------- */
             case "input_audio_buffer.speech_stopped":
                 // Server VAD indicated end-of-utterance; useful to stop mic.
-                this.emit("silence", "server");                
+                this.emit("silence", "server");
                 break;
 
             /* ---------- Model response: text ---------- */
@@ -767,16 +764,16 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
                             rate: 24000
                         },
                         transcription: {
-                            model: "whisper-1",                                                        // pick one: "gpt-4o-mini-transcribe" (fast) | "gpt-4o-transcribe" (quality) | "whisper-1"                                                        
-                            language: this.options.languageCode,                                                    
+                            model: "gpt-4o-transcribe",                                                        // pick one: "gpt-4o-mini-transcribe" (fast) | "gpt-4o-transcribe" (quality) | "whisper-1"                                                        
+                            language: this.options.languageCode,
                             //prompt: "Homey, ESPHome, "                                                            // optional biasing for names/terms. Need to look into this
                         },
                         noise_reduction: null,
                         turn_detection: {
                             type: "server_vad",
-                            threshold: 0.5,
-                            prefix_padding_ms: 300,
-                            silence_duration_ms: 500,
+                            threshold: 0.6,
+                            prefix_padding_ms: 400,
+                            silence_duration_ms: 600,
                             idle_timeout_ms: null,
                             create_response: true,
                             interrupt_response: false
@@ -788,7 +785,7 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
                             rate: 24000
                         },
                         voice: this.options.voice,
-                        speed: 1.0                       
+                        speed: 1.0
                     }
                 },
                 instructions: this.instructions,
@@ -840,9 +837,9 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
             const delta = msg.delta ?? '-null-';
             this.logger.info(`${msg.type} = ${delta}`, direction);
             return;
-        }        
+        }
 
-        if(msg.type === 'input_audio_buffer.append'){
+        if (msg.type === 'input_audio_buffer.append') {
             const length = msg.audio ? msg.audio.length : -1;
             this.logger.info(`${msg.type} = ${length} bytes`, direction);
             return;
@@ -1014,78 +1011,6 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
 
         // Remove all event listeners
         this.removeAllListeners();
-    }
-
-    /* ----------------- Built-in tools ----------------- */
-
-    /**
-     * Upsample PCM16 mono 16 kHz -> 24 kHz (little-endian) using linear interpolation.
-     * - Input: Buffer of Int16 LE samples @ 16 kHz
-     * - Output: Buffer of Int16 LE samples @ 24 kHz
-     * Streaming-safe: preserves phase + last sample across calls to avoid clicks at chunk boundaries.
-     */
-    upsample16kTo24k(pcm16_16k: Buffer): Buffer {
-
-        if (!pcm16_16k || pcm16_16k.length === 0) {
-            return Buffer.alloc(0);
-        }
-
-        // Ratio: 16k -> 24k (×1.5). Each 24k output sample advances 2/3 of a 16k input sample.
-        const step = 16000 / 24000; // 2/3
-
-        const inSamples = pcm16_16k.length >>> 1; // bytes -> int16 samples
-        const needPrefix = this.resample_prev !== null ? 1 : 0;
-
-        // Build a small working array that includes the previous edge sample (for cross-chunk interpolation).
-        const src = new Int16Array(inSamples + needPrefix);
-        let writeIdx = 0;
-        if (needPrefix) {
-            src[writeIdx++] = this.resample_prev as number;
-        }
-        for (let i = 0; i < inSamples; i++) {
-            src[writeIdx++] = pcm16_16k.readInt16LE(i << 1);
-        }
-
-        // Output will be ~1.5x the input. Allocate a bit extra to avoid reallocation.
-        const estimatedOut = Math.ceil(inSamples * 1.5) + 8;
-        const out = new Int16Array(estimatedOut);
-
-        let outIdx = 0;
-        let pos = this.resample_frac;               // fractional index into 'src'
-        const last = src.length - 1;          // we can only interpolate up to last-1
-
-        while (pos < last) {
-            const i = Math.floor(pos);
-            const frac = pos - i;
-            const s0 = src[i];
-            const s1 = src[i + 1];
-            const sample = s0 + (s1 - s0) * frac;  // linear interpolation
-
-            // round & clamp to int16
-            let v = Math.round(sample);
-            if (v > 32767) v = 32767;
-            else if (v < -32768) v = -32768;
-
-            out[outIdx++] = v;
-            pos += step; // advance by 2/3 source samples per 24kHz output sample
-        }
-
-        // Persist state for next chunk
-        this.resample_prev = src[last];   // last actual input sample
-        this.resample_frac = pos - last;        // carry fractional position into the next chunk
-
-        // Return only the filled portion as a Buffer (Int16 LE)
-        //return Buffer.from(out.buffer, 0, outIdx * 2);
-        const buf = Buffer.allocUnsafe(outIdx * 2);
-        for (let i = 0; i < outIdx; i++) {
-            buf.writeInt16LE(out[i], i << 1);
-        }
-        return buf;
-    }
-
-    resetUpsampler(): void {
-        this.resample_prev = null;
-        this.resample_frac = 0;
     }
 
 }
