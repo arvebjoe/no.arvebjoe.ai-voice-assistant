@@ -27,6 +27,8 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
   private settingsUnsubscribe?: () => void;
   private agentOptions!: RealtimeOptions;
+  private currentZone: string = '';
+  private macAddress: string = '';
 
   private isMutedValue: boolean = false;
   private logger = createLogger('Voice_Assistant_Device', false);
@@ -59,6 +61,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
     const store = this.getStore() as DeviceStore;
     const settings = this.getSettings();
+    this.macAddress = store.mac;
 
     // Subscribe to global settings changes to update agent on the fly
     this.settingsUnsubscribe = settingsManager.onGlobals((newSettings) => {
@@ -67,6 +70,16 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
     this.webServer = (this.homey as any).app.webServer as InstanceType<typeof WebServer>;
     this.deviceManager = (this.homey as any).app.deviceManager as InstanceType<typeof DeviceManager>;
+
+
+
+    this.currentZone = this.deviceManager.registerDevice(this.macAddress, (changed) => {
+      this.logger.info(`Device ${changed.device.name} changed zone from ${changed.oldZone} to ${changed.newZone}`);
+      if(this.agent){
+        this.agent.updateZone(changed.newZone);
+        this.agent.restart();
+      }                  
+    });
 
     this.reSampler = new Pcm16kTo24k({
       outRate: 24000,
@@ -85,7 +98,8 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       voice: settingsManager.getGlobal('selected_voice') || 'alloy',
       languageCode: settingsManager.getGlobal('selected_language_code') || 'en',
       languageName: settingsManager.getGlobal('selected_language_name') || 'English',
-      additionalInstructions: settingsManager.getGlobal('ai_instructions') || ''
+      additionalInstructions: settingsManager.getGlobal('ai_instructions') || '',
+      deviceZone: this.currentZone
     };
 
     // Initialize tool manager - This will define all the function the agent can call.
@@ -395,7 +409,6 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
     this.logger.info('Initialized');
   }
-
 
 
 
@@ -762,6 +775,9 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     } finally {
       this.agent = null!;
     }
+
+    //Unregister with device manager
+    this.deviceManager.unRegisterDevice(this.macAddress);
 
     // Cleanup other resources
     this.segmenter = null!;

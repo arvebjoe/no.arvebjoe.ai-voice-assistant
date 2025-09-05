@@ -3,7 +3,7 @@
  * These instructions define the agent's personality, behavior, and capabilities.
  */
 
-export function getDefaultInstructions(languageName : string, additionalInstructions?: string | null): string {
+export function getDefaultInstructions(languageName : string, deviceZone: string, additionalInstructions?: string | null): string {
 
    const additional = additionalInstructions ? `\n\nAdditional instructions:\n${additionalInstructions}` : '';
 
@@ -19,6 +19,7 @@ Core rules (read carefully):
 - If the user asks for status of a device, DO NOT change the state of that device! Only report its status back to the user.
 - Always respond in ${languageName}, NEVER use any other language when communicating with the user.
 - The user might ask general questions that is not related to home control, answer as best you can.
+- You, i.e. your physical microphone and speaker, is located in zone \'${deviceZone}\', if the user does not specify a zone, assume that the smart home device that should be controlled is in this zone.
 
 Smart home tool selection and usage:
 - For actions affecting multiple devices, PREFER \`set_device_capability_bulk()\`.

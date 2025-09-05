@@ -70,6 +70,7 @@ export type RealtimeOptions = {
     languageCode: string; // e.g., 'no'
     languageName: string; // e.g., 'Norwegian'
     additionalInstructions: string | null;
+    deviceZone: string;
 };
 
 type PendingToolCall = {
@@ -119,6 +120,7 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
             | "languageCode"
             | "languageName"
             | "additionalInstructions"
+            | "deviceZone"
         >
     >;
     // keep your existing maps, but store full records keyed by callId
@@ -152,9 +154,10 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
             languageCode: opts.languageCode ?? "en",
             languageName: opts.languageName ?? "English",
             additionalInstructions: opts.additionalInstructions ?? "",
+            deviceZone: opts.deviceZone ?? "<Unknown Zone>"
         };
 
-        this.instructions = getDefaultInstructions(this.options.languageName, this.options.additionalInstructions);
+        this.instructions = getDefaultInstructions(this.options.languageName, this.options.deviceZone, this.options.additionalInstructions);
 
     }
 
@@ -449,14 +452,19 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
 
     async updateAdditionalInstructions(newAdditionalInstructions: string | null): Promise<void> {
         this.options.additionalInstructions = newAdditionalInstructions;
-        this.instructions = getDefaultInstructions(this.options.languageName, this.options.additionalInstructions);
+        this.instructions = getDefaultInstructions(this.options.languageName, this.options.deviceZone, this.options.additionalInstructions);
     }
 
     async updateLanguage(newLanguageCode: string, newLanguageName: string): Promise<void> {
         this.options.languageCode = newLanguageCode;
         this.options.languageName = newLanguageName;
-        this.instructions = getDefaultInstructions(this.options.languageName, this.options.additionalInstructions);
+        this.instructions = getDefaultInstructions(this.options.languageName, this.options.deviceZone, this.options.additionalInstructions);
     }
+
+    async updateZone(newDeviceZone: string): Promise<void> {
+        this.options.deviceZone = newDeviceZone;
+        this.instructions = getDefaultInstructions(this.options.languageName, this.options.deviceZone, this.options.additionalInstructions);
+    }    
 
     async updateApiKey(newApiKey: string): Promise<void> {
         this.logger.info('Updating API key and restarting agent...');

@@ -1,6 +1,6 @@
 // Using require for HomeyAPI as it might not have TypeScript typings
 import { HomeyAPI } from 'homey-api';
-import { Device, Zone, ZonesCollection, PaginatedDevices, SetDeviceCapabilityResult } from './interfaces.mjs';
+import { Device, Zone, ZonesCollection, PaginatedDevices, SetDeviceCapabilityResult, DeviceZoneChangedCallback, ZoneChanged } from './interfaces.mjs';
 import { createLogger } from './logger.mjs';
 
 
@@ -16,7 +16,9 @@ export class DeviceManager implements IDeviceManager {
     private zoneList: string[];
     private zones: ZonesCollection | null;
     private deviceTypes: string[];
-    private logger = createLogger('DeviceManager', true);
+    private logger = createLogger('DeviceManager', false);
+    private voiceAssistantDevices: Map<string, DeviceZoneChangedCallback> = new Map();
+
 
     constructor(homey: any) {
         this.homey = homey;
@@ -32,7 +34,82 @@ export class DeviceManager implements IDeviceManager {
         this.api = await HomeyAPI.createAppAPI({ homey: this.homey });
         this.logger.info('DeviceManager initialized');
 
+        await this.api.devices.connect();
+        
+        this.api.devices.on("device.update", (updated: any) => {
+
+            if (!this.zones) {
+                return;
+            }
+
+            // Check if we find the zone. Might be a new zone :-o
+            const currentZone = this.zones[updated.zone];
+            
+            if(!currentZone){
+                this.logger.warn(`Zone ${updated.zone} not found`);
+                return;
+            }
+
+            // Get the registered entry by device ID (guid)
+            const entry = this.voiceAssistantDevices.get(updated.id);
+            if (!entry) {
+                return;
+            }
+            
+            const voiceAssistantDevice = entry.device;
+            const oldZoneName = voiceAssistantDevice.zone;
+            const newZoneName = currentZone.name;
+
+            if (oldZoneName !== newZoneName) {
+                this.logger.info(`Device ${voiceAssistantDevice.name} moved from zone ${oldZoneName} to ${newZoneName}`);
+                entry.callback({
+                    device: voiceAssistantDevice,
+                    oldZone: oldZoneName,
+                    newZone: newZoneName
+                });
+            }
+
+        });
+
+
+
+
+
     }
+
+    registerDevice(mac: string, callback: (changed: ZoneChanged) => void): string {
+
+        const device = this.devices.find(d => d.dataId === mac);
+
+        if (device) {
+
+            const entry: DeviceZoneChangedCallback = {
+                device: device,
+                callback: callback
+            }
+
+            this.voiceAssistantDevices.set(device.id, entry);
+
+            return device.zone;
+
+        } else {
+            this.logger.warn(`Device with MAC ${mac} not found, cannot register for zone changes`);
+            return "<Unknown Zone>";
+        }
+    }
+
+    unRegisterDevice(mac: string): void {
+
+        const device = this.devices.find(d => d.dataId === mac);
+
+        if (device) {
+            this.voiceAssistantDevices.delete(device.id);
+        } else {
+            this.logger.warn(`Device with MAC ${mac} not found, cannot unregister for zone changes`);
+        }
+    }
+
+
 
     async fetchData(): Promise<void> {
         this.logger.info('Fetching devices and zones from Homey...');
@@ -101,9 +178,11 @@ export class DeviceManager implements IDeviceManager {
                 const simplifiedDevice: Device = {
                     id: device.id,
                     name: device.name,
+                    zone: this.zones == null ? '' : this.zones[device.zone]?.name ?? '',
                     zones: zoneHierarchy,
                     type: device.virtualClass ?? device.class,
-                    capabilities: formattedCapabilities
+                    capabilities: formattedCapabilities,
+                    dataId: device.data?.id ?? null
                 };
 
                 this.devices.push(simplifiedDevice);
@@ -111,7 +190,6 @@ export class DeviceManager implements IDeviceManager {
         }
 
         this.deviceTypes = Array.from(types).sort();
-
 
         this.logger.info('Done processing devices and zones');
 

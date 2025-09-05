@@ -2,10 +2,10 @@
 export declare interface AudioData {
     data: Buffer;
     extension: string; // File extension, e.g., 'wav', 'flac'
-    prefix: string;   
+    prefix: string;
 }
 
-export declare interface FileInfo{
+export declare interface FileInfo {
     filename: string;
     filepath: string;
     url: string;
@@ -19,7 +19,7 @@ export declare interface StreamInfo {
 }
 
 
-export declare interface SetDeviceCapabilityResult{
+export declare interface SetDeviceCapabilityResult {
     deviceId: string;
     status: "success" | "error";
     error?: string;
@@ -30,10 +30,27 @@ export declare interface SetDeviceCapabilityResult{
 export declare interface Device {
     id: string;
     name: string;
+    zone: string;
     zones: string[];
     type: string;
     capabilities: string[];
+    dataId: string;
 }
+
+export declare interface ZoneChanged {
+    device: Device;
+    oldZone: string;
+    newZone: string;
+}
+
+
+export declare interface DeviceZoneChangedCallback {
+    device: Device;
+    callback: (changed: ZoneChanged) => void;
+}
+
+
+
 
 export declare interface Zone {
     id: string;
@@ -65,21 +82,22 @@ export declare interface WavOptions {
 
 
 export type PairDevice = {
-  name: string;
-  data: { id: string };
-  store: {
-    address: string;
-    port: number;
-    mac?: string;
-    platform?: string;
-    serviceName?: string;
-    deviceType?: string | null; // 'pe' | 'xiaozhi' | null
-  };
+    name: string;
+    data: { id: string };
+    store: {
+        address: string;
+        port: number;
+        mac?: string;
+        platform?: string;
+        serviceName?: string;
+        deviceType?: string | null; // 'pe' | 'xiaozhi' | null
+    };
 };
 
 
 export interface DeviceStore {
-  address: string;
-  port: number;
-  [key: string]: any;
+    address: string;
+    port: number;
+    mac: string;
+    [key: string]: any;
 }

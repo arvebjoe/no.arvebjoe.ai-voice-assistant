@@ -20,7 +20,7 @@ export default class AiVoiceAssistantApp extends Homey.App {
    * onInit is called when the app is initialized.
    */
   async onInit() {
-    this.homeyLog = new Log({ homey: this.homey });    
+    this.homeyLog = new Log({ homey: this.homey });
 
     // Set up explicit global error handling that works even when Homey intercepts errors
     this.setupGlobalErrorHandling();
@@ -39,6 +39,7 @@ export default class AiVoiceAssistantApp extends Homey.App {
     // Initialize DeviceManager
     this.deviceManager = new DeviceManager(this.homey);
     await this.deviceManager.init();
+    await this.deviceManager.fetchData();
 
     this.logger.info('AI voice assistant initialized successfully');
   }
@@ -57,7 +58,7 @@ export default class AiVoiceAssistantApp extends Homey.App {
    * Set up global error handling that works even when Homey framework intercepts errors
    */
   private setupGlobalErrorHandling() {
-    
+
     // Handle uncaught exceptions that might escape Homey's error handling
     process.on('uncaughtException', (error) => {
       this.logger.error('Uncaught Exception:', error);
