@@ -22,7 +22,7 @@ export class ToolManager {
     private tools: Map<string, ToolDefinition> = new Map();
     private logger = createLogger('ToolManage', true);
 
-    constructor(homey:any, deviceManager: DeviceManager) {
+    constructor(homey: any, deviceManager: DeviceManager) {
         this.homey = homey;
         this.deviceManager = deviceManager;
         this.registerDefaultTools();
@@ -126,9 +126,10 @@ export class ToolManager {
                     });
                     const s = fmt.format(now);
                     return { text: `The time is ${s} in ${tz}.` };
-                } catch {                                        
+                } catch (error : any) {
                     return {
                         text: `Could not interpret timezone '${tz}'.`,
+                        error: error?.message ?? "Unknown error"
                     };
                 }
             }
@@ -150,7 +151,15 @@ export class ToolManager {
             },
             handler: async () => {
                 this.logger.info('get_zones', 'TOOL', 'Executing getZones tool...');
-                return this.deviceManager.getZones();
+                try {
+                    return await this.deviceManager.getZones();
+                } catch (error : any) {
+                    this.logger.error(`Error executing getZones tool`, error);
+                    return {
+                        text: `Could not retrieve zones.`,
+                        error: error?.message ?? "Unknown error"
+                    };
+                }
             }
         });
 
@@ -167,7 +176,15 @@ export class ToolManager {
             },
             handler: async () => {
                 this.logger.info('get_all_device_types', 'TOOL', 'Executing getAllDeviceTypes tool...');
-                return this.deviceManager.getAllDeviceTypes();
+                try {
+                    return await this.deviceManager.getAllDeviceTypes();
+                } catch (error : any) {
+                    this.logger.error(`Error executing getAllDeviceTypes tool`, error);
+                    return {
+                        text: `Could not retrieve device types.`,
+                        error: error?.message ?? "Unknown error"
+                    };
+                }
             }
         });
 
@@ -197,7 +214,15 @@ export class ToolManager {
             },
             handler: async ({ deviceId, capabilityId, newValue }) => {
                 this.logger.info('set_device_capability', 'TOOL', `Executing setDeviceCapability tool for device ${deviceId}, capability ${capabilityId}, value ${newValue}`);
-                return this.deviceManager.setDeviceCapability(deviceId, capabilityId, newValue);
+                try {
+                    return await this.deviceManager.setDeviceCapability(deviceId, capabilityId, newValue);
+                } catch (error : any) {
+                    this.logger.error(`Error executing setDeviceCapability tool`, error);
+                    return {
+                        text: `Could not set device capability.`,
+                        error: error?.message ?? "Unknown error"
+                    };
+                }
             }
         });
 
@@ -230,7 +255,15 @@ export class ToolManager {
             },
             handler: async ({ deviceIds, capabilityId, newValue }) => {
                 this.logger.info('set_device_capability_bulk', 'TOOL', `Executing setDeviceCapabilityBulk tool for ${deviceIds.length} devices. Capability ${capabilityId} = value ${newValue}`);
-                return this.deviceManager.setDeviceCapabilityBulk(deviceIds, capabilityId, newValue);
+                try {
+                    return await this.deviceManager.setDeviceCapabilityBulk(deviceIds, capabilityId, newValue);
+                } catch (error : any) {
+                    this.logger.error(`Error executing setDeviceCapabilityBulk tool`, error);
+                    return {
+                        text: `Could not set device capability for multiple devices.`,
+                        error: error?.message ?? "Unknown error"
+                    };
+                }
             }
         });
 
@@ -271,15 +304,21 @@ export class ToolManager {
                 const pageSizeSafe = page_size || undefined;
                 const pageTokenSafe = page_token || null;
 
-                var devices = this.deviceManager.getSmartHomeDevices(zoneSafe, typeSafe, pageSizeSafe, pageTokenSafe);
-
-                return devices;
+                try {
+                    return await this.deviceManager.getSmartHomeDevices(zoneSafe, typeSafe, pageSizeSafe, pageTokenSafe);
+                } catch (error : any) {
+                    this.logger.error(`Error executing getSmartHomeDevices tool`, error);
+                    return {
+                        text: `Could not retrieve smart home devices.`,
+                        error: error?.message ?? "Unknown error"
+                    };
+                }
             }
         });
 
         // Keep as reference on how to register other type of tools.
 
-        
+
         // ping_simple tool
         /*
         this.registerTool({
@@ -325,6 +364,6 @@ export class ToolManager {
                 return items;
             }
         });
-        */        
+        */
     }
 }

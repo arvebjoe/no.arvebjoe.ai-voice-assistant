@@ -1,6 +1,6 @@
 // Using require for HomeyAPI as it might not have TypeScript typings
 import { HomeyAPI } from 'homey-api';
-import { Device, Zone, ZonesCollection, PaginatedDevices } from './interfaces.mjs';
+import { Device, Zone, ZonesCollection, PaginatedDevices, SetDeviceCapabilityResult } from './interfaces.mjs';
 import { createLogger } from './logger.mjs';
 
 
@@ -36,7 +36,7 @@ export class DeviceManager implements IDeviceManager {
 
     async fetchData(): Promise<void> {
         this.logger.info('Fetching devices and zones from Homey...');
-        
+
         const [devices, zones] = await Promise.all([
             this.api.devices.getDevices(),
             this.api.zones.getZones(),
@@ -223,25 +223,34 @@ export class DeviceManager implements IDeviceManager {
      * @param newValue - The new value to set for the capability
      * @returns Promise resolving when the capability is set
      */
-    async setDeviceCapability(deviceId: string, capabilityId: string, newValue: any): Promise<void> {
+    async setDeviceCapability(deviceId: string, capabilityId: string, newValue: any): Promise<SetDeviceCapabilityResult> {
 
-        await this.api.devices.setCapabilityValue({
-            deviceId: deviceId,
-            capabilityId: capabilityId,
-            value: newValue,
-        });
-
-    }
-
-    async setDeviceCapabilityBulk(deviceIds: string[], capabilityId: string, newValue: any): Promise<void> {
-
-        await Promise.all(deviceIds.map(deviceId =>
-            this.api.devices.setCapabilityValue({
+        try {
+            await this.api.devices.setCapabilityValue({
                 deviceId: deviceId,
                 capabilityId: capabilityId,
                 value: newValue,
-            })
+            });
+        } catch (error: any) {
+            this.logger.error(`Error setting capability ${capabilityId} for device ${deviceId}`, error);
+            return {
+                deviceId,
+                status: "error",
+                error: error?.message ?? "Unknown error"
+            };
+        }
+
+        return { deviceId, status: "success" };
+
+    }
+
+    async setDeviceCapabilityBulk(deviceIds: string[], capabilityId: string, newValue: any): Promise<SetDeviceCapabilityResult[]> {
+
+        const results = await Promise.all(deviceIds.map(deviceId =>
+            this.setDeviceCapability(deviceId, capabilityId, newValue)
         ));
+
+        return results;
     }
 
 

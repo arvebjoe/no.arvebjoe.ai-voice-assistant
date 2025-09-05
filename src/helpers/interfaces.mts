@@ -19,6 +19,11 @@ export declare interface StreamInfo {
 }
 
 
+export declare interface SetDeviceCapabilityResult{
+    deviceId: string;
+    status: "success" | "error";
+    error?: string;
+}
 
 
 // Type definitions
