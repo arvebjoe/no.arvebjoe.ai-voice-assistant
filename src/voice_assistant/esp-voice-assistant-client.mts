@@ -45,7 +45,7 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
   private voiceAssistantConfigurationCount: number;
   private discoveryMode: boolean;
   private deviceType: string | null;
-  private logger = createLogger('ESP', false);
+  private logger = createLogger('ESP', true);
   private shouldAnnounceFinished: boolean = true;
 
   // Store entity keys by object_id for easier access

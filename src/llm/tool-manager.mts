@@ -1,3 +1,5 @@
+import { EventEmitter } from "events";
+import { TypedEmitter } from "tiny-typed-emitter";
 import { DeviceManager } from '../helpers/device-manager.mjs';
 import { createLogger } from '../helpers/logger.mjs';
 
@@ -16,13 +18,19 @@ interface ToolDefinition {
     handler: ToolHandler;
 }
 
-export class ToolManager {
+type ToolManagerEvents = {    
+    //continue_conversation: () => void;    // Didn't need this after all. Kept is in case i need events in the future.
+}
+
+export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolManagerEvents>) {
     private homey: any;
     private deviceManager: DeviceManager;
     private tools: Map<string, ToolDefinition> = new Map();
     private logger = createLogger('ToolManage', true);
 
     constructor(homey: any, deviceManager: DeviceManager) {
+        super();
+
         this.homey = homey;
         this.deviceManager = deviceManager;
         this.registerDefaultTools();
@@ -126,7 +134,7 @@ export class ToolManager {
                     });
                     const s = fmt.format(now);
                     return { text: `The time is ${s} in ${tz}.` };
-                } catch (error : any) {
+                } catch (error: any) {
                     return {
                         text: `Could not interpret timezone '${tz}'.`,
                         error: error?.message ?? "Unknown error"
@@ -153,7 +161,7 @@ export class ToolManager {
                 this.logger.info('get_zones', 'TOOL', 'Executing getZones tool...');
                 try {
                     return await this.deviceManager.getZones();
-                } catch (error : any) {
+                } catch (error: any) {
                     this.logger.error(`Error executing getZones tool`, error);
                     return {
                         text: `Could not retrieve zones.`,
@@ -178,7 +186,7 @@ export class ToolManager {
                 this.logger.info('get_all_device_types', 'TOOL', 'Executing getAllDeviceTypes tool...');
                 try {
                     return await this.deviceManager.getAllDeviceTypes();
-                } catch (error : any) {
+                } catch (error: any) {
                     this.logger.error(`Error executing getAllDeviceTypes tool`, error);
                     return {
                         text: `Could not retrieve device types.`,
@@ -216,7 +224,7 @@ export class ToolManager {
                 this.logger.info('set_device_capability', 'TOOL', `Executing setDeviceCapability tool for device ${deviceId}, capability ${capabilityId}, value ${newValue}`);
                 try {
                     return await this.deviceManager.setDeviceCapability(deviceId, capabilityId, newValue);
-                } catch (error : any) {
+                } catch (error: any) {
                     this.logger.error(`Error executing setDeviceCapability tool`, error);
                     return {
                         text: `Could not set device capability.`,
@@ -257,7 +265,7 @@ export class ToolManager {
                 this.logger.info('set_device_capability_bulk', 'TOOL', `Executing setDeviceCapabilityBulk tool for ${deviceIds.length} devices. Capability ${capabilityId} = value ${newValue}`);
                 try {
                     return await this.deviceManager.setDeviceCapabilityBulk(deviceIds, capabilityId, newValue);
-                } catch (error : any) {
+                } catch (error: any) {
                     this.logger.error(`Error executing setDeviceCapabilityBulk tool`, error);
                     return {
                         text: `Could not set device capability for multiple devices.`,
@@ -306,7 +314,7 @@ export class ToolManager {
 
                 try {
                     return await this.deviceManager.getSmartHomeDevices(zoneSafe, typeSafe, pageSizeSafe, pageTokenSafe);
-                } catch (error : any) {
+                } catch (error: any) {
                     this.logger.error(`Error executing getSmartHomeDevices tool`, error);
                     return {
                         text: `Could not retrieve smart home devices.`,

@@ -45,6 +45,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
   private isAgentHealthy: boolean = false;
   private isEspClientHealthy: boolean = false;
+  private continueConversation: boolean = false;
 
   /**
    * onInit is called when the device is initialized.
@@ -169,7 +170,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       // ESP voice client return a PCM 16bit mono audio stream at 16khz, but OpenAI expects 24khz
       const frames = this.reSampler.push(data);
       for (const pcm24 of frames as Buffer[]) {
-        
+
         if (this.inputBufferDebug) {
           // Add pcm24 to input buffer, used for debugging.
           this.inputBuffer.push(pcm24);
@@ -206,7 +207,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       this.logger.info(`Silence detected by agent (${source}), closing microphone.`);
       this.hasIntent = true;
       this.isSteamingMic = false;
-      this.esp.closeMic();      
+      this.esp.closeMic();
       this.reSampler.reset();
       this.esp.stt_vad_end(''); // TODO: Which we had some text to pass back here. Will look into this.      
       this.esp.stt_end('');
@@ -221,6 +222,15 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     // The agent is sending audio data back. We can't play each chunk individually, so we need to buffer them.
     this.agent.on('audio.delta', (audioBuffer: Buffer) => {
       this.segmenter.feed(audioBuffer);
+    });
+
+    this.agent.on('transcript.delta', (delta: string) => {
+      // Check if the delta contains a question, and if so, set continueConversation to true
+      // Dirt simple, but works more reliably than having the AI call a tool.
+      const text = (delta ?? '').trim();
+      if (/[?？]\s*$/.test(text)) {
+        this.continueConversation = true;
+      }
     });
 
     this.agent.on('text.done', (msg: any) => {
@@ -279,6 +289,15 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
         this.esp.run_end();
         this.setCapabilityValue('onoff', false);
         this.logger.info(`Done playing announcements`);
+
+        if (this.continueConversation) {
+          this.continueConversation = false;
+
+          this.homey.setTimeout(() => {
+            this.esp.send_voice_assistant_request();
+          }, 1);
+
+        }
         return;
       }
 
