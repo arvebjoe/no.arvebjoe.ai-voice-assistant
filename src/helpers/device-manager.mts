@@ -301,7 +301,7 @@ export class DeviceManager implements IDeviceManager {
      * @param newValue - The new value to set for the capability
      * @returns Promise resolving when the capability is set
      */
-    async setDeviceCapability(deviceId: string, capabilityId: string, newValue: any): Promise<SetDeviceCapabilityResult> {
+    async setDeviceCapability(deviceId: string, capabilityId: string, newValue: any, options?: any): Promise<SetDeviceCapabilityResult> {
 
         try {
             await this.api.devices.setCapabilityValue({
@@ -322,10 +322,10 @@ export class DeviceManager implements IDeviceManager {
 
     }
 
-    async setDeviceCapabilityBulk(deviceIds: string[], capabilityId: string, newValue: any): Promise<SetDeviceCapabilityResult[]> {
+    async setDeviceCapabilityBulk(deviceIds: string[], capabilityId: string, newValue: any, options?: any): Promise<SetDeviceCapabilityResult[]> {
 
         const results = await Promise.all(deviceIds.map(deviceId =>
-            this.setDeviceCapability(deviceId, capabilityId, newValue)
+            this.setDeviceCapability(deviceId, capabilityId, newValue, options)
         ));
 
         return results;
