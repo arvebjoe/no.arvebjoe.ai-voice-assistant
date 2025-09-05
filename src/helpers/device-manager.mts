@@ -232,7 +232,7 @@ export class DeviceManager implements IDeviceManager {
                 value: newValue,
             });
         } catch (error: any) {
-            this.logger.error(`Error setting capability ${capabilityId} for device ${deviceId}`, error);
+            this.logger.warn(`Error setting capability ${capabilityId} for device ${deviceId}`, error?.message ?? "Unknown error");
             return {
                 deviceId,
                 status: "error",
