@@ -109,11 +109,9 @@ export class DeviceManager implements IDeviceManager {
 
     async fetchData(): Promise<void> {
         this.logger.info('Fetching devices and zones from Homey...');
-
-        const [devices, zones] = await Promise.all([
-            this.api.devices.getDevices(),
-            this.api.zones.getZones(),
-        ]);
+    
+        const zones = await this.api.zones.getZones();
+        const devices = await this.api.devices.getDevices();
 
         this.logger.info(`Found ${Object.keys(devices).length} devices and ${Object.keys(zones).length} zones`);
 
@@ -299,7 +297,7 @@ export class DeviceManager implements IDeviceManager {
      */
     async setDeviceCapability(deviceId: string, capabilityId: string, newValue: any, options?: any): Promise<SetDeviceCapabilityResult> {
 
-        try {            
+        try {
             await this.api.devices.setCapabilityValue({
                 deviceId: deviceId,
                 capabilityId: capabilityId,

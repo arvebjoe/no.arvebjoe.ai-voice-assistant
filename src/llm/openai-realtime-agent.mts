@@ -107,7 +107,7 @@ type PendingToolCall = {
 export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter<RealtimeEvents>) {
     private ws?: WebSocket;
     private homey: any;
-    private logger = createLogger('AGENT', false);
+    private logger = createLogger('AGENT', true);
     private toolManager: ToolManager;
     private instructions: string;
 
@@ -157,7 +157,7 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
             deviceZone: opts.deviceZone ?? "<Unknown Zone>"
         };
 
-        this.instructions = getDefaultInstructions(this.options.languageName, this.options.deviceZone, this.options.additionalInstructions);
+        this.instructions = getDefaultInstructions(this.options.languageName, this.options.additionalInstructions);
 
     }
 
@@ -314,7 +314,10 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
             item: {
                 type: "message",
                 role: "user",
-                content: [{ type: "input_text", text: question }]
+                content: [{
+                    type: "input_text",
+                    text: question
+                }]
             }
         });
 
@@ -338,7 +341,7 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
         const evt = {
             type: "response.create",
             response: {
-                instructions: getResponseInstructions(),
+                //instructions: getResponseInstructions(),
                 ...extra,
             },
         };
@@ -452,19 +455,19 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
 
     async updateAdditionalInstructions(newAdditionalInstructions: string | null): Promise<void> {
         this.options.additionalInstructions = newAdditionalInstructions;
-        this.instructions = getDefaultInstructions(this.options.languageName, this.options.deviceZone, this.options.additionalInstructions);
+        this.instructions = getDefaultInstructions(this.options.languageName, this.options.additionalInstructions);
     }
 
     async updateLanguage(newLanguageCode: string, newLanguageName: string): Promise<void> {
         this.options.languageCode = newLanguageCode;
         this.options.languageName = newLanguageName;
-        this.instructions = getDefaultInstructions(this.options.languageName, this.options.deviceZone, this.options.additionalInstructions);
+        this.instructions = getDefaultInstructions(this.options.languageName, this.options.additionalInstructions);
     }
 
     async updateZone(newDeviceZone: string): Promise<void> {
         this.options.deviceZone = newDeviceZone;
-        this.instructions = getDefaultInstructions(this.options.languageName, this.options.deviceZone, this.options.additionalInstructions);
-    }    
+        this.instructions = getDefaultInstructions(this.options.languageName, this.options.additionalInstructions);
+    }
 
     async updateApiKey(newApiKey: string): Promise<void> {
         this.logger.info('Updating API key and restarting agent...');
@@ -563,9 +566,9 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
                 this.emit("transcript.delta", msg.delta);
                 break;
 
-            case "response.output_audio_transcript.done":
-                this.emit("transcript.done", msg.transcript);
-                break;
+            //case "response.output_audio_transcript.done":
+            //    this.emit("transcript.done", msg.transcript);
+            //    break;
 
             // A function_call item shows up in the response stream:
             case "response.output_item.added": {
@@ -577,6 +580,14 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
 
                 this.emit("response.output_item.added");
                 break;
+            }
+
+            case "conversation.item.input_audio_transcription.completed": {
+                this.emit("transcript.done", msg.transcript);
+                this.sendTranscript(msg.transcript);
+            }
+
+            case "conversation.item.done": {
             }
 
             // The same function_call item also appears as a conversation item:
@@ -709,7 +720,7 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
 
             // Tell the model to continue and produce audio/text based on that result:
             this.createResponse({
-                instructions: getResponseInstructions(),
+                //instructions: getResponseInstructions(),
             });
 
         } catch (err: any) {
@@ -772,7 +783,7 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
                             rate: 24000
                         },
                         transcription: {
-                            model: "gpt-4o-transcribe",                                                        // pick one: "gpt-4o-mini-transcribe" (fast) | "gpt-4o-transcribe" (quality) | "whisper-1"                                                        
+                            model: "whisper-1",                                                        // pick one: "gpt-4o-mini-transcribe" (fast) | "gpt-4o-transcribe" (quality) | "whisper-1"                                                        
                             language: this.options.languageCode,
                             //prompt: "Homey, ESPHome, "                                                            // optional biasing for names/terms. Need to look into this
                         },
@@ -783,7 +794,7 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
                             prefix_padding_ms: 400,
                             silence_duration_ms: 600,
                             idle_timeout_ms: null,
-                            create_response: true,
+                            create_response: false,
                             interrupt_response: false
                         }
                     },
@@ -807,6 +818,36 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
         // Get tool definitions from the tool manager
         return this.toolManager.getToolDefinitions();
     }
+
+
+    private sendTranscript(transcript: string) {
+
+        this.send({
+            "type": "conversation.item.create",
+            "item": {
+                "type": "message",
+                "role": "user",
+                "content": [
+                    {
+                        "type": "input_text",
+                        "text": transcript
+                    }
+                ]
+            }
+        });
+
+        this.homey.setTimeout(() => {
+            this.send({
+                "type": "response.create",
+                "response": {
+                    //"instructions": "Execute the request directly for light devices in the standard zone when <=10 targets and no security devices.",
+                }
+            });
+        }, 20);
+
+
+    }
+
 
     private send(obj: any) {
         this.assertOpen();

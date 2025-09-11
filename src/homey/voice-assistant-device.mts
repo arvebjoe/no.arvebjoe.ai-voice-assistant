@@ -31,7 +31,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
   private macAddress: string = '';
 
   private isMutedValue: boolean = false;
-  private logger = createLogger('Voice_Assistant_Device', false);
+  private logger = createLogger('Voice_Assistant_Device', true);
   private skippedBytes: number = 0;
   private skipInitialBytes: number | null = null;
   abstract readonly needDelayedPlayback: boolean;
@@ -103,7 +103,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     };
 
     // Initialize tool manager - This will define all the function the agent can call.
-    this.toolManager = new ToolManager(this.homey, this.deviceManager);
+    this.toolManager = new ToolManager(this.homey, this.currentZone, this.deviceManager);
 
     // Initialize open ai agent - Will use the tool manager for function calls
     this.agent = new OpenAIRealtimeAgent(this.homey, this.toolManager, this.agentOptions);
@@ -223,9 +223,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       this.isSteamingMic = false;
       this.esp.closeMic();
       this.reSampler.reset();
-      this.esp.stt_vad_end(''); // TODO: Which we had some text to pass back here. Will look into this.      
-      this.esp.stt_end('');
-      this.esp.intent_start();
+      this.esp.stt_vad_end(''); // TODO: Which we had some text to pass back here. Will look into this.                  
       // Save input buffer to file, used for debugging to hear what was captured
       if (this.inputBufferDebug) {
         await this.saveInputBuffer();
@@ -246,6 +244,13 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
         this.continueConversation = true;
       }
     });
+
+    this.agent.on('transcript.done', (transcript: any) => {
+      //this.logger.info('Text processing done:', undefined, msg);
+      this.esp.stt_end(transcript);
+      this.esp.intent_start();
+    });
+
 
     this.agent.on('text.done', (msg: any) => {
       this.logger.info('Text processing done:', undefined, msg);
