@@ -2,12 +2,8 @@
 import { HomeyAPI } from 'homey-api';
 import { Device, Zone, ZonesCollection, PaginatedDevices, SetDeviceCapabilityResult, DeviceZoneChangedCallback, ZoneChanged } from './interfaces.mjs';
 import { createLogger } from './logger.mjs';
+import { IDeviceManager } from './interfaces.mjs';
 
-
-export declare interface IDeviceManager {
-    init(): Promise<void>;
-    fetchData(): Promise<void>;
-}
 
 export class DeviceManager implements IDeviceManager {
     private homey: any;
@@ -35,7 +31,7 @@ export class DeviceManager implements IDeviceManager {
         this.logger.info('DeviceManager initialized');
 
         await this.api.devices.connect();
-        
+
         this.api.devices.on("device.update", (updated: any) => {
 
             if (!this.zones) {
@@ -44,8 +40,8 @@ export class DeviceManager implements IDeviceManager {
 
             // Check if we find the zone. Might be a new zone :-o
             const currentZone = this.zones[updated.zone];
-            
-            if(!currentZone){
+
+            if (!currentZone) {
                 this.logger.warn(`Zone ${updated.zone} not found`);
                 return;
             }
@@ -55,7 +51,7 @@ export class DeviceManager implements IDeviceManager {
             if (!entry) {
                 return;
             }
-            
+
             const voiceAssistantDevice = entry.device;
             const oldZoneName = voiceAssistantDevice.zone;
             const newZoneName = currentZone.name;
@@ -303,12 +299,13 @@ export class DeviceManager implements IDeviceManager {
      */
     async setDeviceCapability(deviceId: string, capabilityId: string, newValue: any, options?: any): Promise<SetDeviceCapabilityResult> {
 
-        try {
+        try {            
             await this.api.devices.setCapabilityValue({
                 deviceId: deviceId,
                 capabilityId: capabilityId,
                 value: newValue,
             });
+            //this.logger.info(`Setting capability ${capabilityId} to ${newValue} for device ${deviceId}`)
         } catch (error: any) {
             this.logger.warn(`Error setting capability ${capabilityId} for device ${deviceId}`, error?.message ?? "Unknown error");
             return {

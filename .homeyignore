@@ -1,0 +1,27 @@
+# Test files and directories
+**/*.test.js
+**/*.test.ts
+**/*.test.mts
+**/*.spec.js
+**/*.spec.ts
+**/*.spec.mts
+**/tests/
+**/test/
+**/__tests__/
+
+# Development files
+*.test.*
+*.spec.*
+coverage/
+.nyc_output/
+
+# Other development files you might not want to deploy
+.eslintrc.*
+tsconfig.json
+jest.config.*
+vitest.config.*
+
+# Project-specific folders to exclude
+.sounds/
+.resources/
+.bruno/

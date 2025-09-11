@@ -4,7 +4,11 @@
   "type": "module",
   "scripts": {
     "build": "tsc",
-    "lint": "eslint --ext .js,.ts --ignore-path .gitignore ."
+    "lint": "eslint --ext .js,.ts --ignore-path .gitignore .",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest run --coverage"
   },
   "devDependencies": {
     "@tsconfig/node12": "^12.1.4",
@@ -13,10 +17,12 @@
     "@types/node": "^24.2.0",
     "@types/varint": "^6.0.3",
     "@types/ws": "^8.18.1",
+    "@vitest/ui": "^3.2.4",
     "eslint": "^7.32.0",
     "eslint-config-athom": "^3.1.5",
     "tiny-typed-emitter": "^2.1.0",
-    "typescript": "^5.9.2"
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
   },
   "dependencies": {
     "homey-api": "^3.13.3",

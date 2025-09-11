@@ -26,6 +26,19 @@ export declare interface SetDeviceCapabilityResult {
 }
 
 
+
+export declare interface IDeviceManager {
+    init(): Promise<void>;
+    fetchData(): Promise<void>;
+    registerDevice(mac: string, callback: (changed: ZoneChanged) => void): string;
+    unRegisterDevice(mac: string): void;
+    getZones(): string[];
+    getAllDeviceTypes(): string[];
+    getSmartHomeDevices(zone?: string, type?: string, page_size?: number, page_token?: string | null): PaginatedDevices;
+    setDeviceCapability(deviceId: string, capabilityId: string, newValue: any, options?: any): Promise<SetDeviceCapabilityResult>;
+    setDeviceCapabilityBulk(deviceIds: string[], capabilityId: string, newValue: any, options?: any): Promise<SetDeviceCapabilityResult[]>;
+}
+
 // Type definitions
 export declare interface Device {
     id: string;
