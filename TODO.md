@@ -25,6 +25,9 @@
     Build Anything with OpenAI’s New OSS Models (n8n Agents)
     https://www.youtube.com/watch?v=Myjo1amUZ08
 
+    you need to learn MCP RIGHT NOW!! (Model Context Protocol)
+    https://www.youtube.com/watch?v=GuTcle5edjk
+
 
 ## Customer ESP Home firmware
     - Homey look
@@ -39,17 +42,10 @@
         - "Major domo"  (https://www.audible.co.uk/pd/Service-Model-Audiobook/B0CMXTZZN2)
 
 
-## Try to look at agent transcription.delta
-    - Pass whatever we got back with agent.emit('silence', {text});
-    - This will fill in the empty textbox on the XiaoZhi display
-
 
 # ESPHome Voice assistant
     - Support esphome Api key, if anyone asks for it...
-    - Needs to know where it is (zone). So it can controll devices within it's own zone if the user didn't specify the zone.
-    - Still some issue with silence detection
-    - Still issue with LED feedback when playing multiple URL's
-        - Voice box should tell when it's done playing the last URL 
+
 
 ### AGENT TOOLS
 
