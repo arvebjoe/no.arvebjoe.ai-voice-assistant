@@ -1,6 +1,6 @@
 // Example of how to customize agent instructions
 
-import { getDefaultInstructions } from './agent-instructions.mjs';
+import { getDefaultInstructions } from './agent-instructions.en.mjs';
 
 /**
  * Keeping this around for later, might need it...

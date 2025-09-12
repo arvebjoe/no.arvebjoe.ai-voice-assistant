@@ -3,7 +3,23 @@ import { EventEmitter } from "events";
 import { TypedEmitter } from "tiny-typed-emitter";
 import { createLogger } from '../helpers/logger.mjs';
 import { ToolManager } from './tool-manager.mjs';
-import { getDefaultInstructions, getResponseInstructions, getErrorResponseInstructions } from './agent-instructions.mjs';
+
+/**
+ * Dynamically load instruction functions based on language code
+ */
+async function loadInstructionModule(languageCode: string) {
+    try {
+        // Try to load language-specific instructions (e.g., 'no' -> agent-instructions.no.mjs)
+        if (languageCode === 'no') {
+            return await import('./agent-instructions.no.mjs');
+        }
+        // Default to English instructions
+        return await import('./agent-instructions.en.mjs');
+    } catch (error) {
+        // Fallback to English if language-specific file doesn't exist
+        return await import('./agent-instructions.en.mjs');
+    }
+}
 
 /**
  * Minimal shape of Realtime events we care about.
@@ -109,7 +125,8 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
     private homey: any;
     private logger = createLogger('AGENT', false);
     private toolManager: ToolManager;
-    private instructions: string;
+    private instructions: string = '';
+    private instructionModule: any = null;
 
     private options: Required<
         Pick<
@@ -158,8 +175,22 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
             deviceZone: opts.deviceZone ?? "<Unknown Zone>"
         };
 
-        this.instructions = getDefaultInstructions(this.options.languageName, this.options.additionalInstructions);
+        // Initialize instructions asynchronously
+        this.loadInstructionModule();
+    }
 
+    /**
+     * Load the appropriate instruction module based on language
+     */
+    private async loadInstructionModule() {
+        try {
+            this.instructionModule = await loadInstructionModule(this.options.languageCode);
+            this.instructions = this.instructionModule.getDefaultInstructions(this.options.languageName, this.options.additionalInstructions);
+        } catch (error) {
+            this.logger.error('Failed to load instruction module:', error);
+            // Fallback to empty instructions
+            this.instructions = '';
+        }
     }
 
 
@@ -456,18 +487,18 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
 
     async updateAdditionalInstructions(newAdditionalInstructions: string | null): Promise<void> {
         this.options.additionalInstructions = newAdditionalInstructions;
-        this.instructions = getDefaultInstructions(this.options.languageName, this.options.additionalInstructions);
+        await this.loadInstructionModule();
     }
 
     async updateLanguage(newLanguageCode: string, newLanguageName: string): Promise<void> {
         this.options.languageCode = newLanguageCode;
         this.options.languageName = newLanguageName;
-        this.instructions = getDefaultInstructions(this.options.languageName, this.options.additionalInstructions);
+        await this.loadInstructionModule();
     }
 
     async updateZone(newDeviceZone: string): Promise<void> {
         this.options.deviceZone = newDeviceZone;
-        this.instructions = getDefaultInstructions(this.options.languageName, this.options.additionalInstructions);
+        await this.loadInstructionModule();
     }
 
     async updateApiKey(newApiKey: string): Promise<void> {
@@ -744,7 +775,7 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
             // Even on error, feed a structured output back so the model can handle it gracefully:
             this.sendFunctionResult(callId, { error: String(err?.message ?? err) }, rec.itemId);
             this.createResponse({
-                instructions: getErrorResponseInstructions(),
+                instructions: this.instructionModule?.getErrorResponseInstructions?.() || "Explain what failed in plain language.",
             });
         } finally {
             rec.executed = true;
