@@ -107,7 +107,7 @@ type PendingToolCall = {
 export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter<RealtimeEvents>) {
     private ws?: WebSocket;
     private homey: any;
-    private logger = createLogger('AGENT', true);
+    private logger = createLogger('AGENT', false);
     private toolManager: ToolManager;
     private instructions: string;
 
@@ -140,6 +140,7 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
 
     // Output mode configuration
     private outputMode: "audio" | "text" = "audio"; // Default to audio output
+    private transcript_id: string | null = null;
 
     constructor(homey: any, toolManager: ToolManager, opts: RealtimeOptions) {
         super();
@@ -584,10 +585,26 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
 
             case "conversation.item.input_audio_transcription.completed": {
                 this.emit("transcript.done", msg.transcript);
-                this.sendTranscript(msg.transcript);
+                this.transcript_id = msg.item_id;
+                this.sendTranscript(msg);
             }
 
             case "conversation.item.done": {
+
+                var id = msg.item?.id;
+
+                if (id == this.transcript_id) {
+                    this.send({
+                        "type": "response.create",
+                        "response": {
+                            //"instructions": "Execute the request directly for light devices in the standard zone when <=10 targets and no security devices.",
+                        }
+                    });
+                    this.transcript_id = null;
+                }
+
+
+
             }
 
             // The same function_call item also appears as a conversation item:
@@ -820,30 +837,22 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
     }
 
 
-    private sendTranscript(transcript: string) {
+    private sendTranscript(msg: any) {
 
         this.send({
             "type": "conversation.item.create",
             "item": {
+                "id": msg.item_id,
                 "type": "message",
                 "role": "user",
                 "content": [
                     {
                         "type": "input_text",
-                        "text": transcript
+                        "text": msg.transcript
                     }
                 ]
             }
         });
-
-        this.homey.setTimeout(() => {
-            this.send({
-                "type": "response.create",
-                "response": {
-                    //"instructions": "Execute the request directly for light devices in the standard zone when <=10 targets and no security devices.",
-                }
-            });
-        }, 20);
 
 
     }

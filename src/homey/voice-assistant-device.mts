@@ -75,10 +75,10 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
     this.currentZone = this.deviceManager.registerDevice(this.macAddress, (changed) => {
       this.logger.info(`Device ${changed.device.name} changed zone from ${changed.oldZone} to ${changed.newZone}`);
-      if(this.agent){
+      if (this.agent) {
         this.agent.updateZone(changed.newZone);
         this.agent.restart();
-      }                  
+      }
     });
 
     this.reSampler = new Pcm16kTo24k({
@@ -246,7 +246,16 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     });
 
     this.agent.on('transcript.done', (transcript: any) => {
-      //this.logger.info('Text processing done:', undefined, msg);
+
+      transcript = (transcript ?? '').trim();
+
+      if (transcript == '' || transcript.toLowerCase() === "undertekster av ai-media") {
+        // Yeah, this is a strange one. If the STT engine doesn't hear anything useful, it will return this text. I don't know why.
+        this.esp.stt_end('');
+        this.esp.run_end();
+        return;
+      }
+
       this.esp.stt_end(transcript);
       this.esp.intent_start();
     });
