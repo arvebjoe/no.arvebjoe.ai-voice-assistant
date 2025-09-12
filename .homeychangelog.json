@@ -4,5 +4,8 @@
   },
   "1.1.0": {
     "en": "Moved microphone audio date from UDP to API. Fixed issue with Agent timing. Switched transcription model. Set interrupt_response to false."
+  },
+  "1.1.2": {
+    "en": "Fixed so agent better understands user input and it's own instrunctions"
   }
 }
