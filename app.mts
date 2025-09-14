@@ -2,6 +2,7 @@ import Homey from 'homey';
 import { WebServer } from './src/helpers/webserver.mjs';
 import { initAudioFolder } from './src/helpers/file-helper.mjs';
 import { DeviceManager } from './src/helpers/device-manager.mjs';
+import { ApiHelper } from './src/helpers/api-helper.mjs';
 import { settingsManager } from './src/settings/settings-manager.mjs';
 import { createLogger } from './src/helpers/logger.mjs';
 import homeyLogPkg from 'homey-log'; // requires "esModuleInterop": true in tsconfig
@@ -11,6 +12,7 @@ const { Log } = homeyLogPkg;
 export default class AiVoiceAssistantApp extends Homey.App {
   // Define class properties
   private webServer: WebServer | undefined;
+  private apiHelper: ApiHelper | undefined;
   private deviceManager: DeviceManager | undefined;
   private logger = createLogger('APP');
   private homeyLog: any;
@@ -36,8 +38,12 @@ export default class AiVoiceAssistantApp extends Homey.App {
     this.webServer = new WebServer(this.homey);
     await this.webServer.init();
 
-    // Initialize DeviceManager
-    this.deviceManager = new DeviceManager(this.homey);
+    // Initialize ApiHelper first
+    this.apiHelper = new ApiHelper(this.homey);
+    await this.apiHelper.init();
+
+    // Initialize DeviceManager with ApiHelper
+    this.deviceManager = new DeviceManager(this.homey, this.apiHelper);
     await this.deviceManager.init();
     await this.deviceManager.fetchData();
 

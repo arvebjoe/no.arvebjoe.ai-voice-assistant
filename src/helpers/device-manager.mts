@@ -1,13 +1,13 @@
 // Using require for HomeyAPI as it might not have TypeScript typings
-import { HomeyAPI } from 'homey-api';
 import { Device, Zone, ZonesCollection, PaginatedDevices, SetDeviceCapabilityResult, DeviceZoneChangedCallback, ZoneChanged } from './interfaces.mjs';
 import { createLogger } from './logger.mjs';
 import { IDeviceManager } from './interfaces.mjs';
+import { ApiHelper } from './api-helper.mjs';
 
 
 export class DeviceManager implements IDeviceManager {
     private homey: any;
-    private api: any;
+    private apiHelper: ApiHelper;
     private devices: Device[];
     private zoneList: string[];
     private zones: ZonesCollection | null;
@@ -16,9 +16,9 @@ export class DeviceManager implements IDeviceManager {
     private voiceAssistantDevices: Map<string, DeviceZoneChangedCallback> = new Map();
 
 
-    constructor(homey: any) {
+    constructor(homey: any, apiHelper: ApiHelper) {
         this.homey = homey;
-        this.api = null;
+        this.apiHelper = apiHelper;
         this.devices = [];
         this.zoneList = [];
         this.zones = null;
@@ -27,12 +27,9 @@ export class DeviceManager implements IDeviceManager {
     }
 
     async init(): Promise<void> {
-        this.api = await HomeyAPI.createAppAPI({ homey: this.homey });
         this.logger.info('DeviceManager initialized');
 
-        await this.api.devices.connect();
-
-        this.api.devices.on("device.update", (updated: any) => {
+        this.apiHelper.devices.on("device.update", (updated: any) => {
 
             if (!this.zones) {
                 return;
@@ -66,11 +63,6 @@ export class DeviceManager implements IDeviceManager {
             }
 
         });
-
-
-
-
-
     }
 
     registerDevice(mac: string, callback: (changed: ZoneChanged) => void): string {
@@ -110,8 +102,8 @@ export class DeviceManager implements IDeviceManager {
     async fetchData(): Promise<void> {
         this.logger.info('Fetching devices and zones from Homey...');
     
-        const zones = await this.api.zones.getZones();
-        const devices = await this.api.devices.getDevices();
+        const zones = await this.apiHelper.zones.getZones();
+        const devices = await this.apiHelper.devices.getDevices();
 
         this.logger.info(`Found ${Object.keys(devices).length} devices and ${Object.keys(zones).length} zones`);
 
@@ -298,7 +290,7 @@ export class DeviceManager implements IDeviceManager {
     async setDeviceCapability(deviceId: string, capabilityId: string, newValue: any, options?: any): Promise<SetDeviceCapabilityResult> {
 
         try {
-            await this.api.devices.setCapabilityValue({
+            await this.apiHelper.devices.setCapabilityValue({
                 deviceId: deviceId,
                 capabilityId: capabilityId,
                 value: newValue,
