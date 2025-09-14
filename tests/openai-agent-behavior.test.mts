@@ -3,6 +3,7 @@ import { OpenAIRealtimeAgent } from '../src/llm/openai-realtime-agent.mjs';
 import { ToolManager } from '../src/llm/tool-manager.mjs';
 import { MockHomey } from './mocks/mock-homey.mjs';
 import { MockDeviceManager } from './mocks/mock-device-manager.mjs';
+import { MockGeoHelper } from './mocks/mock-geo-helper.mjs';
 import fs from 'fs';
 import path from 'path';
 
@@ -21,6 +22,7 @@ if (fs.existsSync(envPath)) {
 describe('OpenAI Agent Behavior Analysis', () => {
   let mockHomey: MockHomey;
   let mockDeviceManager: MockDeviceManager;
+  let mockGeoHelper: MockGeoHelper;
   let toolManager: ToolManager;
   
   const testApiKey = envConfig.OPENAI_API_KEY || 'test-api-key';
@@ -30,13 +32,17 @@ describe('OpenAI Agent Behavior Analysis', () => {
     // Initialize mocks
     mockHomey = new MockHomey();
     mockDeviceManager = new MockDeviceManager();
+    mockGeoHelper = new MockGeoHelper();
     
     // Initialize DeviceManager
     await mockDeviceManager.init();
     await mockDeviceManager.fetchData();
     
+    // Initialize GeoHelper
+    await mockGeoHelper.init();
+    
     // Initialize ToolManager with mocks
-    toolManager = new ToolManager(mockHomey, testZone, mockDeviceManager as any);
+    toolManager = new ToolManager(mockHomey, testZone, mockDeviceManager as any, mockGeoHelper as any);
     
     console.log('🏠 Mock devices available:');
     const devices = mockDeviceManager.getSmartHomeDevices();

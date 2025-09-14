@@ -2,6 +2,7 @@ import { EventEmitter } from "events";
 import { TypedEmitter } from "tiny-typed-emitter";
 import { DeviceManager } from '../helpers/device-manager.mjs';
 import { createLogger } from '../helpers/logger.mjs';
+import { GeoHelper } from "../helpers/geo-helper.mjs";
 
 type ToolHandler = (args: any) => Promise<any> | any;
 
@@ -23,15 +24,17 @@ type ToolManagerEvents = { /* reserved */ };
 export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolManagerEvents>) {
     private homey: any;
     private deviceManager: DeviceManager;
+    private geoHelper: GeoHelper;
     private tools: Map<string, ToolDefinition> = new Map();
     private logger = createLogger('ToolManager', true);
     private standardZone: string;
 
-    constructor(homey: any, standardZone: string, deviceManager: DeviceManager) {
+    constructor(homey: any, standardZone: string, deviceManager: DeviceManager, geoHelper: GeoHelper) {
         super();
         this.homey = homey;
         this.deviceManager = deviceManager;
         this.standardZone = standardZone;
+        this.geoHelper = geoHelper;
         this.registerDefaultTools();
     }
 
@@ -161,9 +164,7 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
             }
         });
 
-
-        // TODO: 
-        // Get_smart_home_devices_in_standard_zone
+       
         this.registerTool({
             type: "function",
             name: "get_devices_in_standard_zone",
@@ -225,50 +226,6 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
             }
         });
 
-        /*
-        this.registerTool({
-            type: "function",
-            name: "set_device_capability",
-            description: "Set a capability value for a single device. Use for one-device changes only.",
-            parameters: {
-                type: "object",
-                properties: {
-                    deviceId: { type: "string", description: "The ID of the device to control." },
-                    capabilityId: { type: "string", description: "Capability to set.", enum: ["onoff", "dim", "target_temperature"] },
-                    newValue: {
-                        oneOf: [
-                            { type: "boolean", description: "For 'onoff'." },
-                            { type: "number", description: "For 'dim' (0..1) and 'target_temperature' (°C)." }
-                        ],
-                        description: "New value for the capability."
-                    },
-                    expected_zone: { type: "string", description: "Zone the agent expects this device to be in (defense-in-depth)." },
-                    expected_type: { type: "string", description: "Expected device type (e.g., 'light') to prevent over-broad actions." },
-                    allow_cross_zone: { type: "boolean", description: "Must be true to allow cross-zone writes.", default: false },
-                    confirmed: { type: "boolean", description: "Must be true for security-sensitive actions." }
-                },
-                required: ["deviceId", "capabilityId", "newValue"],
-                additionalProperties: false
-            },
-            handler: async ({ deviceId, capabilityId, newValue, expected_zone, expected_type, allow_cross_zone, confirmed }) => {
-                this.logger.info('set_device_capability', 'TOOL', `device=${deviceId}, cap=${capabilityId}, value=${newValue}, zone=${expected_zone}, type=${expected_type}`);
-                try {
-                    // Type/zonal guard (best-effort if hints provided)
-                    if (expected_type || expected_zone) {
-                        const allowedIds = await this.listDeviceIdsBy(expected_zone || null, expected_type || null);
-                        if (allowedIds.length > 0 && !allowedIds.includes(deviceId)) {
-                            return { ok: false, error: { code: "TYPE_OR_ZONE_MISMATCH", message: "The selected device is not of the expected type/zone." } };
-                        }
-                    }
-                    const data = await this.deviceManager.setDeviceCapability(deviceId, capabilityId, newValue, { expected_zone, allow_cross_zone, confirmed });
-                    return { ok: true, data };
-                } catch (error: any) {
-                    this.logger.error(`Error executing set_device_capability`, error);
-                    return { ok: false, error: { code: "SET_CAPABILITY_FAILED", message: "Could not set device capability." } };
-                }
-            }
-        });
-        */
         this.registerTool({
             type: "function",
             name: "set_device_capability",

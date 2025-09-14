@@ -3,6 +3,7 @@ import { OpenAIRealtimeAgent } from '../src/llm/openai-realtime-agent.mjs';
 import { ToolManager } from '../src/llm/tool-manager.mjs';
 import { MockHomey } from './mocks/mock-homey.mjs';
 import { MockDeviceManager } from './mocks/mock-device-manager.mjs';
+import { MockGeoHelper } from './mocks/mock-geo-helper.mjs';
 import { IDeviceManager } from '../src/helpers/interfaces.mjs';
 import fs from 'fs';
 import path from 'path';
@@ -22,6 +23,7 @@ if (fs.existsSync(envPath)) {
 describe('OpenAI Realtime Agent', () => {
   let mockHomey: MockHomey;
   let mockDeviceManager: MockDeviceManager;
+  let mockGeoHelper: MockGeoHelper;
   let toolManager: ToolManager;
   let agent: OpenAIRealtimeAgent;
   
@@ -32,13 +34,17 @@ describe('OpenAI Realtime Agent', () => {
     // Initialize mocks
     mockHomey = new MockHomey();
     mockDeviceManager = new MockDeviceManager();
+    mockGeoHelper = new MockGeoHelper();
     
     // Initialize DeviceManager
     await mockDeviceManager.init();
     await mockDeviceManager.fetchData();
     
+    // Initialize GeoHelper
+    await mockGeoHelper.init();
+    
     // Initialize ToolManager with mocks - cast to DeviceManager (unsafe but for testing)
-    toolManager = new ToolManager(mockHomey, testZone, mockDeviceManager as any);
+    toolManager = new ToolManager(mockHomey, testZone, mockDeviceManager as any, mockGeoHelper as any);
     
     // Setup agent options
     const agentOptions = {
@@ -158,7 +164,7 @@ describe('OpenAI Realtime Agent', () => {
     });
 
     it('should be able to test different device zones', () => {
-      const kitchenToolManager = new ToolManager(mockHomey, 'Kitchen', mockDeviceManager as any);
+      const kitchenToolManager = new ToolManager(mockHomey, 'Kitchen', mockDeviceManager as any, mockGeoHelper as any);
       
       const kitchenAgent = new OpenAIRealtimeAgent(mockHomey, kitchenToolManager, {
         apiKey: testApiKey,

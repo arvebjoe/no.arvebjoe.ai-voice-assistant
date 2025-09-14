@@ -17,6 +17,7 @@
   ],
   "brandColor": "#0E0B08",
   "permissions": [
+    "homey:manager:geolocation",
     "homey:manager:api"
   ],
   "images": {

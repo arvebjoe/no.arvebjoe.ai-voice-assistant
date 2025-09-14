@@ -13,6 +13,7 @@ import { createLogger } from '../helpers/logger.mjs';
 import { SOUND_URLS } from '../helpers/sound-urls.mjs';
 import { scheduleAudioFileDeletion } from '../helpers/file-helper.mjs';
 import { Pcm16kTo24k } from '../helpers/Pcm16kTo24k.mjs';
+import { GeoHelper } from '../helpers/geo-helper.mjs';
 
 
 export default abstract class VoiceAssistantDevice extends Homey.Device {
@@ -20,6 +21,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
   private webServer!: WebServer;
   private deviceManager!: DeviceManager;
   private devicePromise!: Promise<void>;
+  private geoHelper!: GeoHelper;
   private toolManager!: ToolManager;
   private agent!: OpenAIRealtimeAgent;
   private segmenter!: PcmSegmenter;
@@ -70,6 +72,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
     this.webServer = (this.homey as any).app.webServer as InstanceType<typeof WebServer>;
     this.deviceManager = (this.homey as any).app.deviceManager as InstanceType<typeof DeviceManager>;
+    this.geoHelper = (this.homey as any).app.geoHelper as InstanceType<typeof GeoHelper>; 
 
 
 
@@ -103,7 +106,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     };
 
     // Initialize tool manager - This will define all the function the agent can call.
-    this.toolManager = new ToolManager(this.homey, this.currentZone, this.deviceManager);
+    this.toolManager = new ToolManager(this.homey, this.currentZone, this.deviceManager, this.geoHelper);
 
     // Initialize open ai agent - Will use the tool manager for function calls
     this.agent = new OpenAIRealtimeAgent(this.homey, this.toolManager, this.agentOptions);

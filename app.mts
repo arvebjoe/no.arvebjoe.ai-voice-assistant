@@ -3,6 +3,7 @@ import { WebServer } from './src/helpers/webserver.mjs';
 import { initAudioFolder } from './src/helpers/file-helper.mjs';
 import { DeviceManager } from './src/helpers/device-manager.mjs';
 import { ApiHelper } from './src/helpers/api-helper.mjs';
+import { GeoHelper } from './src/helpers/geo-helper.mjs';
 import { settingsManager } from './src/settings/settings-manager.mjs';
 import { createLogger } from './src/helpers/logger.mjs';
 import homeyLogPkg from 'homey-log'; // requires "esModuleInterop": true in tsconfig
@@ -14,6 +15,7 @@ export default class AiVoiceAssistantApp extends Homey.App {
   private webServer: WebServer | undefined;
   private apiHelper: ApiHelper | undefined;
   private deviceManager: DeviceManager | undefined;
+  private geoHelper: GeoHelper | undefined;
   private logger = createLogger('APP');
   private homeyLog: any;
 
@@ -34,6 +36,9 @@ export default class AiVoiceAssistantApp extends Homey.App {
     settingsManager.init(this.homey);
 
     initAudioFolder();
+
+    this.geoHelper = new GeoHelper(this.homey);
+    await this.geoHelper.init();
 
     this.webServer = new WebServer(this.homey);
     await this.webServer.init();

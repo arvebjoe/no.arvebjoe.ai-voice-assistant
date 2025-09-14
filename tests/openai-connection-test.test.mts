@@ -3,6 +3,7 @@ import { OpenAIRealtimeAgent } from '../src/llm/openai-realtime-agent.mjs';
 import { ToolManager } from '../src/llm/tool-manager.mjs';
 import { MockHomey } from './mocks/mock-homey.mjs';
 import { MockDeviceManager } from './mocks/mock-device-manager.mjs';
+import { MockGeoHelper } from './mocks/mock-geo-helper.mjs';
 import fs from 'fs';
 import path from 'path';
 
@@ -21,6 +22,7 @@ if (fs.existsSync(envPath)) {
 describe('Quick OpenAI Connection Test', () => {
   let mockHomey: MockHomey;
   let mockDeviceManager: MockDeviceManager;
+  let mockGeoHelper: MockGeoHelper;
   let toolManager: ToolManager;
   
   const testApiKey = envConfig.OPENAI_API_KEY || 'test-api-key';
@@ -29,9 +31,11 @@ describe('Quick OpenAI Connection Test', () => {
   beforeEach(async () => {
     mockHomey = new MockHomey();
     mockDeviceManager = new MockDeviceManager();
+    mockGeoHelper = new MockGeoHelper();
     await mockDeviceManager.init();
     await mockDeviceManager.fetchData();
-    toolManager = new ToolManager(mockHomey, testZone, mockDeviceManager as any);
+    await mockGeoHelper.init();
+    toolManager = new ToolManager(mockHomey, testZone, mockDeviceManager as any, mockGeoHelper as any);
   });
 
   it('should check API key and create agent', () => {
