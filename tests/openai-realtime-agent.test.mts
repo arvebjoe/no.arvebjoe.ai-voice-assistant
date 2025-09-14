@@ -4,6 +4,7 @@ import { ToolManager } from '../src/llm/tool-manager.mjs';
 import { MockHomey } from './mocks/mock-homey.mjs';
 import { MockDeviceManager } from './mocks/mock-device-manager.mjs';
 import { MockGeoHelper } from './mocks/mock-geo-helper.mjs';
+import { MockWeatherHelper } from './mocks/mock-weather-helper.mjs';
 import { IDeviceManager } from '../src/helpers/interfaces.mjs';
 import fs from 'fs';
 import path from 'path';
@@ -24,6 +25,7 @@ describe('OpenAI Realtime Agent', () => {
   let mockHomey: MockHomey;
   let mockDeviceManager: MockDeviceManager;
   let mockGeoHelper: MockGeoHelper;
+  let mockWeatherHelper: MockWeatherHelper;
   let toolManager: ToolManager;
   let agent: OpenAIRealtimeAgent;
   
@@ -35,6 +37,7 @@ describe('OpenAI Realtime Agent', () => {
     mockHomey = new MockHomey();
     mockDeviceManager = new MockDeviceManager();
     mockGeoHelper = new MockGeoHelper();
+    mockWeatherHelper = new MockWeatherHelper();
     
     // Initialize DeviceManager
     await mockDeviceManager.init();
@@ -43,8 +46,11 @@ describe('OpenAI Realtime Agent', () => {
     // Initialize GeoHelper
     await mockGeoHelper.init();
     
+    // Initialize WeatherHelper
+    await mockWeatherHelper.init();
+    
     // Initialize ToolManager with mocks - cast to DeviceManager (unsafe but for testing)
-    toolManager = new ToolManager(mockHomey, testZone, mockDeviceManager as any, mockGeoHelper as any);
+    toolManager = new ToolManager(mockHomey, testZone, mockDeviceManager as any, mockGeoHelper as any, mockWeatherHelper as any);
     
     // Setup agent options
     const agentOptions = {
@@ -164,7 +170,7 @@ describe('OpenAI Realtime Agent', () => {
     });
 
     it('should be able to test different device zones', () => {
-      const kitchenToolManager = new ToolManager(mockHomey, 'Kitchen', mockDeviceManager as any, mockGeoHelper as any);
+      const kitchenToolManager = new ToolManager(mockHomey, 'Kitchen', mockDeviceManager as any, mockGeoHelper as any, mockWeatherHelper as any);
       
       const kitchenAgent = new OpenAIRealtimeAgent(mockHomey, kitchenToolManager, {
         apiKey: testApiKey,

@@ -4,6 +4,7 @@ import { initAudioFolder } from './src/helpers/file-helper.mjs';
 import { DeviceManager } from './src/helpers/device-manager.mjs';
 import { ApiHelper } from './src/helpers/api-helper.mjs';
 import { GeoHelper } from './src/helpers/geo-helper.mjs';
+import { WeatherHelper } from './src/helpers/weather-helper.mjs';
 import { settingsManager } from './src/settings/settings-manager.mjs';
 import { createLogger } from './src/helpers/logger.mjs';
 import homeyLogPkg from 'homey-log'; // requires "esModuleInterop": true in tsconfig
@@ -16,6 +17,7 @@ export default class AiVoiceAssistantApp extends Homey.App {
   private apiHelper: ApiHelper | undefined;
   private deviceManager: DeviceManager | undefined;
   private geoHelper: GeoHelper | undefined;
+  private weatherHelper: WeatherHelper | undefined;
   private logger = createLogger('APP');
   private homeyLog: any;
 
@@ -38,7 +40,13 @@ export default class AiVoiceAssistantApp extends Homey.App {
     initAudioFolder();
 
     this.geoHelper = new GeoHelper(this.homey);
-    await this.geoHelper.init();
+    await this.geoHelper.init();    
+
+    // Initialize WeatherHelper with GeoHelper
+    this.weatherHelper = new WeatherHelper(this.geoHelper, '1234567890abcdef'); // Dummy API key for initialization
+    await this.weatherHelper.init();
+    const weather  = await this.weatherHelper.getCurrentWeather();
+    this.logger.info('Current weather:', 'Debug', weather);
 
     this.webServer = new WebServer(this.homey);
     await this.webServer.init();

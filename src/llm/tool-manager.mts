@@ -1,6 +1,7 @@
 import { EventEmitter } from "events";
 import { TypedEmitter } from "tiny-typed-emitter";
 import { DeviceManager } from '../helpers/device-manager.mjs';
+import { WeatherHelper } from '../helpers/weather-helper.mjs';
 import { createLogger } from '../helpers/logger.mjs';
 import { GeoHelper } from "../helpers/geo-helper.mjs";
 import { settingsManager } from "../settings/settings-manager.mjs";
@@ -26,16 +27,18 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
     private homey: any;
     private deviceManager: DeviceManager;
     private geoHelper: GeoHelper;
+    private weatherHelper: WeatherHelper;
     private tools: Map<string, ToolDefinition> = new Map();
     private logger = createLogger('ToolManager', true);
     private standardZone: string;
 
-    constructor(homey: any, standardZone: string, deviceManager: DeviceManager, geoHelper: GeoHelper) {
+    constructor(homey: any, standardZone: string, deviceManager: DeviceManager, geoHelper: GeoHelper, weatherHelper: WeatherHelper) {
         super();
         this.homey = homey;
         this.deviceManager = deviceManager;
         this.standardZone = standardZone;
         this.geoHelper = geoHelper;
+        this.weatherHelper = weatherHelper;
         this.registerDefaultTools();
     }
 
@@ -298,6 +301,130 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
                 } catch (error: any) {
                     this.logger.error(`Error executing set_device_capability_bulk`, error);
                     return { ok: false, error: { code: "BULK_SET_CAPABILITY_FAILED", message: "Could not set capability for multiple devices." } };
+                }
+            }
+        });
+
+        // Register weather-related tools
+        this.registerTool({
+            type: "function",
+            name: "get_current_weather",
+            description: "Get the current weather conditions at the user's location including temperature, conditions, humidity, and wind speed.",
+            parameters: {
+                type: "object",
+                properties: {},
+                required: [],
+                additionalProperties: false
+            },
+            handler: async () => {
+                try {
+                    const weather = await this.weatherHelper.getCurrentWeather();
+                    return {
+                        temperature: weather.temperature,
+                        feels_like: weather.feelsLike,
+                        conditions: weather.conditions[0]?.description || 'Unknown',
+                        humidity: weather.humidity,
+                        wind_speed: weather.windSpeed,
+                        location: weather.location
+                    };
+                } catch (error: any) {
+                    this.logger.error('Error getting current weather:', error);
+                    return { error: 'Unable to retrieve current weather information' };
+                }
+            }
+        });
+
+        this.registerTool({
+            type: "function", 
+            name: "get_weather_forecast",
+            description: "Get weather forecast for the next few days at the user's location.",
+            parameters: {
+                type: "object",
+                properties: {
+                    hours: {
+                        type: "number",
+                        description: "Number of hours to look ahead (optional, defaults to 24 hours)"
+                    }
+                },
+                required: [],
+                additionalProperties: false
+            },
+            handler: async ({ hours = 24 }) => {
+                try {
+                    const forecast = await this.weatherHelper.getForecast();
+                    const targetTime = new Date(Date.now() + hours * 60 * 60 * 1000);
+                    
+                    // Filter forecast items within the requested timeframe
+                    const relevantForecasts = forecast.forecasts.filter(item => 
+                        item.timestamp.getTime() <= targetTime.getTime()
+                    );
+
+                    return {
+                        location: forecast.location,
+                        forecasts: relevantForecasts.map(item => ({
+                            time: item.timestamp.toISOString(),
+                            temperature: item.temperature,
+                            feels_like: item.feelsLike,
+                            conditions: item.conditions[0]?.description || 'Unknown',
+                            precipitation_probability: item.precipitationProbability,
+                            humidity: item.humidity
+                        }))
+                    };
+                } catch (error: any) {
+                    this.logger.error('Error getting weather forecast:', error);
+                    return { error: 'Unable to retrieve weather forecast' };
+                }
+            }
+        });
+
+        this.registerTool({
+            type: "function",
+            name: "will_it_rain",
+            description: "Check if it will rain within a specified number of hours from now.",
+            parameters: {
+                type: "object", 
+                properties: {
+                    hours: {
+                        type: "number",
+                        description: "Number of hours from now to check for rain (default: 1 hour)"
+                    }
+                },
+                required: [],
+                additionalProperties: false
+            },
+            handler: async ({ hours = 1 }) => {
+                try {
+                    const result = await this.weatherHelper.willItRain(hours);
+                    return {
+                        will_rain: result.willRain,
+                        probability: result.probability,
+                        description: result.description,
+                        timeframe: `${hours} hour${hours !== 1 ? 's' : ''} from now`
+                    };
+                } catch (error: any) {
+                    this.logger.error('Error checking rain prediction:', error);
+                    return { error: 'Unable to check rain prediction' };
+                }
+            }
+        });
+
+        this.registerTool({
+            type: "function",
+            name: "get_weather_summary", 
+            description: "Get a human-readable summary of the current weather conditions including temperature, description, and location information.",
+            parameters: {
+                type: "object",
+                properties: {},
+                required: [],
+                additionalProperties: false
+            },
+            handler: async () => {
+                try {
+                    const summary = await this.weatherHelper.getWeatherSummary();
+                    return { summary };
+                } catch (error: any) {
+                    this.logger.error('Error getting weather summary:', error);
+                    return { summary: 'Weather information is currently unavailable.' };
                 }
             }
         });

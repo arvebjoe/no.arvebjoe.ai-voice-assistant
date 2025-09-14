@@ -14,6 +14,7 @@ import { SOUND_URLS } from '../helpers/sound-urls.mjs';
 import { scheduleAudioFileDeletion } from '../helpers/file-helper.mjs';
 import { Pcm16kTo24k } from '../helpers/Pcm16kTo24k.mjs';
 import { GeoHelper } from '../helpers/geo-helper.mjs';
+import { WeatherHelper } from '../helpers/weather-helper.mjs';
 
 
 export default abstract class VoiceAssistantDevice extends Homey.Device {
@@ -22,6 +23,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
   private deviceManager!: DeviceManager;
   private devicePromise!: Promise<void>;
   private geoHelper!: GeoHelper;
+  private weatherHelper!: WeatherHelper;
   private toolManager!: ToolManager;
   private agent!: OpenAIRealtimeAgent;
   private segmenter!: PcmSegmenter;
@@ -73,6 +75,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     this.webServer = (this.homey as any).app.webServer as InstanceType<typeof WebServer>;
     this.deviceManager = (this.homey as any).app.deviceManager as InstanceType<typeof DeviceManager>;
     this.geoHelper = (this.homey as any).app.geoHelper as InstanceType<typeof GeoHelper>; 
+    this.weatherHelper = (this.homey as any).app.weatherHelper as InstanceType<typeof WeatherHelper>; 
 
 
 
@@ -106,7 +109,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     };
 
     // Initialize tool manager - This will define all the function the agent can call.
-    this.toolManager = new ToolManager(this.homey, this.currentZone, this.deviceManager, this.geoHelper);
+    this.toolManager = new ToolManager(this.homey, this.currentZone, this.deviceManager, this.geoHelper, this.weatherHelper);
 
     // Initialize open ai agent - Will use the tool manager for function calls
     this.agent = new OpenAIRealtimeAgent(this.homey, this.toolManager, this.agentOptions);
