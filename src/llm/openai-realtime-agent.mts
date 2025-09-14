@@ -123,7 +123,7 @@ type PendingToolCall = {
 export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter<RealtimeEvents>) {
     private ws?: WebSocket;
     private homey: any;
-    private logger = createLogger('AGENT', false);
+    private logger = createLogger('AGENT', true);
     private toolManager: ToolManager;
     private instructions: string = '';
     private instructionModule: any = null;
@@ -589,18 +589,9 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
                 this.emit("audio.done");
                 break;
 
-            /* ---------- Transcription of input audio ---------- */
-            // See: conversation.item.input_audio_transcription.delta
-            case "conversation.item.input_audio_transcription.delta":
-            case "item.input_audio_transcription.delta":
-            case "input_audio_transcription.delta":
             case "response.output_audio_transcript.delta":
                 this.emit("transcript.delta", msg.delta);
                 break;
-
-            //case "response.output_audio_transcript.done":
-            //    this.emit("transcript.done", msg.transcript);
-            //    break;
 
             // A function_call item shows up in the response stream:
             case "response.output_item.added": {

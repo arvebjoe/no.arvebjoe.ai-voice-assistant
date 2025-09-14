@@ -31,7 +31,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
   private macAddress: string = '';
 
   private isMutedValue: boolean = false;
-  private logger = createLogger('Voice_Assistant_Device', true);
+  private logger = createLogger('Voice_Assistant_Device', false);
   private skippedBytes: number = 0;
   private skipInitialBytes: number | null = null;
   abstract readonly needDelayedPlayback: boolean;
@@ -246,6 +246,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     });
 
     this.agent.on('transcript.done', (transcript: any) => {
+      this.logger.info('Final transcript: '+ transcript, "transcript");
 
       transcript = (transcript ?? '').trim();
 
