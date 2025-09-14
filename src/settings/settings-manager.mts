@@ -52,6 +52,39 @@ export class SettingsManager {
     ];
   }
 
+  /** Get BCP-47 locale from language code */
+  static getLocaleFromLanguageCode(languageCode: string): string {
+    const localeMap: Record<string, string> = {
+      'en': 'en-US',
+      'nl': 'nl-NL',
+      'de': 'de-DE',
+      'fr': 'fr-FR',
+      'it': 'it-IT',
+      'sv': 'sv-SE',
+      'no': 'nb-NO',
+      'es': 'es-ES',
+      'da': 'da-DK',
+      'ru': 'ru-RU',
+      'pl': 'pl-PL',
+      'ko': 'ko-KR'
+    };
+    
+    return localeMap[languageCode] || 'en-US';
+  }
+
+  /** Get current locale based on selected language */
+  getCurrentLocale(): string {
+    const languageCode = this.getGlobal<string>('selected_language_code', 'en');
+    return SettingsManager.getLocaleFromLanguageCode(languageCode);
+  }
+
+  /** Reset the settings manager (for testing) */
+  reset(): void {
+    this.homey = null;
+    this.globals = {};
+    this.globalSubs.clear();
+  }
+
   /** Initialize with Homey reference once (idempotent). */
   init(homey: any) {
 

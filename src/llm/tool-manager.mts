@@ -3,6 +3,7 @@ import { TypedEmitter } from "tiny-typed-emitter";
 import { DeviceManager } from '../helpers/device-manager.mjs';
 import { createLogger } from '../helpers/logger.mjs';
 import { GeoHelper } from "../helpers/geo-helper.mjs";
+import { settingsManager } from "../settings/settings-manager.mjs";
 
 type ToolHandler = (args: any) => Promise<any> | any;
 
@@ -88,23 +89,25 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
         this.registerTool({
             type: "function",
             name: "get_local_time",
-            description: "Get the local time for a given IANA timezone or BCP-47 locale. Returns structured data suitable for rendering in the user’s language.",
+            description: "Get the current local time using the system's timezone and the user's preferred language locale. No parameters needed - automatically uses current location and language settings.",
             parameters: {
                 type: "object",
-                properties: {
-                    timezone: { type: "string", description: "IANA timezone like 'Europe/Oslo'. If omitted, defaults to Europe/Oslo." },
-                    locale: { type: "string", description: "BCP-47 locale, defaults to 'nb-NO'." }
-                },
+                properties: {},
                 required: [],
                 additionalProperties: false
             },
-            handler: ({ timezone, locale }) => {
-                const tz = (timezone as string) || "Europe/Oslo";
-                const loc = (locale as string) || "nb-NO";
+            handler: () => {
                 const now = new Date();
+                
+                // Get timezone from GeoHelper
+                const timezone = this.geoHelper.timezone || "Europe/Oslo";
+                
+                // Get locale from SettingsManager
+                const locale = settingsManager.getCurrentLocale();
+                
                 try {
-                    const formatted = new Intl.DateTimeFormat(loc, {
-                        timeZone: tz,
+                    const formatted = new Intl.DateTimeFormat(locale, {
+                        timeZone: timezone,
                         hour: "2-digit",
                         minute: "2-digit",
                         second: "2-digit",
@@ -113,9 +116,26 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
                         month: "long",
                         year: "numeric"
                     }).format(now);
-                    return { ok: true, data: { iso: now.toISOString(), formatted, timezone: tz, locale: loc } };
+                    
+                    return { 
+                        ok: true, 
+                        data: { 
+                            iso: now.toISOString(), 
+                            formatted, 
+                            timezone, 
+                            locale,
+                            location: this.geoHelper.getLocationInfoString()
+                        } 
+                    };
                 } catch (error: any) {
-                    return { ok: false, error: { code: "INVALID_TIMEZONE", message: `Could not interpret timezone '${tz}'.` } };
+                    this.logger.error('Error formatting local time:', error);
+                    return { 
+                        ok: false, 
+                        error: { 
+                            code: "TIME_FORMAT_ERROR", 
+                            message: `Could not format time for timezone '${timezone}' and locale '${locale}'.` 
+                        } 
+                    };
                 }
             }
         });
