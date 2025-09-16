@@ -88,7 +88,12 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
     }
 
     private registerDefaultTools(): void {
+        this.registerSystemTools();
+        this.registerDeviceManagementTools();
+        this.registerWeatherTools();
+    }
 
+    private registerSystemTools(): void {
         this.registerTool({
             type: "function",
             name: "get_local_time",
@@ -142,6 +147,9 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
                 }
             }
         });
+    }
+
+    private registerDeviceManagementTools(): void {
 
         this.registerTool({
             type: "function",
@@ -304,8 +312,10 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
                 }
             }
         });
+    }
 
-        // Register weather-related tools
+    private registerWeatherTools(): void {
+        
         this.registerTool({
             type: "function",
             name: "get_current_weather",
@@ -469,6 +479,5 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
                 }
             }
         });
-
     }
 }
