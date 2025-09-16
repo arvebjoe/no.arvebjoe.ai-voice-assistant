@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { WeatherHelper } from '../src/helpers/weather-helper.mjs';
 import { MockGeoHelper } from './mocks/mock-geo-helper.mjs';
-import { settingsManager } from '../src/settings/settings-manager.mjs';
 
 // Mock fetch globally
 global.fetch = vi.fn();
@@ -9,12 +8,10 @@ global.fetch = vi.fn();
 describe('WeatherHelper', () => {
     let weatherHelper: WeatherHelper;
     let mockGeoHelper: MockGeoHelper;
-    const testApiKey = 'test-api-key-12345';
 
     beforeEach(async () => {
         // Reset mocks
         vi.clearAllMocks();
-        settingsManager.reset();
         
         // Clear fetch mock and restore it
         (global.fetch as any).mockClear();
@@ -26,7 +23,7 @@ describe('WeatherHelper', () => {
         mockGeoHelper.setMockLocation(59.9139, 10.7522); // Oslo
         mockGeoHelper.setMockTimezone('Europe/Oslo');
         
-        weatherHelper = new WeatherHelper(mockGeoHelper as any, testApiKey);
+        weatherHelper = new WeatherHelper(mockGeoHelper as any);
         await weatherHelper.init();
         
         // Clear any cached data
@@ -34,7 +31,7 @@ describe('WeatherHelper', () => {
     });
 
     describe('Initialization', () => {
-        it('should initialize successfully with API key', async () => {
+        it('should initialize successfully', async () => {
             await weatherHelper.init();
             // No error should be thrown
         });
@@ -44,33 +41,29 @@ describe('WeatherHelper', () => {
             await weatherHelper.init();
             // Should not throw, but log warning
         });
-
-        it('should get API key from settings if not provided', async () => {
-            // Mock homey settings
-            const mockHomey = { settings: { get: vi.fn().mockReturnValue(testApiKey) } };
-            settingsManager.init(mockHomey);
-            
-            const weatherHelperNoKey = new WeatherHelper(mockGeoHelper as any);
-            await weatherHelperNoKey.init();
-            // Should initialize successfully
-        });
-
-        it('should warn when no API key is available', async () => {
-            const weatherHelperNoKey = new WeatherHelper(mockGeoHelper as any);
-            await weatherHelperNoKey.init();
-            // Should not throw, but log warning
-        });
     });
 
     describe('Current Weather', () => {
         const mockCurrentWeatherResponse = {
-            coord: { lat: 59.9139, lon: 10.7522 },
-            weather: [{ main: 'Clear', description: 'clear sky', icon: '01d' }],
-            main: { temp: 15.5, feels_like: 14.2, humidity: 65, pressure: 1013 },
-            wind: { speed: 3.2 },
-            clouds: { all: 10 },
-            sys: { sunrise: 1694664000, sunset: 1694707200, country: 'NO' },
-            name: 'Oslo'
+            latitude: 59.9139,
+            longitude: 10.7522,
+            timezone: 'Europe/Oslo',
+            elevation: 94.0,
+            current: {
+                temperature_2m: 15.5,
+                apparent_temperature: 14.2,
+                relative_humidity_2m: 65,
+                precipitation: 0,
+                weather_code: 0,
+                surface_pressure: 1013.25,
+                cloud_cover: 10,
+                visibility: 10000,
+                wind_speed_10m: 11.5, // km/h
+                wind_direction_10m: 225,
+                wind_gusts_10m: 18.0,
+                uv_index: 3.2,
+                is_day: 1
+            }
         };
 
         it('should fetch current weather successfully', async () => {
@@ -82,9 +75,11 @@ describe('WeatherHelper', () => {
             const weather = await weatherHelper.getCurrentWeather();
 
             expect(weather.temperature).toBe(15.5);
-            expect(weather.conditions[0].description).toBe('clear sky');
+            expect(weather.conditions[0].description).toBe('Clear sky');
             expect(weather.feelsLike).toBe(14.2);
             expect(weather.humidity).toBe(65);
+            expect(weather.windSpeed).toBe(11.5);
+            expect(weather.isDaylight).toBe(true);
         });
 
         it('should use cached data when available', async () => {
@@ -112,7 +107,7 @@ describe('WeatherHelper', () => {
                 ok: true,
                 json: () => Promise.resolve({
                     ...mockCurrentWeatherResponse,
-                    main: { ...mockCurrentWeatherResponse.main, temp: 20 }
+                    current: { ...mockCurrentWeatherResponse.current, temperature_2m: 20 }
                 })
             });
 
@@ -134,7 +129,7 @@ describe('WeatherHelper', () => {
                 statusText: 'Not Found'
             });
 
-            await expect(weatherHelper.getCurrentWeather()).rejects.toThrow('Weather API error: 404 Not Found');
+            await expect(weatherHelper.getCurrentWeather()).rejects.toThrow('Open-Meteo API error: 404 Not Found');
         });
 
         it('should handle network errors', async () => {
@@ -152,25 +147,27 @@ describe('WeatherHelper', () => {
 
     describe('Weather Forecast', () => {
         const mockForecastResponse = {
-            city: { coord: { lat: 59.9139, lon: 10.7522 }, name: 'Oslo', country: 'NO' },
-            list: [
-                {
-                    dt: Math.floor((Date.now() + 3 * 60 * 60 * 1000) / 1000), // 3 hours from now
-                    main: { temp: 12.5, feels_like: 11.8, humidity: 70 },
-                    weather: [{ main: 'Clear', description: 'clear sky', icon: '01d' }],
-                    wind: { speed: 2.1 },
-                    clouds: { all: 10 },
-                    pop: 0.05
-                },
-                {
-                    dt: Math.floor((Date.now() + 6 * 60 * 60 * 1000) / 1000), // 6 hours from now
-                    main: { temp: 14.0, feels_like: 13.2, humidity: 60 },
-                    weather: [{ main: 'Clouds', description: 'overcast clouds', icon: '04d' }],
-                    wind: { speed: 3.0 },
-                    clouds: { all: 90 },
-                    pop: 0.20
-                }
-            ]
+            latitude: 59.9139,
+            longitude: 10.7522,
+            timezone: 'Europe/Oslo',
+            elevation: 94.0,
+            hourly: {
+                time: [
+                    new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString(), // 3 hours from now
+                    new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString()  // 6 hours from now
+                ],
+                temperature_2m: [12.5, 14.0],
+                apparent_temperature: [11.8, 13.2],
+                relative_humidity_2m: [70, 60],
+                weather_code: [0, 3],
+                wind_speed_10m: [7.5, 10.8],
+                wind_gusts_10m: [12.0, 15.5],
+                cloud_cover: [10, 90],
+                precipitation_probability: [5, 20],
+                precipitation: [0, 0],
+                uv_index: [2.0, 1.5],
+                is_day: [1, 1]
+            }
         };
 
         it('should fetch forecast successfully', async () => {
@@ -204,19 +201,77 @@ describe('WeatherHelper', () => {
         });
     });
 
+    describe('Outside Illumination', () => {
+        const mockIlluminationResponse = {
+            latitude: 59.9139,
+            longitude: 10.7522,
+            timezone: 'Europe/Oslo',
+            elevation: 94.0,
+            current: {
+                is_day: 1,
+                shortwave_radiation: 450,
+                direct_radiation: 320,
+                diffuse_radiation: 130,
+                uv_index: 4.5
+            },
+            daily: {
+                sunrise: ['2023-09-16T05:45:00+02:00'],
+                sunset: ['2023-09-16T19:30:00+02:00']
+            }
+        };
+
+        it('should fetch illumination data successfully', async () => {
+            (global.fetch as any).mockResolvedValueOnce({
+                ok: true,
+                json: () => Promise.resolve(mockIlluminationResponse)
+            });
+
+            const illumination = await weatherHelper.getOutsideIllumination();
+
+            expect(illumination.isDay).toBe(true);
+            expect(illumination.solarRadiation).toBe(450);
+            expect(illumination.illuminationLevel).toBe('bright');
+            expect(illumination.uvIndex).toBe(4.5);
+        });
+
+        it('should use cached illumination data', async () => {
+            (global.fetch as any).mockResolvedValueOnce({
+                ok: true,
+                json: () => Promise.resolve(mockIlluminationResponse)
+            });
+
+            // First call
+            const illumination1 = await weatherHelper.getOutsideIllumination();
+            
+            // Second call should use cache
+            const illumination2 = await weatherHelper.getOutsideIllumination();
+
+            expect(illumination1.solarRadiation).toBe(450);
+            expect(illumination2.solarRadiation).toBe(450);
+            expect(global.fetch).toHaveBeenCalledTimes(1);
+        });
+    });
+
     describe('Weather for Specific Time', () => {
         const mockForecastResponse = {
-            city: { coord: { lat: 59.9139, lon: 10.7522 }, name: 'Oslo', country: 'NO' },
-            list: [
-                {
-                    dt: Math.floor(new Date('2023-09-14T12:00:00Z').getTime() / 1000),
-                    main: { temp: 12.5, feels_like: 11.8, humidity: 70 },
-                    weather: [{ main: 'Clear', description: 'clear sky', icon: '01d' }],
-                    wind: { speed: 2.1 },
-                    clouds: { all: 10 },
-                    pop: 0.05
-                }
-            ]
+            latitude: 59.9139,
+            longitude: 10.7522,
+            timezone: 'Europe/Oslo',
+            elevation: 94.0,
+            hourly: {
+                time: [new Date('2023-09-14T12:00:00Z').toISOString()],
+                temperature_2m: [12.5],
+                apparent_temperature: [11.8],
+                relative_humidity_2m: [70],
+                weather_code: [0],
+                wind_speed_10m: [7.5],
+                wind_gusts_10m: [12.0],
+                cloud_cover: [10],
+                precipitation_probability: [5],
+                precipitation: [0],
+                uv_index: [2.0],
+                is_day: [1]
+            }
         };
 
         it('should find weather for specific time', async () => {
@@ -240,8 +295,9 @@ describe('WeatherHelper', () => {
             (global.fetch as any).mockResolvedValueOnce({
                 ok: true,
                 json: () => Promise.resolve({ 
-                    city: { coord: { lat: 59, lon: 10 }, name: 'Test' }, 
-                    list: [] 
+                    latitude: 59,
+                    longitude: 10,
+                    hourly: { time: [], temperature_2m: [] }
                 })
             });
 
@@ -258,17 +314,24 @@ describe('WeatherHelper', () => {
             weatherHelper.clearCache();
             
             const mockForecastWithRain = {
-                city: { coord: { lat: 59.9139, lon: 10.7522 }, name: 'Oslo', country: 'NO' },
-                list: [
-                    {
-                        dt: Math.floor((Date.now() + 2 * 60 * 60 * 1000) / 1000), // 2 hours from now
-                        main: { temp: 12.5, feels_like: 11.8, humidity: 80 },
-                        weather: [{ main: 'Rain', description: 'light rain', icon: '10d' }],
-                        wind: { speed: 2.5 },
-                        clouds: { all: 80 },
-                        pop: 0.75
-                    }
-                ]
+                latitude: 59.9139,
+                longitude: 10.7522,
+                timezone: 'Europe/Oslo',
+                elevation: 94.0,
+                hourly: {
+                    time: [new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString()],
+                    temperature_2m: [12.5],
+                    apparent_temperature: [11.8],
+                    relative_humidity_2m: [80],
+                    weather_code: [61], // Slight rain
+                    wind_speed_10m: [9.0],
+                    wind_gusts_10m: [15.0],
+                    cloud_cover: [80],
+                    precipitation_probability: [75],
+                    precipitation: [2.5],
+                    uv_index: [1.0],
+                    is_day: [1]
+                }
             };
 
             (global.fetch as any).mockResolvedValueOnce({
@@ -280,7 +343,7 @@ describe('WeatherHelper', () => {
 
             expect(rainPrediction.willRain).toBe(true);
             expect(rainPrediction.probability).toBe(75);
-            expect(rainPrediction.description).toBe('light rain');
+            expect(rainPrediction.description).toBe('Slight rain');
         });
 
         it('should predict no rain correctly', async () => {
@@ -288,17 +351,24 @@ describe('WeatherHelper', () => {
             weatherHelper.clearCache();
             
             const mockForecastClear = {
-                city: { coord: { lat: 59.9139, lon: 10.7522 }, name: 'Oslo', country: 'NO' },
-                list: [
-                    {
-                        dt: Math.floor((Date.now() + 2 * 60 * 60 * 1000) / 1000), // 2 hours from now
-                        main: { temp: 12.5, feels_like: 11.8, humidity: 60 },
-                        weather: [{ main: 'Clear', description: 'clear sky', icon: '01d' }],
-                        wind: { speed: 2.5 },
-                        clouds: { all: 20 },
-                        pop: 0.10
-                    }
-                ]
+                latitude: 59.9139,
+                longitude: 10.7522,
+                timezone: 'Europe/Oslo',
+                elevation: 94.0,
+                hourly: {
+                    time: [new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString()],
+                    temperature_2m: [12.5],
+                    apparent_temperature: [11.8],
+                    relative_humidity_2m: [60],
+                    weather_code: [0], // Clear sky
+                    wind_speed_10m: [9.0],
+                    wind_gusts_10m: [15.0],
+                    cloud_cover: [20],
+                    precipitation_probability: [10],
+                    precipitation: [0],
+                    uv_index: [3.0],
+                    is_day: [1]
+                }
             };
 
             (global.fetch as any).mockResolvedValueOnce({
@@ -314,13 +384,26 @@ describe('WeatherHelper', () => {
     });
 
     describe('Weather Summary', () => {
-        const mockWeatherResponse = {
-            coord: { lat: 59.9139, lon: 10.7522 },
-            weather: [{ main: 'Clear', description: 'clear sky', icon: '01d' }],
-            main: { temp: 15.5, feels_like: 14.2, humidity: 65, pressure: 1013 },
-            wind: { speed: 3.2 },
-            sys: { sunrise: 1694664000, sunset: 1694707200, country: 'NO' },
-            name: 'Oslo'
+        const mockCurrentWeatherResponse = {
+            latitude: 59.9139,
+            longitude: 10.7522,
+            timezone: 'Europe/Oslo',
+            elevation: 94.0,
+            current: {
+                temperature_2m: 15.5,
+                apparent_temperature: 14.2,
+                relative_humidity_2m: 65,
+                precipitation: 0,
+                weather_code: 0,
+                surface_pressure: 1013.25,
+                cloud_cover: 10,
+                visibility: 10000,
+                wind_speed_10m: 11.5,
+                wind_direction_10m: 225,
+                wind_gusts_10m: 18.0,
+                uv_index: 3.2,
+                is_day: 1
+            }
         };
 
         it('should generate weather summary', async () => {
@@ -329,16 +412,16 @@ describe('WeatherHelper', () => {
             
             (global.fetch as any).mockResolvedValueOnce({
                 ok: true,
-                json: () => Promise.resolve(mockWeatherResponse)
+                json: () => Promise.resolve(mockCurrentWeatherResponse)
             });
 
             const summary = await weatherHelper.getWeatherSummary();
 
             expect(summary).toContain('15.5°C');
-            expect(summary).toContain('clear sky');
+            expect(summary).toContain('Clear sky');
             expect(summary).toContain('14.2°C');
             expect(summary).toContain('65%');
-            expect(summary).toContain('3.2 m/s');
+            expect(summary).toContain('11.5 km/h');
             expect(summary).toContain('59.9139, 10.7522');
         });
 
@@ -355,20 +438,33 @@ describe('WeatherHelper', () => {
     });
 
     describe('Cache Management', () => {
-        it('should clear cache successfully', async () => {
-            const mockResponse = {
-                ok: true,
-                json: () => Promise.resolve({
-                    coord: { lat: 59, lon: 10 },
-                    weather: [{ main: 'Clear', description: 'clear', icon: '01d' }],
-                    main: { temp: 15, feels_like: 15, humidity: 50, pressure: 1000 },
-                    wind: { speed: 2 },
-                    sys: { sunrise: 1694664000, sunset: 1694707200, country: 'NO' },
-                    name: 'Test'
-                })
-            };
+        const mockResponse = {
+            latitude: 59,
+            longitude: 10,
+            timezone: 'Europe/Oslo',
+            elevation: 94.0,
+            current: {
+                temperature_2m: 15,
+                apparent_temperature: 15,
+                relative_humidity_2m: 50,
+                precipitation: 0,
+                weather_code: 0,
+                surface_pressure: 1000,
+                cloud_cover: 10,
+                visibility: 10000,
+                wind_speed_10m: 7.2,
+                wind_direction_10m: 225,
+                wind_gusts_10m: 12.0,
+                uv_index: 2.0,
+                is_day: 1
+            }
+        };
 
-            (global.fetch as any).mockResolvedValue(mockResponse);
+        it('should clear cache successfully', async () => {
+            (global.fetch as any).mockResolvedValue({
+                ok: true,
+                json: () => Promise.resolve(mockResponse)
+            });
 
             // First call
             await weatherHelper.getCurrentWeather();

@@ -325,6 +325,11 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
                         conditions: weather.conditions[0]?.description || 'Unknown',
                         humidity: weather.humidity,
                         wind_speed: weather.windSpeed,
+                        wind_gusts: weather.windGusts,
+                        cloud_cover: weather.cloudiness,
+                        uv_index: weather.uvIndex,
+                        is_daylight: weather.isDaylight,
+                        precipitation: weather.precipitation,
                         location: weather.location
                     };
                 } catch (error: any) {
@@ -367,7 +372,12 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
                             feels_like: item.feelsLike,
                             conditions: item.conditions[0]?.description || 'Unknown',
                             precipitation_probability: item.precipitationProbability,
-                            humidity: item.humidity
+                            precipitation: item.precipitation,
+                            humidity: item.humidity,
+                            wind_speed: item.windSpeed,
+                            wind_gusts: item.windGusts,
+                            uv_index: item.uvIndex,
+                            is_daylight: item.isDaylight
                         }))
                     };
                 } catch (error: any) {
@@ -425,6 +435,37 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
                 } catch (error: any) {
                     this.logger.error('Error getting weather summary:', error);
                     return { summary: 'Weather information is currently unavailable.' };
+                }
+            }
+        });
+
+        this.registerTool({
+            type: "function",
+            name: "get_outside_illumination",
+            description: "Get current outside illumination and lighting conditions including solar radiation, UV index, and whether it's daylight.",
+            parameters: {
+                type: "object",
+                properties: {},
+                required: [],
+                additionalProperties: false
+            },
+            handler: async () => {
+                try {
+                    const illumination = await this.weatherHelper.getOutsideIllumination();
+                    return {
+                        is_day: illumination.isDay,
+                        is_daylight: illumination.isDaylight,
+                        solar_radiation: illumination.solarRadiation,
+                        direct_radiation: illumination.directRadiation,
+                        diffuse_radiation: illumination.diffuseRadiation,
+                        uv_index: illumination.uvIndex,
+                        sun_elevation: illumination.sunElevation,
+                        illumination_level: illumination.illuminationLevel,
+                        description: illumination.description
+                    };
+                } catch (error: any) {
+                    this.logger.error('Error getting outside illumination:', error);
+                    return { error: 'Unable to retrieve outside illumination information' };
                 }
             }
         });

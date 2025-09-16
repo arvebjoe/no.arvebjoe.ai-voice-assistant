@@ -1,0 +1,26 @@
+meta {
+  name: Simple request
+  type: http
+  seq: 1
+}
+
+get {
+  url: https://api.open-meteo.com/v1/forecast?latitude=59.91&longitude=10.75&current=temperature_2m,relative_humidity_2m,wind_speed_10m&hourly=temperature_2m&forecast_days=1&timezone=auto
+
+  body: none
+  auth: inherit
+}
+
+params:query {
+  latitude: 59.91
+  longitude: 10.75
+  current: temperature_2m,relative_humidity_2m,wind_speed_10m
+  hourly: temperature_2m
+  forecast_days: 1
+  timezone: auto
+  
+}
+
+settings {
+  encodeUrl: true
+}

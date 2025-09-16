@@ -43,7 +43,7 @@ export default class AiVoiceAssistantApp extends Homey.App {
     await this.geoHelper.init();    
 
     // Initialize WeatherHelper with GeoHelper
-    this.weatherHelper = new WeatherHelper(this.geoHelper, '1234567890abcdef'); // Dummy API key for initialization
+    this.weatherHelper = new WeatherHelper(this.geoHelper);
     await this.weatherHelper.init();
     const weather  = await this.weatherHelper.getCurrentWeather();
     this.logger.info('Current weather:', 'Debug', weather);
