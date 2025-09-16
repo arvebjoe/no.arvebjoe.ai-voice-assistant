@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { OpenAIRealtimeAgent } from '../src/llm/openai-realtime-agent.mjs';
 import { ToolManager } from '../src/llm/tool-manager.mjs';
+import { JobManager } from '../src/helpers/job-manager.mjs';
 import { MockHomey } from './mocks/mock-homey.mjs';
 import { MockDeviceManager } from './mocks/mock-device-manager.mjs';
 import { MockGeoHelper } from './mocks/mock-geo-helper.mjs';
@@ -25,6 +26,7 @@ describe('OpenAI Smart Home Agent Test', () => {
     let mockDeviceManager: MockDeviceManager;
     let mockGeoHelper: MockGeoHelper;
     let mockWeatherHelper: MockWeatherHelper;
+    let mockJobManager: JobManager;
     let toolManager: ToolManager;
 
     const testApiKey = envConfig.OPENAI_API_KEY || 'test-api-key';
@@ -35,11 +37,12 @@ describe('OpenAI Smart Home Agent Test', () => {
         mockDeviceManager = new MockDeviceManager();
         mockGeoHelper = new MockGeoHelper();
         mockWeatherHelper = new MockWeatherHelper();
+        mockJobManager = new JobManager(mockGeoHelper as any);
         await mockDeviceManager.init();
         await mockDeviceManager.fetchData();
         await mockGeoHelper.init();
         await mockWeatherHelper.init();
-        toolManager = new ToolManager(mockHomey, testZone, mockDeviceManager as any, mockGeoHelper as any, mockWeatherHelper as any);
+        toolManager = new ToolManager(mockHomey, testZone, mockDeviceManager as any, mockGeoHelper as any, mockWeatherHelper as any, mockJobManager);
 
         console.log('🏠 Available devices:');
         const devices = mockDeviceManager.getSmartHomeDevices();

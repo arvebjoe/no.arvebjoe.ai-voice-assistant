@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { ToolManager } from '../src/llm/tool-manager.mjs';
+import { JobManager } from '../src/helpers/job-manager.mjs';
 import { MockHomey } from './mocks/mock-homey.mjs';
 import { MockDeviceManager } from './mocks/mock-device-manager.mjs';
 import { MockGeoHelper } from './mocks/mock-geo-helper.mjs';
@@ -11,6 +12,7 @@ describe('ToolManager get_local_time with GeoHelper', () => {
     let mockDeviceManager: MockDeviceManager;
     let mockGeoHelper: MockGeoHelper;
     let mockWeatherHelper: MockWeatherHelper;
+    let mockJobManager: JobManager;
     let toolManager: ToolManager;
 
     beforeEach(async () => {
@@ -21,6 +23,7 @@ describe('ToolManager get_local_time with GeoHelper', () => {
         mockDeviceManager = new MockDeviceManager();
         mockGeoHelper = new MockGeoHelper();
         mockWeatherHelper = new MockWeatherHelper();
+        mockJobManager = new JobManager(mockGeoHelper as any);
         
         await mockDeviceManager.init();
         await mockDeviceManager.fetchData();
@@ -30,7 +33,7 @@ describe('ToolManager get_local_time with GeoHelper', () => {
         // Initialize settings manager with fresh mock homey
         settingsManager.init(mockHomey);
         
-        toolManager = new ToolManager(mockHomey, 'Office', mockDeviceManager as any, mockGeoHelper as any, mockWeatherHelper as any);
+        toolManager = new ToolManager(mockHomey, 'Office', mockDeviceManager as any, mockGeoHelper as any, mockWeatherHelper as any, mockJobManager);
     });
 
     it('should get local time using GeoHelper timezone and SettingsManager locale', () => {

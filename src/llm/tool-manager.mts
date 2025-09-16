@@ -2,6 +2,7 @@ import { EventEmitter } from "events";
 import { TypedEmitter } from "tiny-typed-emitter";
 import { DeviceManager } from '../helpers/device-manager.mjs';
 import { WeatherHelper } from '../helpers/weather-helper.mjs';
+import { JobManager } from '../helpers/job-manager.mjs';
 import { createLogger } from '../helpers/logger.mjs';
 import { GeoHelper } from "../helpers/geo-helper.mjs";
 import { settingsManager } from "../settings/settings-manager.mjs";
@@ -28,17 +29,19 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
     private deviceManager: DeviceManager;
     private geoHelper: GeoHelper;
     private weatherHelper: WeatherHelper;
+    private jobManager: JobManager;
     private tools: Map<string, ToolDefinition> = new Map();
     private logger = createLogger('ToolManager', true);
     private standardZone: string;
 
-    constructor(homey: any, standardZone: string, deviceManager: DeviceManager, geoHelper: GeoHelper, weatherHelper: WeatherHelper) {
+    constructor(homey: any, standardZone: string, deviceManager: DeviceManager, geoHelper: GeoHelper, weatherHelper: WeatherHelper, jobManager: JobManager) {
         super();
         this.homey = homey;
         this.deviceManager = deviceManager;
         this.standardZone = standardZone;
         this.geoHelper = geoHelper;
         this.weatherHelper = weatherHelper;
+        this.jobManager = jobManager;
         this.registerDefaultTools();
     }
 
@@ -91,6 +94,7 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
         this.registerSystemTools();
         this.registerDeviceManagementTools();
         this.registerWeatherTools();
+        this.registerJobManagementTools();
     }
 
     private registerSystemTools(): void {
@@ -315,7 +319,7 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
     }
 
     private registerWeatherTools(): void {
-        
+
         this.registerTool({
             type: "function",
             name: "get_current_weather",
@@ -476,6 +480,411 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
                 } catch (error: any) {
                     this.logger.error('Error getting outside illumination:', error);
                     return { error: 'Unable to retrieve outside illumination information' };
+                }
+            }
+        });
+    }
+
+    private registerJobManagementTools(): void {
+        this.registerTool({
+            type: "function",
+            name: "create_scheduled_job",
+            description: "Create a new scheduled job to execute an action at a later time. The agent should parse the user's request to understand WHEN, WHAT, and HOW to execute the task.",
+            parameters: {
+                type: "object",
+                properties: {
+                    scheduledTime: {
+                        type: "string",
+                        description: "When to execute the job as an ISO date string (e.g., '2025-09-17T07:00:00.000Z')"
+                    },
+                    instruction: {
+                        type: "string", 
+                        description: "Natural language instruction for what the agent should do when the job executes"
+                    },
+                    parsedDetails: {
+                        type: "object",
+                        description: "Pre-parsed details about the action (optional)",
+                        properties: {
+                            deviceIds: {
+                                type: "array",
+                                items: { type: "string" },
+                                description: "Device IDs if the job involves specific devices"
+                            },
+                            capability: {
+                                type: "string",
+                                description: "Device capability to change (e.g., 'onoff', 'dim')"
+                            },
+                            value: {
+                                description: "Value to set for the capability"
+                            },
+                            zone: {
+                                type: "string",
+                                description: "Zone name if the job is zone-specific"
+                            },
+                            action: {
+                                type: "string",
+                                description: "Action type (e.g., 'turn_on', 'turn_off', 'set_temperature')"
+                            }
+                        },
+                        additionalProperties: true
+                    },
+                    repeat: {
+                        type: "object",
+                        description: "Repeat configuration for recurring jobs",
+                        properties: {
+                            isRepeating: {
+                                type: "boolean",
+                                description: "Whether this job should repeat"
+                            },
+                            pattern: {
+                                type: "string",
+                                description: "Repeat pattern: 'daily', 'weekly', 'weekdays', 'monthly'"
+                            },
+                            daysOfWeek: {
+                                type: "array",
+                                items: { type: "number", minimum: 0, maximum: 6 },
+                                description: "Days of week for weekly repeats (0=Sunday, 6=Saturday)"
+                            },
+                            endDate: {
+                                type: "string",
+                                description: "End date for repeating jobs (ISO string)"
+                            }
+                        },
+                        additionalProperties: false
+                    },
+                    output: {
+                        type: "object",
+                        description: "Output/feedback configuration",
+                        properties: {
+                            shouldNotify: {
+                                type: "boolean",
+                                description: "Should the agent provide feedback when the job completes?"
+                            },
+                            message: {
+                                type: "string", 
+                                description: "Custom message to say when completed (optional)"
+                            },
+                            type: {
+                                type: "string",
+                                enum: ["voice", "text", "silent"],
+                                description: "Type of feedback to provide"
+                            }
+                        },
+                        additionalProperties: false
+                    },
+                    sender: {
+                        type: "object",
+                        description: "Information about who/what created this job",
+                        properties: {
+                            agentId: {
+                                type: "string",
+                                description: "Identifier for the agent creating this job"
+                            },
+                            sessionId: {
+                                type: "string",
+                                description: "Session identifier for callback (optional)"
+                            },
+                            userId: {
+                                type: "string", 
+                                description: "User identifier (optional)"
+                            }
+                        },
+                        required: ["agentId"],
+                        additionalProperties: false
+                    }
+                },
+                required: ["scheduledTime", "instruction", "sender"],
+                additionalProperties: false
+            },
+            handler: async ({ scheduledTime, instruction, parsedDetails, repeat, output, sender }) => {
+                try {
+                    const job = this.jobManager.createJob({
+                        scheduledTime: new Date(scheduledTime),
+                        instruction,
+                        parsedDetails,
+                        repeat,
+                        output,
+                        sender
+                    });
+
+                    return {
+                        ok: true,
+                        data: {
+                            jobId: job.id,
+                            scheduledTime: job.scheduledTime.toISOString(),
+                            instruction: job.instruction,
+                            status: job.metadata.status,
+                            isRepeating: job.repeat.isRepeating
+                        }
+                    };
+                } catch (error: any) {
+                    this.logger.error('Error creating scheduled job:', error);
+                    return {
+                        ok: false,
+                        error: {
+                            code: "JOB_CREATION_FAILED",
+                            message: "Could not create scheduled job: " + error.message
+                        }
+                    };
+                }
+            }
+        });
+
+        this.registerTool({
+            type: "function",
+            name: "list_scheduled_jobs",
+            description: "Get a list of scheduled jobs, optionally filtered by status or sender.",
+            parameters: {
+                type: "object",
+                properties: {
+                    status: {
+                        type: "string",
+                        enum: ["pending", "running", "completed", "failed", "cancelled"],
+                        description: "Filter jobs by status (optional)"
+                    },
+                    agentId: {
+                        type: "string",
+                        description: "Filter jobs by agent/sender ID (optional)"
+                    },
+                    sessionId: {
+                        type: "string",
+                        description: "Filter jobs by session ID (optional)"
+                    }
+                },
+                required: [],
+                additionalProperties: false
+            },
+            handler: async ({ status, agentId, sessionId }) => {
+                try {
+                    let jobs;
+                    
+                    if (status) {
+                        jobs = this.jobManager.getJobsByStatus(status);
+                    } else if (agentId) {
+                        jobs = this.jobManager.getJobsBySender(agentId, sessionId);
+                    } else {
+                        jobs = this.jobManager.getAllJobs();
+                    }
+
+                    const jobList = jobs.map(job => ({
+                        id: job.id,
+                        scheduledTime: job.scheduledTime.toISOString(),
+                        instruction: job.instruction,
+                        status: job.metadata.status,
+                        isRepeating: job.repeat.isRepeating,
+                        nextExecution: job.metadata.nextExecution?.toISOString(),
+                        createdAt: job.metadata.createdAt.toISOString(),
+                        attempts: job.metadata.attempts,
+                        lastError: job.metadata.lastError
+                    }));
+
+                    return {
+                        ok: true,
+                        data: {
+                            jobs: jobList,
+                            count: jobList.length
+                        }
+                    };
+                } catch (error: any) {
+                    this.logger.error('Error listing scheduled jobs:', error);
+                    return {
+                        ok: false,
+                        error: {
+                            code: "JOB_LIST_FAILED",
+                            message: "Could not retrieve scheduled jobs: " + error.message
+                        }
+                    };
+                }
+            }
+        });
+
+        this.registerTool({
+            type: "function",
+            name: "delete_scheduled_job",
+            description: "Delete a scheduled job by its ID.",
+            parameters: {
+                type: "object",
+                properties: {
+                    jobId: {
+                        type: "string",
+                        description: "The ID of the job to delete"
+                    }
+                },
+                required: ["jobId"],
+                additionalProperties: false
+            },
+            handler: async ({ jobId }) => {
+                try {
+                    const success = this.jobManager.deleteJob(jobId);
+                    
+                    if (success) {
+                        return {
+                            ok: true,
+                            data: {
+                                message: `Job ${jobId} has been deleted successfully`
+                            }
+                        };
+                    } else {
+                        return {
+                            ok: false,
+                            error: {
+                                code: "JOB_NOT_FOUND",
+                                message: `Job ${jobId} was not found`
+                            }
+                        };
+                    }
+                } catch (error: any) {
+                    this.logger.error('Error deleting scheduled job:', error);
+                    return {
+                        ok: false,
+                        error: {
+                            code: "JOB_DELETE_FAILED",
+                            message: "Could not delete scheduled job: " + error.message
+                        }
+                    };
+                }
+            }
+        });
+
+        this.registerTool({
+            type: "function",
+            name: "get_job_details",
+            description: "Get detailed information about a specific scheduled job.",
+            parameters: {
+                type: "object",
+                properties: {
+                    jobId: {
+                        type: "string",
+                        description: "The ID of the job to get details for"
+                    }
+                },
+                required: ["jobId"],
+                additionalProperties: false
+            },
+            handler: async ({ jobId }) => {
+                try {
+                    const job = this.jobManager.getJob(jobId);
+                    
+                    if (job) {
+                        return {
+                            ok: true,
+                            data: {
+                                id: job.id,
+                                scheduledTime: job.scheduledTime.toISOString(),
+                                instruction: job.instruction,
+                                parsedDetails: job.parsedDetails,
+                                repeat: job.repeat,
+                                output: job.output,
+                                sender: job.sender,
+                                metadata: {
+                                    ...job.metadata,
+                                    createdAt: job.metadata.createdAt.toISOString(),
+                                    lastExecuted: job.metadata.lastExecuted?.toISOString(),
+                                    nextExecution: job.metadata.nextExecution?.toISOString()
+                                }
+                            }
+                        };
+                    } else {
+                        return {
+                            ok: false,
+                            error: {
+                                code: "JOB_NOT_FOUND",
+                                message: `Job ${jobId} was not found`
+                            }
+                        };
+                    }
+                } catch (error: any) {
+                    this.logger.error('Error getting job details:', error);
+                    return {
+                        ok: false,
+                        error: {
+                            code: "JOB_DETAILS_FAILED",
+                            message: "Could not retrieve job details: " + error.message
+                        }
+                    };
+                }
+            }
+        });
+
+        this.registerTool({
+            type: "function",
+            name: "parse_schedule_time",
+            description: "Parse natural language time expressions into proper datetime for scheduling. Use this to convert user time expressions like 'tomorrow at 7am' or 'in 2 hours' into schedulable dates.",
+            parameters: {
+                type: "object",
+                properties: {
+                    timeExpression: {
+                        type: "string",
+                        description: "Natural language time expression (e.g., 'tomorrow at 7:00', 'in 1 hour', 'next Monday at 9am')"
+                    }
+                },
+                required: ["timeExpression"],
+                additionalProperties: false
+            },
+            handler: async ({ timeExpression }) => {
+                try {
+                    const parsedDate = this.jobManager.parseTimeExpression(timeExpression);
+                    
+                    if (parsedDate) {
+                        return {
+                            ok: true,
+                            data: {
+                                originalExpression: timeExpression,
+                                parsedDateTime: parsedDate.toISOString(),
+                                localTime: parsedDate.toLocaleString('en-US', {
+                                    timeZone: this.geoHelper.timezone || 'Europe/Oslo'
+                                }),
+                                isValid: true
+                            }
+                        };
+                    } else {
+                        return {
+                            ok: false,
+                            error: {
+                                code: "TIME_PARSE_FAILED",
+                                message: `Could not parse time expression: "${timeExpression}"`
+                            }
+                        };
+                    }
+                } catch (error: any) {
+                    this.logger.error('Error parsing schedule time:', error);
+                    return {
+                        ok: false,
+                        error: {
+                            code: "TIME_PARSE_ERROR",
+                            message: "Error parsing time expression: " + error.message
+                        }
+                    };
+                }
+            }
+        });
+
+        this.registerTool({
+            type: "function",
+            name: "get_job_stats",
+            description: "Get statistics about all scheduled jobs (count by status).",
+            parameters: {
+                type: "object",
+                properties: {},
+                required: [],
+                additionalProperties: false
+            },
+            handler: async () => {
+                try {
+                    const stats = this.jobManager.getJobStats();
+                    return {
+                        ok: true,
+                        data: stats
+                    };
+                } catch (error: any) {
+                    this.logger.error('Error getting job statistics:', error);
+                    return {
+                        ok: false,
+                        error: {
+                            code: "JOB_STATS_FAILED",
+                            message: "Could not retrieve job statistics: " + error.message
+                        }
+                    };
                 }
             }
         });
