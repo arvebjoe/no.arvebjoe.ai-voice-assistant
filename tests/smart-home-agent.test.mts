@@ -37,7 +37,7 @@ describe('OpenAI Smart Home Agent Test', () => {
         mockDeviceManager = new MockDeviceManager();
         mockGeoHelper = new MockGeoHelper();
         mockWeatherHelper = new MockWeatherHelper();
-        mockJobManager = new JobManager(mockGeoHelper as any);
+        mockJobManager = new JobManager(mockGeoHelper as any, mockHomey);
         await mockDeviceManager.init();
         await mockDeviceManager.fetchData();
         await mockGeoHelper.init();

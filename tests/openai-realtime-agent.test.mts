@@ -40,7 +40,7 @@ describe('OpenAI Realtime Agent', () => {
     mockDeviceManager = new MockDeviceManager();
     mockGeoHelper = new MockGeoHelper();
     mockWeatherHelper = new MockWeatherHelper();
-    mockJobManager = new JobManager(mockGeoHelper as any);
+    mockJobManager = new JobManager(mockGeoHelper as any, mockHomey);
     
     // Initialize DeviceManager
     await mockDeviceManager.init();
@@ -173,7 +173,7 @@ describe('OpenAI Realtime Agent', () => {
     });
 
     it('should be able to test different device zones', () => {
-      const kitchenJobManager = new JobManager(mockGeoHelper as any);
+      const kitchenJobManager = new JobManager(mockGeoHelper as any, mockHomey);
       const kitchenToolManager = new ToolManager(mockHomey, 'Kitchen', mockDeviceManager as any, mockGeoHelper as any, mockWeatherHelper as any, kitchenJobManager);
       
       const kitchenAgent = new OpenAIRealtimeAgent(mockHomey, kitchenToolManager, {

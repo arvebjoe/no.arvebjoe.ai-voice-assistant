@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { OpenAIRealtimeAgent } from '../src/llm/openai-realtime-agent.mjs';
 import { ToolManager } from '../src/llm/tool-manager.mjs';
+import { JobManager } from '../src/helpers/job-manager.mjs';
 import { MockHomey } from './mocks/mock-homey.mjs';
 import { MockDeviceManager } from './mocks/mock-device-manager.mjs';
 import { MockGeoHelper } from './mocks/mock-geo-helper.mjs';
@@ -48,7 +49,7 @@ describe('OpenAI Agent Behavior Analysis', () => {
     await mockWeatherHelper.init();
     
     // Initialize ToolManager with mocks
-    toolManager = new ToolManager(mockHomey, testZone, mockDeviceManager as any, mockGeoHelper as any, mockWeatherHelper as any);
+    toolManager = new ToolManager(mockHomey, testZone, mockDeviceManager as any, mockGeoHelper as any, mockWeatherHelper as any, new JobManager(mockGeoHelper as any, mockHomey));
     
     console.log('🏠 Mock devices available:');
     const devices = mockDeviceManager.getSmartHomeDevices();

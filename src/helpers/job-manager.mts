@@ -20,6 +20,8 @@ export interface ScheduledJob {
         value?: any;
         zone?: string;
         action?: string;
+        /** ID of the voice assistant device that should execute this job */
+        voiceAssistantDeviceId?: string;
     };
     
     /** Repeat configuration */
@@ -79,15 +81,26 @@ type JobManagerEvents = {
     jobFailed: (job: ScheduledJob, error: any) => void;
 };
 
+export { JobManagerEvents };
+
 export class JobManager extends (EventEmitter as new () => TypedEmitter<JobManagerEvents>) {
     private jobs: Map<string, ScheduledJob> = new Map();
     private logger = createLogger('JobManager', true);
     private geoHelper: GeoHelper;
+    private homey: any;
+    private readonly STORAGE_KEY = 'scheduled_jobs';
     
-    constructor(geoHelper: GeoHelper) {
+    constructor(geoHelper: GeoHelper, homey: any) {
         super();
         this.geoHelper = geoHelper;
+        this.homey = homey;
         this.logger.info('JobManager initialized');
+        
+        // Load existing jobs from storage
+        this.loadJobsFromStorage();
+        
+        // Listen for settings changes (external modifications)
+        this.homey.settings.on('set', this.onSettingsChanged.bind(this));
     }
 
     /**
@@ -136,6 +149,9 @@ export class JobManager extends (EventEmitter as new () => TypedEmitter<JobManag
         this.jobs.set(jobId, job);
         this.logger.info(`Created job ${jobId}: "${jobData.instruction}" scheduled for ${jobData.scheduledTime.toISOString()}`);
         this.emit('jobAdded', job);
+        
+        // Persist to storage
+        this.saveJobsToStorage();
         
         return job;
     }
@@ -195,6 +211,9 @@ export class JobManager extends (EventEmitter as new () => TypedEmitter<JobManag
         this.logger.info(`Updated job ${jobId}`);
         this.emit('jobUpdated', updatedJob);
         
+        // Persist to storage
+        this.saveJobsToStorage();
+        
         return true;
     }
 
@@ -211,6 +230,9 @@ export class JobManager extends (EventEmitter as new () => TypedEmitter<JobManag
         this.jobs.delete(jobId);
         this.logger.info(`Deleted job ${jobId}: "${job.instruction}"`);
         this.emit('jobDeleted', jobId);
+        
+        // Persist to storage
+        this.saveJobsToStorage();
         
         return true;
     }
@@ -243,6 +265,9 @@ export class JobManager extends (EventEmitter as new () => TypedEmitter<JobManag
         this.jobs.set(jobId, job);
         this.emit('jobExecuted', job, result);
         
+        // Persist to storage
+        this.saveJobsToStorage();
+        
         return true;
     }
 
@@ -261,6 +286,9 @@ export class JobManager extends (EventEmitter as new () => TypedEmitter<JobManag
         this.jobs.set(jobId, job);
         this.logger.error(`Job ${jobId} failed: ${job.metadata.lastError}`);
         this.emit('jobFailed', job, error);
+        
+        // Persist to storage
+        this.saveJobsToStorage();
         
         return true;
     }
@@ -419,5 +447,185 @@ export class JobManager extends (EventEmitter as new () => TypedEmitter<JobManag
             failed: jobs.filter(j => j.metadata.status === 'failed').length,
             cancelled: jobs.filter(j => j.metadata.status === 'cancelled').length,
         };
+    }
+
+    /**
+     * Load jobs from Homey settings storage
+     */
+    private loadJobsFromStorage(): void {
+        try {
+            const storedJobs = this.homey.settings.get(this.STORAGE_KEY);
+            
+            if (!storedJobs || !Array.isArray(storedJobs)) {
+                this.logger.info('No stored jobs found or invalid format, starting with empty job list');
+                return;
+            }
+
+            let loadedCount = 0;
+            let skippedCount = 0;
+
+            for (const jobData of storedJobs) {
+                try {
+                    // Deserialize the job data, converting date strings back to Date objects
+                    const job: ScheduledJob = {
+                        ...jobData,
+                        scheduledTime: new Date(jobData.scheduledTime),
+                        repeat: {
+                            ...jobData.repeat,
+                            endDate: jobData.repeat.endDate ? new Date(jobData.repeat.endDate) : undefined
+                        },
+                        metadata: {
+                            ...jobData.metadata,
+                            createdAt: new Date(jobData.metadata.createdAt),
+                            lastExecuted: jobData.metadata.lastExecuted ? new Date(jobData.metadata.lastExecuted) : undefined,
+                            nextExecution: jobData.metadata.nextExecution ? new Date(jobData.metadata.nextExecution) : undefined
+                        }
+                    };
+
+                    // Validate that the job has required fields
+                    if (job.id && job.instruction && job.scheduledTime && job.sender) {
+                        this.jobs.set(job.id, job);
+                        loadedCount++;
+                    } else {
+                        this.logger.warn(`Skipping invalid job data: missing required fields`, jobData);
+                        skippedCount++;
+                    }
+                } catch (jobError: any) {
+                    this.logger.error(`Failed to deserialize job: ${jobError.message}`, jobData);
+                    skippedCount++;
+                }
+            }
+
+            this.logger.info(`Loaded ${loadedCount} jobs from storage${skippedCount > 0 ? `, skipped ${skippedCount} invalid jobs` : ''}`);
+            
+        } catch (error: any) {
+            this.logger.error('Failed to load jobs from storage:', error);
+            // Continue with empty job list rather than crashing
+        }
+    }
+
+    /**
+     * Save all jobs to Homey settings storage
+     */
+    private saveJobsToStorage(): void {
+        try {
+            const jobsArray = Array.from(this.jobs.values()).map(job => ({
+                ...job,
+                // Convert Date objects to ISO strings for JSON serialization
+                scheduledTime: job.scheduledTime.toISOString(),
+                repeat: {
+                    ...job.repeat,
+                    endDate: job.repeat.endDate ? job.repeat.endDate.toISOString() : undefined
+                },
+                metadata: {
+                    ...job.metadata,
+                    createdAt: job.metadata.createdAt.toISOString(),
+                    lastExecuted: job.metadata.lastExecuted ? job.metadata.lastExecuted.toISOString() : undefined,
+                    nextExecution: job.metadata.nextExecution ? job.metadata.nextExecution.toISOString() : undefined
+                }
+            }));
+
+            this.homey.settings.set(this.STORAGE_KEY, jobsArray);
+            this.logger.info(`Saved ${jobsArray.length} jobs to storage`);
+            
+        } catch (error: any) {
+            this.logger.error('Failed to save jobs to storage:', error);
+        }
+    }
+
+    /**
+     * Handle settings changes from external sources
+     */
+    private onSettingsChanged(key: string): void {
+        if (key === this.STORAGE_KEY) {
+            this.logger.info('Jobs were modified externally, reloading from storage');
+            
+            // Clear current jobs
+            this.jobs.clear();
+            
+            // Reload from storage
+            this.loadJobsFromStorage();
+            
+            // Emit event that jobs were reloaded
+            this.emit('jobsReloaded' as any, this.getAllJobs());
+        }
+    }
+
+    /**
+     * Clear all jobs (useful for testing or reset)
+     */
+    clearAllJobs(): void {
+        const jobCount = this.jobs.size;
+        this.jobs.clear();
+        this.saveJobsToStorage();
+        this.logger.info(`Cleared all ${jobCount} jobs`);
+    }
+
+    /**
+     * Export jobs to a JSON string (for backup purposes)
+     */
+    exportJobs(): string {
+        try {
+            const jobsArray = Array.from(this.jobs.values());
+            return JSON.stringify(jobsArray, null, 2);
+        } catch (error: any) {
+            this.logger.error('Failed to export jobs:', error);
+            throw new Error('Failed to export jobs: ' + error.message);
+        }
+    }
+
+    /**
+     * Import jobs from a JSON string (for restore purposes)
+     */
+    importJobs(jsonData: string, replaceExisting: boolean = false): { imported: number; skipped: number; errors: string[] } {
+        try {
+            const jobsData = JSON.parse(jsonData);
+            
+            if (!Array.isArray(jobsData)) {
+                throw new Error('Invalid format: expected array of jobs');
+            }
+
+            if (replaceExisting) {
+                this.jobs.clear();
+            }
+
+            let imported = 0;
+            let skipped = 0;
+            const errors: string[] = [];
+
+            for (const jobData of jobsData) {
+                try {
+                    // Check if job already exists
+                    if (this.jobs.has(jobData.id)) {
+                        if (!replaceExisting) {
+                            skipped++;
+                            continue;
+                        }
+                    }
+
+                    // Create job from data (this will also save to storage)
+                    const job = this.createJob({
+                        scheduledTime: new Date(jobData.scheduledTime),
+                        instruction: jobData.instruction,
+                        parsedDetails: jobData.parsedDetails,
+                        repeat: jobData.repeat,
+                        output: jobData.output,
+                        sender: jobData.sender
+                    });
+
+                    imported++;
+                    
+                } catch (jobError: any) {
+                    errors.push(`Job ${jobData.id || 'unknown'}: ${jobError.message}`);
+                }
+            }
+
+            this.logger.info(`Import completed: ${imported} imported, ${skipped} skipped, ${errors.length} errors`);
+            return { imported, skipped, errors };
+            
+        } catch (error: any) {
+            this.logger.error('Failed to import jobs:', error);
+            throw new Error('Failed to import jobs: ' + error.message);
+        }
     }
 }

@@ -6,6 +6,7 @@ import { ApiHelper } from './src/helpers/api-helper.mjs';
 import { GeoHelper } from './src/helpers/geo-helper.mjs';
 import { WeatherHelper } from './src/helpers/weather-helper.mjs';
 import { JobManager } from './src/helpers/job-manager.mjs';
+import { JobExecutor } from './src/helpers/job-executor.mjs';
 import { settingsManager } from './src/settings/settings-manager.mjs';
 import { createLogger } from './src/helpers/logger.mjs';
 import homeyLogPkg from 'homey-log'; // requires "esModuleInterop": true in tsconfig
@@ -20,6 +21,7 @@ export default class AiVoiceAssistantApp extends Homey.App {
   private geoHelper: GeoHelper | undefined;
   private weatherHelper: WeatherHelper | undefined;
   private jobManager: JobManager | undefined;
+  private jobExecutor: JobExecutor | undefined;
   private logger = createLogger('APP');
   private homeyLog: any;
 
@@ -48,8 +50,8 @@ export default class AiVoiceAssistantApp extends Homey.App {
     this.weatherHelper = new WeatherHelper(this.geoHelper);
     await this.weatherHelper.init();
 
-    // Initialize JobManager with GeoHelper
-    this.jobManager = new JobManager(this.geoHelper);
+    // Initialize JobManager with GeoHelper and Homey
+    this.jobManager = new JobManager(this.geoHelper, this.homey);
 
     this.webServer = new WebServer(this.homey);
     await this.webServer.init();
@@ -63,16 +65,39 @@ export default class AiVoiceAssistantApp extends Homey.App {
     await this.deviceManager.init();
     await this.deviceManager.fetchData();
 
+    // Initialize JobExecutor after DeviceManager is ready
+    this.jobExecutor = new JobExecutor(this.jobManager, this.deviceManager, this.homey);
+    this.jobExecutor.start();
+
     this.logger.info('AI voice assistant initialized successfully');
   }
 
   async onUninit() {
     this.logger.info('AI voice assistant is being uninitialized');
 
+    // Stop job executor
+    if (this.jobExecutor) {
+      this.jobExecutor.stop();
+    }
+
     // Clean up WebServer
     if (this.webServer) {
       await this.webServer.stop();
     }
+  }
+
+  /**
+   * Get the JobManager instance
+   */
+  getJobManager(): JobManager | undefined {
+    return this.jobManager;
+  }
+
+  /**
+   * Get the JobExecutor instance
+   */
+  getJobExecutor(): JobExecutor | undefined {
+    return this.jobExecutor;
   }
 
 

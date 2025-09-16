@@ -35,7 +35,7 @@ describe('JobManager Integration Tests', () => {
         settingsManager.init(mockHomey);
         
         // Create JobManager and ToolManager
-        jobManager = new JobManager(mockGeoHelper as any);
+        jobManager = new JobManager(mockGeoHelper as any, mockHomey);
         toolManager = new ToolManager(mockHomey, 'Office', mockDeviceManager as any, mockGeoHelper as any, mockWeatherHelper as any, jobManager);
     });
 

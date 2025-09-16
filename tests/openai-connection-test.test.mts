@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { OpenAIRealtimeAgent } from '../src/llm/openai-realtime-agent.mjs';
 import { ToolManager } from '../src/llm/tool-manager.mjs';
+import { JobManager } from '../src/helpers/job-manager.mjs';
 import { MockHomey } from './mocks/mock-homey.mjs';
 import { MockDeviceManager } from './mocks/mock-device-manager.mjs';
 import { MockGeoHelper } from './mocks/mock-geo-helper.mjs';
@@ -39,7 +40,7 @@ describe('Quick OpenAI Connection Test', () => {
     await mockDeviceManager.fetchData();
     await mockGeoHelper.init();
     await mockWeatherHelper.init();
-    toolManager = new ToolManager(mockHomey, testZone, mockDeviceManager as any, mockGeoHelper as any, mockWeatherHelper as any);
+    toolManager = new ToolManager(mockHomey, testZone, mockDeviceManager as any, mockGeoHelper as any, mockWeatherHelper as any, new JobManager(mockGeoHelper as any, mockHomey));
   });
 
   it('should check API key and create agent', () => {
