@@ -167,7 +167,7 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
 
         this.options = {
             apiKey: opts.apiKey ?? '',
-            url: opts.url ?? `wss://api.openai.com/v1/realtime?model=gpt-realtime`,
+            url: opts.url ?? `wss://api.openai.com/v1/realtime?model=gpt-realtime-2025-08-28`,
             voice: opts.voice ?? "ash",
             languageCode: opts.languageCode ?? "en",
             languageName: opts.languageName ?? "English",
@@ -288,14 +288,6 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
         this.ws?.close(code, reason);
     }
 
-
-    sendSomeText() {
-        this.logger.info("Sending text to agent");
-        // Send "Hvordan går det med deg i dag?" to the agent.
-        // Default to audio output for this test method
-        this.sendTextForAudioResponse("Hvordan går det med deg i dag?");
-    }
-
     /**
      * Set the output mode for the agent responses.
      * @param mode - "audio" for audio output, "text" for text output
@@ -405,10 +397,11 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
                 "Content-Type": "application/json",
             },
             body: JSON.stringify({
-                model: "gpt-4o-mini-tts",
+                model: "gpt-4o-mini-tts-2025-12-15",
                 voice: this.options.voice,
                 input: text,
-                response_format: "flac" // mp3 | wav | opus | aac | flac | pcm
+                response_format: "flac", // mp3 | wav | opus | aac | flac | pcm
+                instructions: "Speak in a natural, helpful tone suitable for a smart home assistant."
             }),
         });
         const buf = Buffer.from(await r.arrayBuffer());
@@ -585,12 +578,22 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
                 this.emit("audio.delta", buf);
                 break;
             }
+            case "response.output_audio.done":
             case "response.audio.done":
                 this.emit("audio.done");
                 break;
 
             case "response.output_audio_transcript.delta":
                 this.emit("transcript.delta", msg.delta);
+                break;
+
+            case "conversation.item.input_audio_transcription.delta":
+                this.emit("transcript.delta", msg.delta);
+                break;
+
+            case "conversation.item.input_audio_transcription.failed":
+                this.logger.error("Input transcription failed", msg.error);
+                this.emit("response.error", msg);
                 break;
 
             // A function_call item shows up in the response stream:
@@ -609,6 +612,7 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
                 this.emit("transcript.done", msg.transcript);
                 this.transcript_id = msg.item_id;
                 this.sendTranscript(msg);
+                break;
             }
 
             case "conversation.item.done": {
@@ -624,9 +628,7 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
                     });
                     this.transcript_id = null;
                 }
-
-
-
+                break;
             }
 
             // The same function_call item also appears as a conversation item:
@@ -822,17 +824,19 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
                             rate: 24000
                         },
                         transcription: {
-                            model: "whisper-1",                                                        // pick one: "gpt-4o-mini-transcribe" (fast) | "gpt-4o-transcribe" (quality) | "whisper-1"                                                        
+                            model: "gpt-realtime-whisper",
                             language: this.options.languageCode,
-                            //prompt: "Homey, ESPHome, "                                                            // optional biasing for names/terms. Need to look into this
+                            delay: "low",  // "minimal" | "low" | "medium" | "high" | "xhigh"
                         },
-                        noise_reduction: null,
+                        noise_reduction: {
+                            type: "far_field"  // "near_field" for close-mic, "far_field" for room/speakerphone setups
+                        },
                         turn_detection: {
                             type: "server_vad",
                             threshold: 0.6,
                             prefix_padding_ms: 400,
                             silence_duration_ms: 600,
-                            idle_timeout_ms: null,
+                            idle_timeout_ms: 30000,  // Auto-close idle sessions after 30s to reduce costs
                             create_response: false,
                             interrupt_response: false
                         }
