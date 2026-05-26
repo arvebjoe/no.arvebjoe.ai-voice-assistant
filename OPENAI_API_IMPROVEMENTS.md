@@ -5,7 +5,7 @@
 >
 > **What we did:** Audited the OpenAI Realtime API implementation in `src/llm/openai-realtime-agent.mts` against the current OpenAI documentation and identified 12 improvements.
 >
-> **What to do next:** Implement the changes listed below, in roughly priority order. Start with the trivial/low-effort items (4, 7, 10, 12, 1, 2, 3, 5, 6) before tackling the medium-effort refactors (8, 9). Item 11 is optional/nice-to-have. All changes are in `src/llm/openai-realtime-agent.mts` unless otherwise noted.
+> **What was done:** Items 1, 2, 3, 4, 5, 6, 7, 10, and 12 (all trivial/low-effort) have been implemented. Remaining: items 8 (simplify VAD), 9 (expose gpt-realtime-mini), and 11 (rate limit handling) are medium-effort or optional and still TODO.
 
 ---
 
@@ -291,20 +291,20 @@ The existing reconnect logic will re-establish the connection when the next voic
 
 ## Summary Table
 
-| # | Change | Impact | Effort |
-|---|---|---|---|
-| 1 | Pin model to dated snapshot | Stability | Low |
-| 2 | Switch to `gpt-realtime-whisper` transcription | Accuracy / Latency | Low |
-| 3 | Enable `noise_reduction` | Transcription quality | Low |
-| 4 | Add `response.output_audio.done` alias | Correctness | Trivial |
-| 5 | Handle transcription delta/failed events | UX / Error handling | Low |
-| 6 | Add `instructions` to TTS call | Voice quality / Customisation | Low |
-| 7 | Add missing voices (fable, nova, onyx) | Feature completeness | Trivial |
-| 8 | Simplify VAD → response trigger | Code quality / UX | Medium |
-| 9 | Expose `gpt-realtime-mini` as option | Cost reduction | Medium |
-| 10 | Document beta header removal | Future-proofing | Trivial |
-| 11 | Act on `rate_limits.updated` | Observability | Low |
-| 12 | Set `idle_timeout_ms` | Cost / Resource efficiency | Trivial |
+| # | Change | Impact | Effort | Status |
+|---|---|---|---|---|
+| 1 | Pin model to dated snapshot | Stability | Low | ✅ Done |
+| 2 | Switch to `gpt-realtime-whisper` transcription | Accuracy / Latency | Low | ✅ Done |
+| 3 | Enable `noise_reduction` | Transcription quality | Low | ✅ Done |
+| 4 | Add `response.output_audio.done` alias | Correctness | Trivial | ✅ Done |
+| 5 | Handle transcription delta/failed events | UX / Error handling | Low | ✅ Done |
+| 6 | Add `instructions` to TTS call | Voice quality / Customisation | Low | ✅ Done |
+| 7 | Add missing voices (fable, nova, onyx) | Feature completeness | Trivial | ✅ Done |
+| 8 | Simplify VAD → response trigger | Code quality / UX | Medium | TODO |
+| 9 | Expose `gpt-realtime-mini` as option | Cost reduction | Medium | TODO |
+| 10 | Document beta header removal | Future-proofing | Trivial | ✅ Done |
+| 11 | Act on `rate_limits.updated` | Observability | Low | TODO (optional) |
+| 12 | Set `idle_timeout_ms` | Cost / Resource efficiency | Trivial | ✅ Done |
 
 ---
 
