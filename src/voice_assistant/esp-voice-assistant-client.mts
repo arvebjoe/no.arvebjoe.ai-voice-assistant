@@ -28,18 +28,18 @@ type EspVoiceEvents = {
 class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<EspVoiceEvents>) {
   private homey: any;
   private host: string;
-  private apiPort: number;
+  private readonly apiPort: number;
   private streamId: number;
   private rxBuf: Buffer;
   private connected: boolean;
   private tcp: net.Socket | null;
   private reconnectTimer: NodeJS.Timeout | null;
   private reconnectAttempt: number;
-  private MAX_RECONNECT_DELAY: number;
+  private readonly MAX_RECONNECT_DELAY: number;
   private lastMessageReceivedTime: number;
   private healthCheckTimer: NodeJS.Timeout | null;
-  private PING_TIMEOUT: number;
-  private HEALTH_CHECK_INTERVAL: number;
+  private readonly PING_TIMEOUT: number;
+  private readonly HEALTH_CHECK_INTERVAL: number;
   private mediaPlayersCount: number;
   private subscribeVoiceAssistantCount: number;
   private voiceAssistantConfigurationCount: number;
