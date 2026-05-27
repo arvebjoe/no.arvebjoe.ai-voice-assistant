@@ -81,7 +81,7 @@ this.esp.stt_start();
 
 ---
 
-### 3. No Error Event Handling
+### 3. ~~No Error Event Handling~~ ✅ DONE
 
 **Documentation:** The pipeline sends `ERROR` events with codes like `stt-no-text-recognized`,
 `timeout`, `intent-failed`, etc. The PE displays these as flashing red LEDs (Phase 11).
@@ -272,7 +272,7 @@ delivers. The `Pcm16kTo24k` resampler produces 20ms frames (480 samples at 24 kH
 |---|---|---|---|---|
 | 1 | Missing INTENT_PROGRESS event | Latency / UX | Low | High |
 | 2 | ~~Missing WAKE_WORD_END event~~ | ~~LED state accuracy~~ | ✅ Done | ✅ Done |
-| 3 | No ERROR event to device | Error feedback UX | Low | High |
+| 3 | ~~No ERROR event to device~~ | ~~Error feedback UX~~ | ✅ Done | ✅ Done |
 | 4 | Missing SubscribeStates | Compatibility | Low | Medium |
 | 5 | No timer support | Feature gap | Medium | Medium |
 | 6 | tts_response_finished | Already handled | — | — |
@@ -288,7 +288,7 @@ delivers. The `Pcm16kTo24k` resampler produces 20ms frames (480 samples at 24 kH
 ## Recommended Implementation Order
 
 1. ~~**Item 2** — Add `WAKE_WORD_END` event (trivial, immediate LED improvement)~~ ✅ Done
-2. **Item 3** — Add ERROR event helper (low effort, visible UX improvement)
+2. ~~**Item 3** — Add ERROR event helper (low effort, visible UX improvement)~~ ✅ Done
 3. **Item 1** — Emit `INTENT_PROGRESS` during streaming (low effort, perceived speed boost)
 4. **Item 11** — Log version mismatch warning (trivial)
 5. **Item 4** — Add `SubscribeStatesRequest` (low effort, broader firmware compat)

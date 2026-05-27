@@ -138,6 +138,9 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
         // Play a pre-recorded message to inform the user.
         const hasKey = this.agent.hasApiKey();
         const url = hasKey ? SOUND_URLS.agent_not_connected : SOUND_URLS.missing_api_key;
+        this.esp.run_start();
+        this.esp.pipeline_error('agent-not-connected', hasKey ? 'Voice agent is not connected.' : 'API key is missing.');
+        this.esp.run_end();
         this.playUrl(url);
         return;
       }
@@ -261,6 +264,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
         // Yeah, this is a strange one. If the STT engine doesn't hear anything useful, it will return this text. I don't know why.
         this.esp.stt_end('');
         this.esp.run_end();
+        this.setCapabilityValue('onoff', false);
         return;
       }
 
@@ -377,6 +381,13 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
     this.agent.on('error', (error: Error) => {
       this.logger.error("Realtime agent error:", error);
+      if (this.isSteamingMic || this.isPlaying) {
+        this.esp.pipeline_error('agent-error', error.message || 'An error occurred in the voice agent.');
+        this.esp.run_end();
+        this.isSteamingMic = false;
+        this.isPlaying = false;
+        this.setCapabilityValue('onoff', false);
+      }
     });
 
 
