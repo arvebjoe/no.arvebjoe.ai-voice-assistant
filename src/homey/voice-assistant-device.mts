@@ -253,6 +253,11 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       if (/[?？]\s*$/.test(text)) {
         this.continueConversation = true;
       }
+
+      // Send INTENT_PROGRESS to the PE so it can start streaming TTS earlier
+      if (text) {
+        this.esp.intent_progress(text);
+      }
     });
 
     this.agent.on('transcript.done', (transcript: any) => {

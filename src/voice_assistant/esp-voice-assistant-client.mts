@@ -492,6 +492,10 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
     this.vaEvent(VA_EVENT.VOICE_ASSISTANT_INTENT_START, {}, 'INTENT_START');
   }
 
+  intent_progress(text: string): void {
+    this.vaEvent(VA_EVENT.VOICE_ASSISTANT_INTENT_PROGRESS, { text }, 'INTENT_PROGRESS');
+  }
+
   intent_end(text: string): void {
     this.vaEvent(VA_EVENT.VOICE_ASSISTANT_INTENT_END, { text }, 'INTENT_END');
   }

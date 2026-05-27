@@ -39,7 +39,7 @@ diverges or has gaps.
 
 ## 🔶 Gaps & Recommended Changes
 
-### 1. Missing `INTENT_PROGRESS` Event
+### 1. ~~Missing `INTENT_PROGRESS` Event~~ ✅ DONE
 
 **Documentation:** The `INTENT_PROGRESS` event (`VoiceAssistantEvent`) is sent during LLM-backed
 conversations that stream their response. It contains `chat_log_delta` and `tts_start_streaming` fields.
@@ -270,7 +270,7 @@ delivers. The `Pcm16kTo24k` resampler produces 20ms frames (480 samples at 24 kH
 
 | # | Gap | Impact | Effort | Priority |
 |---|---|---|---|---|
-| 1 | Missing INTENT_PROGRESS event | Latency / UX | Low | High |
+| 1 | ~~Missing INTENT_PROGRESS event~~ | ~~Latency / UX~~ | ✅ Done | ✅ Done |
 | 2 | ~~Missing WAKE_WORD_END event~~ | ~~LED state accuracy~~ | ✅ Done | ✅ Done |
 | 3 | ~~No ERROR event to device~~ | ~~Error feedback UX~~ | ✅ Done | ✅ Done |
 | 4 | Missing SubscribeStates | Compatibility | Low | Medium |
@@ -289,7 +289,7 @@ delivers. The `Pcm16kTo24k` resampler produces 20ms frames (480 samples at 24 kH
 
 1. ~~**Item 2** — Add `WAKE_WORD_END` event (trivial, immediate LED improvement)~~ ✅ Done
 2. ~~**Item 3** — Add ERROR event helper (low effort, visible UX improvement)~~ ✅ Done
-3. **Item 1** — Emit `INTENT_PROGRESS` during streaming (low effort, perceived speed boost)
+3. ~~**Item 1** — Emit `INTENT_PROGRESS` during streaming (low effort, perceived speed boost)~~ ✅ Done
 4. **Item 11** — Log version mismatch warning (trivial)
 5. **Item 4** — Add `SubscribeStatesRequest` (low effort, broader firmware compat)
 6. **Item 9** — Handle additional entity types (incremental)
