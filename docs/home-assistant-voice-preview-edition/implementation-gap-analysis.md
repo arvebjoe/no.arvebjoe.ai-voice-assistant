@@ -105,7 +105,7 @@ error(code: string, message: string): void {
 
 ---
 
-### 4. Missing `SubscribeStates` Message
+### 4. ~~Missing `SubscribeStates` Message~~ ✅ DONE
 
 **Documentation:** After `ListEntitiesDoneResponse`, the standard flow sends `SubscribeStates` to
 receive ongoing state updates for all entities.
@@ -273,7 +273,7 @@ delivers. The `Pcm16kTo24k` resampler produces 20ms frames (480 samples at 24 kH
 | 1 | ~~Missing INTENT_PROGRESS event~~ | ~~Latency / UX~~ | ✅ Done | ✅ Done |
 | 2 | ~~Missing WAKE_WORD_END event~~ | ~~LED state accuracy~~ | ✅ Done | ✅ Done |
 | 3 | ~~No ERROR event to device~~ | ~~Error feedback UX~~ | ✅ Done | ✅ Done |
-| 4 | Missing SubscribeStates | Compatibility | Low | Medium |
+| 4 | ~~Missing SubscribeStates~~ | ~~Compatibility~~ | ✅ Done | ✅ Done |
 | 5 | No timer support | Feature gap | Medium | Medium |
 | 6 | tts_response_finished | Already handled | — | — |
 | 7 | No configuration sync | Feature gap | Medium | Low |
@@ -291,7 +291,7 @@ delivers. The `Pcm16kTo24k` resampler produces 20ms frames (480 samples at 24 kH
 2. ~~**Item 3** — Add ERROR event helper (low effort, visible UX improvement)~~ ✅ Done
 3. ~~**Item 1** — Emit `INTENT_PROGRESS` during streaming (low effort, perceived speed boost)~~ ✅ Done
 4. ~~**Item 11** — Log version mismatch warning (trivial)~~ ✅ Done
-5. **Item 4** — Add `SubscribeStatesRequest` (low effort, broader firmware compat)
+5. ~~**Item 4** — Add `SubscribeStatesRequest` (low effort, broader firmware compat)~~ ✅ Done
 6. **Item 9** — Handle additional entity types (incremental)
 7. **Item 5** — Timer support (medium, big user-facing feature)
 8. **Item 7** — Configuration sync (medium)

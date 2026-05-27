@@ -347,8 +347,9 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
 
       this.send('SubscribeVoiceAssistantRequest', subscribe);
 
-      // Subscribe to media player state updates to track volume changes
-      this.subscribeToMediaPlayerState();
+      // Subscribe to all entity state updates (standard ESPHome flow)
+      // This delivers MediaPlayerStateResponse, SwitchStateResponse, NumberStateResponse, etc.
+      this.send('SubscribeStatesRequest', {});
 
       this.homey.setTimeout(() => {
         if (this.connected) {
