@@ -56,7 +56,7 @@ This aligns with the `agent.on('transcript.delta')` handler that already exists.
 
 ---
 
-### 2. Missing `WAKE_WORD_END` Event
+### 2. ~~Missing `WAKE_WORD_END` Event~~ ✅ DONE
 
 **Documentation:** After wake word detection, HA sends a `WAKE_WORD_END` event back to the PE
 before STT begins.
@@ -271,7 +271,7 @@ delivers. The `Pcm16kTo24k` resampler produces 20ms frames (480 samples at 24 kH
 | # | Gap | Impact | Effort | Priority |
 |---|---|---|---|---|
 | 1 | Missing INTENT_PROGRESS event | Latency / UX | Low | High |
-| 2 | Missing WAKE_WORD_END event | LED state accuracy | Trivial | High |
+| 2 | ~~Missing WAKE_WORD_END event~~ | ~~LED state accuracy~~ | ✅ Done | ✅ Done |
 | 3 | No ERROR event to device | Error feedback UX | Low | High |
 | 4 | Missing SubscribeStates | Compatibility | Low | Medium |
 | 5 | No timer support | Feature gap | Medium | Medium |
@@ -287,7 +287,7 @@ delivers. The `Pcm16kTo24k` resampler produces 20ms frames (480 samples at 24 kH
 
 ## Recommended Implementation Order
 
-1. **Item 2** — Add `WAKE_WORD_END` event (trivial, immediate LED improvement)
+1. ~~**Item 2** — Add `WAKE_WORD_END` event (trivial, immediate LED improvement)~~ ✅ Done
 2. **Item 3** — Add ERROR event helper (low effort, visible UX improvement)
 3. **Item 1** — Emit `INTENT_PROGRESS` during streaming (low effort, perceived speed boost)
 4. **Item 11** — Log version mismatch warning (trivial)
@@ -296,4 +296,7 @@ delivers. The `Pcm16kTo24k` resampler produces 20ms frames (480 samples at 24 kH
 7. **Item 5** — Timer support (medium, big user-facing feature)
 8. **Item 7** — Configuration sync (medium)
 9. **Item 10** — Encryption (high effort, only needed if users enable it on device)
+
+
+
 

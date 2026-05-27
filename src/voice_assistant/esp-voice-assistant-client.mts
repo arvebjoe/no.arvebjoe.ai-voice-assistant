@@ -472,6 +472,10 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
     this.streamId++;
   }
 
+  wake_word_end(): void {
+    this.vaEvent(VA_EVENT.VOICE_ASSISTANT_WAKE_WORD_END, {}, 'WAKE_WORD_END');
+  }
+
   stt_start(): void {
     this.vaEvent(VA_EVENT.VOICE_ASSISTANT_STT_START, {}, 'STT_START');
   }

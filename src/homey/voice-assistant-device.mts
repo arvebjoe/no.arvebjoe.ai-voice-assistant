@@ -156,6 +156,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
       this.setCapabilityValue('onoff', true);
       this.esp.run_start();
+      this.esp.wake_word_end();
       this.esp.stt_start();
       this.esp.stt_vad_start();
       this.esp.begin_mic_capture();
