@@ -197,7 +197,7 @@ here."
 
 ---
 
-### 9. No `ListEntitiesSensorResponse` Handling
+### 9. ~~No `ListEntitiesSensorResponse` Handling~~ ✅ DONE
 
 **Documentation:** The PE publishes sensor entities (LED brightness, button presses, etc.)
 through `ListEntities`.
@@ -278,7 +278,7 @@ delivers. The `Pcm16kTo24k` resampler produces 20ms frames (480 samples at 24 kH
 | 6 | tts_response_finished | Already handled | — | — |
 | 7 | No configuration sync | Feature gap | Medium | Low |
 | 8 | STT_VAD_END text | Already correct | — | — |
-| 9 | Missing entity type handlers | Feature gap | Low | Low |
+| 9 | ~~Missing entity type handlers~~ | ~~Feature gap~~ | ✅ Done | ✅ Done |
 | 10 | No encryption support | Security | High | Low |
 | 11 | ~~Version negotiation check~~ | ~~Robustness~~ | ✅ Done | ✅ Done |
 | 12 | Audio chunk sizes | Already handled | — | — |
@@ -292,7 +292,7 @@ delivers. The `Pcm16kTo24k` resampler produces 20ms frames (480 samples at 24 kH
 3. ~~**Item 1** — Emit `INTENT_PROGRESS` during streaming (low effort, perceived speed boost)~~ ✅ Done
 4. ~~**Item 11** — Log version mismatch warning (trivial)~~ ✅ Done
 5. ~~**Item 4** — Add `SubscribeStatesRequest` (low effort, broader firmware compat)~~ ✅ Done
-6. **Item 9** — Handle additional entity types (incremental)
+6. ~~**Item 9** — Handle additional entity types (incremental)~~ ✅ Done
 7. **Item 5** — Timer support (medium, big user-facing feature)
 8. **Item 7** — Configuration sync (medium)
 9. **Item 10** — Encryption (high effort, only needed if users enable it on device)

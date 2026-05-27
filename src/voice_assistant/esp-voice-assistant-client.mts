@@ -338,6 +338,27 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
       }
     }
 
+    else if (name === 'ListEntitiesSelectResponse') {
+      if (message.objectId && message.key) {
+        this.entityKeys[message.objectId] = message.key;
+        this.logger.info(`Registered select: ${message.objectId} with key ${message.key}`);
+      }
+    }
+
+    else if (name === 'ListEntitiesSensorResponse') {
+      if (message.objectId && message.key) {
+        this.entityKeys[message.objectId] = message.key;
+        this.logger.info(`Registered sensor: ${message.objectId} with key ${message.key}`);
+      }
+    }
+
+    else if (name === 'ListEntitiesBinarySensorResponse') {
+      if (message.objectId && message.key) {
+        this.entityKeys[message.objectId] = message.key;
+        this.logger.info(`Registered binary sensor: ${message.objectId} with key ${message.key}`);
+      }
+    }
+
     else if (name === 'ListEntitiesDoneResponse') {
 
       const subscribe = {
