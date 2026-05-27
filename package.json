@@ -12,26 +12,26 @@
     "test:coverage": "vitest run --coverage"
   },
   "devDependencies": {
-    "@tsconfig/node12": "^12.1.4",
-    "@tsconfig/node16": "^16.1.4",
+    "@tsconfig/node22": "^22.0.5",
     "@types/homey": "npm:homey-apps-sdk-v3-types@^0.3.12",
-    "@types/node": "^24.2.0",
+    "@types/node": "^24.12.4",
     "@types/varint": "^6.0.3",
     "@types/ws": "^8.18.1",
     "@vitest/ui": "^3.2.4",
     "eslint": "^7.32.0",
     "eslint-config-athom": "^3.1.5",
     "tiny-typed-emitter": "^2.1.0",
-    "typescript": "^5.9.2",
+    "typescript": "^5.9.3",
     "vitest": "^3.2.4"
   },
   "dependencies": {
-    "homey-api": "^3.13.3",
-    "homey-log": "^2.1.0",
+    "homey-api": "^3.19.0",
+    "homey-lib": "^2.50.2",
+    "homey-log": "^2.1.2",
     "libflacjs": "^5.4.0",
-    "protobufjs": "^7.5.3",
-    "uuid": "^11.1.0",
+    "protobufjs": "^7.6.1",
+    "uuid": "^11.1.1",
     "varint": "^6.0.0",
-    "ws": "^8.18.3"
+    "ws": "^8.21.0"
   }
 }
