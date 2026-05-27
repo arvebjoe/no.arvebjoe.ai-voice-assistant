@@ -278,6 +278,14 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
 
 
     if (name === 'HelloResponse' && !this.connected) {
+      // Validate server API version - VoiceAssistantAnnounceRequest requires API >= 1.5
+      const serverMajor = message?.apiVersionMajor ?? 0;
+      const serverMinor = message?.apiVersionMinor ?? 0;
+      if (serverMajor < 1 || (serverMajor === 1 && serverMinor < 5)) {
+        this.logger.warn(`ESPHome API version ${serverMajor}.${serverMinor} is below minimum required 1.5. Some features may not work.`);
+      } else {
+        this.logger.info(`ESPHome API version: ${serverMajor}.${serverMinor}`);
+      }
       this.send('ConnectRequest', { password: '' });
     }
 

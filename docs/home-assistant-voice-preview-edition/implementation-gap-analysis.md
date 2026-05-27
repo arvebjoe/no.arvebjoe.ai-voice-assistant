@@ -238,7 +238,7 @@ the noise protocol handshake before the Hello exchange.
 
 ---
 
-### 11. `HelloRequest` Version Negotiation
+### 11. ~~`HelloRequest` Version Negotiation~~ ✅ DONE
 
 **Documentation:** The Hello exchange negotiates API version compatibility. The current
 implementation sends `apiVersionMajor: 1, apiVersionMinor: 6`.
@@ -280,7 +280,7 @@ delivers. The `Pcm16kTo24k` resampler produces 20ms frames (480 samples at 24 kH
 | 8 | STT_VAD_END text | Already correct | — | — |
 | 9 | Missing entity type handlers | Feature gap | Low | Low |
 | 10 | No encryption support | Security | High | Low |
-| 11 | Version negotiation check | Robustness | Trivial | Low |
+| 11 | ~~Version negotiation check~~ | ~~Robustness~~ | ✅ Done | ✅ Done |
 | 12 | Audio chunk sizes | Already handled | — | — |
 
 ---
@@ -290,7 +290,7 @@ delivers. The `Pcm16kTo24k` resampler produces 20ms frames (480 samples at 24 kH
 1. ~~**Item 2** — Add `WAKE_WORD_END` event (trivial, immediate LED improvement)~~ ✅ Done
 2. ~~**Item 3** — Add ERROR event helper (low effort, visible UX improvement)~~ ✅ Done
 3. ~~**Item 1** — Emit `INTENT_PROGRESS` during streaming (low effort, perceived speed boost)~~ ✅ Done
-4. **Item 11** — Log version mismatch warning (trivial)
+4. ~~**Item 11** — Log version mismatch warning (trivial)~~ ✅ Done
 5. **Item 4** — Add `SubscribeStatesRequest` (low effort, broader firmware compat)
 6. **Item 9** — Handle additional entity types (incremental)
 7. **Item 5** — Timer support (medium, big user-facing feature)
