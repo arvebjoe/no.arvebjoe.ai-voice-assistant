@@ -256,7 +256,7 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
       }
 
       if (this.discoveryMode && !this.deviceType && frame.message) {
-        var rawMessage = JSON.stringify(frame.message).toLocaleLowerCase();
+        const rawMessage = JSON.stringify(frame.message).toLocaleLowerCase();
         if (rawMessage.includes('nabu casa') || rawMessage.includes('home assistant voice pe')) {
           this.deviceType = 'pe';
           this.discoveryMode = false;
@@ -268,7 +268,7 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
 
       this.lastMessageReceivedTime = Date.now();
       this.logRx(frame);
-      this.dispatch({ name: frame.name ?? '', message: frame.message });
+      await this.dispatch({name: frame.name ?? '', message: frame.message});
 
       this.rxBuf = this.rxBuf.subarray(frame.bytes);
     }
