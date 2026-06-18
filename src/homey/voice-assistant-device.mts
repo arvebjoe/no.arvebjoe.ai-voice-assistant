@@ -52,6 +52,8 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
   private isAgentHealthy: boolean = false;
   private isEspClientHealthy: boolean = false;
   private continueConversation: boolean = false;
+  private lastTurnEndedAt: number = 0;
+  private readonly CONTEXT_TTL_MS: number = 10_000;
 
   /**
    * onInit is called when the device is initialized.
@@ -143,6 +145,17 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
         this.esp.run_end();
         this.playUrl(url);
         return;
+      }
+
+      // If enough time has passed since the last turn ended, treat this as a
+      // brand-new conversation and clear stale context. Quick follow-ups keep
+      // their context: a continue-conversation reopen fires within ~1s, well
+      // under the TTL, so "nei, jeg mente stua" still resolves against the
+      // previous turn.
+      const idleMs = Date.now() - this.lastTurnEndedAt;
+      if (this.lastTurnEndedAt > 0 && idleMs > this.CONTEXT_TTL_MS) {
+        this.logger.info(`Idle ${Math.round(idleMs / 1000)}s since last turn — starting fresh conversation`);
+        this.agent.resetConversation();
       }
 
       // Initialize input buffer, only used for debugging.
@@ -270,6 +283,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
         this.esp.stt_end('');
         this.esp.run_end();
         this.setCapabilityValue('onoff', false);
+        this.lastTurnEndedAt = Date.now();
         return;
       }
 
@@ -334,6 +348,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
         this.esp.run_end();
         this.setCapabilityValue('onoff', false);
         this.logger.info(`Done playing announcements`);
+        this.lastTurnEndedAt = Date.now();
 
         if (this.continueConversation) {
           this.continueConversation = false;

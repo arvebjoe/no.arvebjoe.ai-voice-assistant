@@ -51,8 +51,9 @@ type RealtimeEvents = {
     "text.delta": (delta: string) => void;
     "text.done": (msg: any) => void;
 
-    "transcript.delta": (delta: string) => void;
-    "transcript.done": (transcript: string) => void;
+    "transcript.delta": (delta: string) => void;        // ASSISTANT spoken-output transcript
+    "transcript.done": (transcript: string) => void;     // USER input transcript (final)
+    "input_transcript.delta": (delta: string) => void;   // USER input transcript (streaming)
 
     "response.output_item.added": () => void;
     "response.progress": () => void;
@@ -143,6 +144,9 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
     // keep your existing maps, but store full records keyed by callId
     private pendingToolCalls: Map<string, PendingToolCall> = new Map();
 
+    // Ids of conversation items the server has, so we can clear context on a fresh session.
+    private conversationItemIds: Set<string> = new Set();
+
     // Reconnection logic properties
     private reconnectAttempts = 0;
     private maxReconnectAttempts = Infinity; // Keep trying indefinitely
@@ -157,7 +161,6 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
 
     // Output mode configuration
     private outputMode: "audio" | "text" = "audio"; // Default to audio output
-    private transcript_id: string | null = null;
 
     constructor(homey: any, toolManager: ToolManager, opts: RealtimeOptions) {
         super();
@@ -443,6 +446,25 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
         this.send({ type: "input_audio_buffer.clear" });
     }
 
+    /**
+     * Forget the conversation so far by deleting all known items server-side.
+     * Keeps the socket open (no reconnect latency). Use to start a fresh
+     * conversation, e.g. when a new wake-word session begins after an idle gap
+     * while still allowing context to persist across quick follow-ups.
+     */
+    resetConversation() {
+        if (!this.isConnected() || this.conversationItemIds.size === 0) {
+            return;
+        }
+        const count = this.conversationItemIds.size;
+        for (const id of this.conversationItemIds) {
+            this.send({ type: "conversation.item.delete", item_id: id });
+        }
+        this.conversationItemIds.clear();
+        this.pendingToolCalls.clear();
+        this.logger.info(`Cleared conversation context (${count} items)`);
+    }
+
 
 
 
@@ -535,6 +557,9 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
         // helpful general log
         this.logMessage(msg, "RECEIVED");
 
+        // Remember every conversation item id so resetConversation() can delete them.
+        if (msg.item?.id) this.conversationItemIds.add(msg.item.id);
+
         switch (t) {
             /* ---------- Session & rate-limits ---------- */
 
@@ -588,7 +613,11 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
                 break;
 
             case "conversation.item.input_audio_transcription.delta":
-                this.emit("transcript.delta", msg.delta);
+                // User's own speech being transcribed — keep this separate from the
+                // assistant's output transcript. Routing it through "transcript.delta"
+                // made the device treat the user's question (which ends in "?") as the
+                // assistant asking a follow-up, so it re-opened the mic after every query.
+                this.emit("input_transcript.delta", msg.delta);
                 break;
 
             case "conversation.item.input_audio_transcription.failed":
@@ -610,24 +639,21 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
 
             case "conversation.item.input_audio_transcription.completed": {
                 this.emit("transcript.done", msg.transcript);
-                this.transcript_id = msg.item_id;
-                this.sendTranscript(msg);
-                break;
-            }
-
-            case "conversation.item.done": {
-
-                var id = msg.item?.id;
-
-                if (id == this.transcript_id) {
-                    this.send({
-                        "type": "response.create",
-                        "response": {
-                            //"instructions": "Execute the request directly for light devices in the standard zone when <=10 targets and no security devices.",
-                        }
-                    });
-                    this.transcript_id = null;
+                // The user's utterance is already in the conversation as the committed
+                // audio item, with the transcript now attached. Since server VAD is
+                // configured with create_response:false, this is where we ask the model
+                // to reply. Do NOT re-create the item: `conversation.item.done` for the
+                // audio item fires before this event (so the old transcript_id gate never
+                // matched), and reusing item_id is rejected with item_create_duplicate_item_id.
+                //
+                // Skip when the STT heard nothing: an empty transcript (or the noise
+                // string the engine returns for silence) would otherwise make the model
+                // respond to nothing. Mirrors the empty-transcript guard in the device.
+                const transcript = (msg.transcript ?? "").trim();
+                if (transcript === "" || transcript.toLowerCase() === "undertekster av ai-media") {
+                    break;
                 }
+                this.createResponse();
                 break;
             }
 
@@ -860,27 +886,6 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
     private sessionToolsArray() {
         // Get tool definitions from the tool manager
         return this.toolManager.getToolDefinitions();
-    }
-
-
-    private sendTranscript(msg: any) {
-
-        this.send({
-            "type": "conversation.item.create",
-            "item": {
-                "id": msg.item_id,
-                "type": "message",
-                "role": "user",
-                "content": [
-                    {
-                        "type": "input_text",
-                        "text": msg.transcript
-                    }
-                ]
-            }
-        });
-
-
     }
 
 
