@@ -286,19 +286,26 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
       } else {
         this.logger.info(`ESPHome API version: ${serverMajor}.${serverMinor}`);
       }
+
+      // Send ConnectRequest for backward compatibility with pre-2026.1 ESPHome
+      // firmware, which authenticates the connection via this message (empty
+      // password = no auth). ESPHome 2026.1.0+ (PE firmware 26.x) removed
+      // password authentication: the server ignores this message and never
+      // replies with a ConnectResponse. We therefore must NOT gate the
+      // connection on ConnectResponse - proceed immediately. TCP ordering
+      // guarantees an old server processes ConnectRequest before the
+      // ListEntitiesRequest that follows, so this is safe on both versions.
       this.send('ConnectRequest', { password: '' });
+      this.onConnectionEstablished();
     }
 
+    // Only pre-2026.1 firmware sends this; the connection is already up by the
+    // time it arrives (see HelloResponse handling above). Just surface an auth
+    // failure if the device actually had a password configured.
     else if (name === 'ConnectResponse') {
-      this.connected = true;
-      this.emit('Healthy');
-
-      this.mediaPlayersCount = 0;
-      this.subscribeVoiceAssistantCount = 0;
-      this.voiceAssistantConfigurationCount = 0;
-      this.entityKeys = {};
-
-      this.send('ListEntitiesRequest', {});
+      if (message?.invalidPassword) {
+        this.logger.warn('ESPHome reported invalid password during connect');
+      }
     }
 
 
@@ -464,6 +471,28 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
     } else if (name === 'PingRequest') {
       this.send('PingResponse', {});
     }
+  }
+
+  /**
+   * Marks the connection as ready and kicks off entity discovery. Invoked right
+   * after HelloResponse (and the backward-compat ConnectRequest), without
+   * waiting for a ConnectResponse - ESPHome 2026.1.0+ no longer sends one.
+   * Idempotent so a late ConnectResponse from older firmware is harmless.
+   */
+  private onConnectionEstablished(): void {
+    if (this.connected) {
+      return;
+    }
+
+    this.connected = true;
+    this.emit('Healthy');
+
+    this.mediaPlayersCount = 0;
+    this.subscribeVoiceAssistantCount = 0;
+    this.voiceAssistantConfigurationCount = 0;
+    this.entityKeys = {};
+
+    this.send('ListEntitiesRequest', {});
   }
 
 

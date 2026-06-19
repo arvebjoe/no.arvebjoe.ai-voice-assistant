@@ -57,6 +57,14 @@ ESP32 device  <--TCP/protobuf-->  EspVoiceAssistantClient  <-->  VoiceAssistantD
 
 `settingsManager` is a singleton with a pub/sub for **global** app settings (OpenAI API key, language, voice, optional AI instructions). Devices subscribe via `settingsManager.onGlobals(...)` to rebuild the agent on the fly when settings change. Use this to read settings anywhere without a `this.homey` reference.
 
+## ESPHome firmware compatibility (the ESP client must support both)
+
+The ESPHome native API changed its connection handshake across firmware versions, and the client in `src/voice_assistant/esp-voice-assistant-client.mts` must stay compatible with **both** old and new satellites:
+
+- **ESPHome 2026.1.0+ (Voice PE firmware 26.x)** removed native-API **password authentication**. `ConnectRequest`/`ConnectResponse` (message ids 3/4) are deprecated and **no longer processed by the server** — the device never replies with a `ConnectResponse`.
+- The handshake therefore sends `ConnectRequest` (still required to authenticate **pre-2026.1** firmware) but **does not wait** for `ConnectResponse`; it proceeds to the connected state immediately in `onConnectionEstablished()`. TCP ordering guarantees an older server processes `ConnectRequest` before the `ListEntitiesRequest` that follows, so this works on both 25.x and 26.x. **Do not** re-introduce gating the connection on `ConnectResponse`.
+- **Not yet supported:** Noise encryption (`Noise_NNpsk0_25519_ChaChaPoly_SHA256`). This client is plaintext-only — if a satellite has an API encryption key set, the connection fails entirely and the Noise handshake plus a key settings field would need to be added.
+
 ## Testing
 
 Vitest with `globals: true`, node environment. Tests live in `tests/**/*.test.mts`. Mocks for Homey, DeviceManager, GeoHelper, WeatherHelper are in `tests/mocks/`. Some tests hit the real OpenAI API (`openai-connection-test`, `openai-agent-behavior`) and require a key — they are integration tests, not pure unit tests.
