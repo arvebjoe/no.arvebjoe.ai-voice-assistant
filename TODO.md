@@ -13,10 +13,17 @@ Legend: `[ ]` open · `[~]` partially done · `[x]` done (kept for context so we
 
 ## 1. ESPHome device client (`src/voice_assistant/`)
 
+- [ ] **BUG: old-firmware devices not discoverable when pairing** — adding a device works for a PE on
+  **v26.4** (it appears in the "add new device" dialog and pairs fine), but a PE on **v25.7 never
+  appears in the dialog at all**. Discovery is mDNS (`_esphomelib._tcp`) defined in
+  [`.homeycompose/discovery/esphome.json`](./.homeycompose/discovery/esphome.json); it requires a
+  `txt.platform` record matching `esp32` and builds the device id from `txt.mac`. Likely cause: v25.7
+  firmware doesn't advertise the `platform` TXT key (or uses a different value), so the condition
+  filters it out. Investigate the actual mDNS TXT records broadcast by a v25.7 device and relax/adjust
+  the condition for backward compatibility. _(Active bug)_
 - [ ] **Timer support** — let users say "set a 5 minute timer" and have the PE track it on the
   LED ring + alert. Add a `set_timer` tool, track timers locally, send `VoiceAssistantTimerEvent`
-  to the ESP on start/update/finish. _(gap analysis #5, Medium)_ — overlaps with the alarm/countdown
-  agent tool in §3.
+  to the ESP on start/update/finish. _(gap analysis #5, Medium)_
   **Full mechanism + Homey mapping researched:** [`docs/home-assistant-voice-preview-edition/timer-feature.md`](./docs/home-assistant-voice-preview-edition/timer-feature.md)
   (protocol, device behavior, feature-flag gating, integration points, custom-capability mapping).
 - [ ] **Configuration sync / wake-word selection** — parse `ListEntitiesSelectResponse`, store the
