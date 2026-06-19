@@ -71,4 +71,8 @@ Vitest with `globals: true`, node environment. Tests live in `tests/**/*.test.mt
 
 ## Reference docs
 
-`docs/home-assistant-voice-preview-edition/` contains protocol notes (ESPHome native API, Wyoming protocol, communication flow, hardware reference) useful when changing the ESP client. `OPENAI_API_IMPROVEMENTS.md` and `TODO.md` track planned work.
+`docs/home-assistant-voice-preview-edition/` contains protocol notes (ESPHome native API, Wyoming protocol, communication flow, hardware reference) useful when changing the ESP client.
+
+## Outstanding work
+
+**`TODO.md` (repo root) is the single source of truth for what's left to do** — check it at the start of each session. It indexes everything outstanding (ESP client, OpenAI Realtime, agent tools, firmware, local AI, Phase 2) with status markers. Two detailed reference docs feed into it: `OPENAI_API_IMPROVEMENTS.md` (OpenAI Realtime audit) and `docs/home-assistant-voice-preview-edition/implementation-gap-analysis.md` (ESPHome native-API coverage).
