@@ -17,7 +17,12 @@ npm run test:coverage  # vitest with coverage
 npx vitest run tests/weather-helper.test.mts   # run a single test file
 ```
 
-Running the app on a Homey requires the Homey CLI (not an npm script): `homey app run` (live-reload on a real Homey) or `homey app install`. `app.json` is **generated** from `.homeycompose/` by the CLI's build/compose step — edit files under `.homeycompose/` (app metadata, capabilities, flow cards, discovery), never `app.json` directly.
+Running the app on a Homey requires the Homey CLI (not an npm script):
+- `homey app run --remote` — **preferred for live debugging.** Runs the app on the real Homey and streams its log back to the terminal so you (and Claude) can follow `this.homey.log(...)` output live. Use this when investigating runtime behavior (e.g. pairing/discovery).
+- `homey app run` — live-reload on a real Homey.
+- `homey app install` — install the app onto the Homey.
+
+`app.json` is **generated** from `.homeycompose/` by the CLI's build/compose step — edit files under `.homeycompose/` (app metadata, capabilities, flow cards, discovery), never `app.json` directly. The compose step also runs as part of `homey app run`, so changes under `.homeycompose/` (including `discovery/esphome.json`) take effect on the next run.
 
 ## Module system gotcha
 

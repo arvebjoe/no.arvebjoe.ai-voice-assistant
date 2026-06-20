@@ -44,6 +44,13 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
   private subscribeVoiceAssistantCount: number;
   private voiceAssistantConfigurationCount: number;
   private discoveryMode: boolean;
+  // Whether to auto-reconnect on disconnect. Disabled for one-shot discovery
+  // probes (which have their own timeout) so a failed/finished probe can never
+  // spawn an orphaned reconnect loop that holds the device's API connection slot.
+  private readonly autoReconnect: boolean;
+  // Set once disconnect() is called: a terminal flag that permanently prevents
+  // any further reconnect scheduling, even from a late socket error/close event.
+  private closed: boolean = false;
   private deviceType: string | null;
   private logger = createLogger('ESP', true);
   private shouldAnnounceFinished: boolean = true;
@@ -65,6 +72,8 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
     this.host = host;
     this.apiPort = apiPort;
     this.discoveryMode = discoveryMode;
+    // Discovery probes are one-shot; never reconnect them.
+    this.autoReconnect = !discoveryMode;
 
     this.streamId = 1;
     this.rxBuf = Buffer.alloc(0);
@@ -89,6 +98,18 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
     if (this.reconnectTimer) {
       this.homey.clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
+    }
+
+    // A fresh start() means we are no longer in the terminal "closed" state
+    // (relevant for the auto-reconnect path on the real device).
+    this.closed = false;
+
+    // Detach any handlers from a previous socket so its late close/error events
+    // can't re-enter handleDisconnect() after we've moved on.
+    if (this.tcp) {
+      this.tcp.removeAllListeners();
+      try { this.tcp.destroy(); } catch { }
+      this.tcp = null;
     }
 
     this.logger.info(`Connecting to ${this.host}:${this.apiPort}`);
@@ -117,6 +138,15 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
   }
 
   scheduleReconnect(): void {
+
+    // Never reconnect a one-shot discovery probe, and never reconnect after the
+    // client has been intentionally closed. This prevents orphaned reconnect
+    // loops (e.g. a late error firing after disconnect() has already run) from
+    // holding the device's limited API connection slots — which made repeated
+    // pairing attempts fail with read ETIMEDOUT.
+    if (this.closed || !this.autoReconnect) {
+      return;
+    }
 
     if (this.reconnectTimer) {
       return;
@@ -179,6 +209,7 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
     this.lastMessageReceivedTime = 0;
 
     if (this.tcp) {
+      this.tcp.removeAllListeners();
       this.tcp.destroy();
       this.tcp = null;
     }
@@ -188,8 +219,11 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
   async disconnect(): Promise<boolean> {
     this.logger.info('Disconnecting ESP Voice Client');
 
-    // Mark as disconnected before anything else to prevent reconnect attempts
+    // Mark as disconnected and closed before anything else. `closed` is terminal:
+    // it guarantees no reconnect can be scheduled afterwards, even if a late
+    // socket error/close event calls handleDisconnect() after this point.
     this.connected = false;
+    this.closed = true;
 
     try {
       // Clean up timers
@@ -214,9 +248,12 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
 
 
 
-      // Close TCP socket - wrap in try-catch in case it's already closed
+      // Close TCP socket - wrap in try-catch in case it's already closed.
+      // Detach listeners first so its close/error events can't re-enter
+      // handleDisconnect() and schedule a reconnect after we're done.
       if (this.tcp) {
         try {
+          this.tcp.removeAllListeners();
           this.tcp.destroy();
         } catch (err) {
           this.logger.error('Error destroying TCP socket:', err);

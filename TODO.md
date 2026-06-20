@@ -13,14 +13,30 @@ Legend: `[ ]` open · `[~]` partially done · `[x]` done (kept for context so we
 
 ## 1. ESPHome device client (`src/voice_assistant/`)
 
-- [ ] **BUG: old-firmware devices not discoverable when pairing** — adding a device works for a PE on
-  **v26.4** (it appears in the "add new device" dialog and pairs fine), but a PE on **v25.7 never
-  appears in the dialog at all**. Discovery is mDNS (`_esphomelib._tcp`) defined in
-  [`.homeycompose/discovery/esphome.json`](./.homeycompose/discovery/esphome.json); it requires a
-  `txt.platform` record matching `esp32` and builds the device id from `txt.mac`. Likely cause: v25.7
-  firmware doesn't advertise the `platform` TXT key (or uses a different value), so the condition
-  filters it out. Investigate the actual mDNS TXT records broadcast by a v25.7 device and relax/adjust
-  the condition for backward compatibility. _(Active bug)_
+- [x] **BUG: devices not appearing in the pairing dialog on repeat attempts** — _fixed 2026-06-20._
+  Root cause was a **reconnect leak in the discovery capability probe**, not firmware version (the
+  original "v25.7 vs v26.4" framing was a red herring — both firmwares advertise `platform=ESP32` and
+  pass the `txt.platform` discovery condition fine; Homey's regex match is case-insensitive).
+  - **Real mechanism (confirmed live with ESP-client logging):** during pairing, the driver opens a
+    one-shot `EspVoiceAssistantClient` probe per discovered device. If a probe errored or finished,
+    `handleDisconnect()` would `emit('Unhealthy')` (→ driver `finish()` → `disconnect()`, which clears
+    the reconnect timer) and **then** call `scheduleReconnect()` — setting a *new* timer after cleanup
+    that nothing ever cleared. That orphaned timer fired `start()` → error → `scheduleReconnect()` →
+    an infinite zombie reconnect loop, one per failed probe. The zombies kept hammering the device and
+    occupying ESPHome's limited API connection slots, so the next dialog open failed with
+    `read ETIMEDOUT` and showed no devices. An app restart killed the zombies (sockets die with the
+    process) — which is why restarting "fixed" it and the first attempt always worked.
+  - **Fix** (`src/voice_assistant/esp-voice-assistant-client.mts`): (1) `autoReconnect` flag derived
+    from `discoveryMode` at construction — probes never reconnect; (2) terminal `closed` flag set in
+    `disconnect()` so no reconnect can be scheduled after close, even from a late socket event;
+    (3) `scheduleReconnect()` bails on `closed || !autoReconnect`; (4) strip socket listeners
+    (`removeAllListeners()`) before `destroy()` in `disconnect()`/`handleDisconnect()`/`start()` so a
+    dead socket's late close/error can't re-enter the reconnect path. Verified: repeated dialog opens
+    now probe cleanly (`Scheduling reconnection` count = 0), both devices reappear every time.
+  - **Related latent risk surfaced during investigation:** the newer PE firmware advertises
+    `api_encryption_supported` (`Noise_...`). Plaintext still works while no key is set, but if a user
+    sets an API encryption key, `api_encryption` appears and the plaintext-only client fails — see the
+    Noise item below.
 - [ ] **Timer support** — let users say "set a 5 minute timer" and have the PE track it on the
   LED ring + alert. Add a `set_timer` tool, track timers locally, send `VoiceAssistantTimerEvent`
   to the ESP on start/update/finish. _(gap analysis #5, Medium)_
