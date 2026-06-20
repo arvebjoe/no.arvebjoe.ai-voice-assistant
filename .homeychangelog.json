@@ -10,5 +10,8 @@
   },
   "1.1.4": {
     "en": "Agent should understand even better now, and be less critical to user input. Also other bugfixes."
+  },
+  "1.2.0": {
+    "en": "Adds weather answers and awareness of your local time and location. Faster, smoother conversations with better speech understanding. Supports the latest Voice PE firmware, and fixes device pairing so devices show up reliably when you add them."
   }
 }
