@@ -97,6 +97,9 @@ wifi:
   on_disconnect:
     - script.execute: control_leds
 
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
 network:
   enable_ipv6: true
 
@@ -712,20 +715,26 @@ light:
             // Higher step = faster rotation. 4 per 50ms = ~3.2s per full turn.
             rotation = rotation + 4;
       - addressable_lambda:
-          name: "Voice Rainbow CCW"
+          name: "Voice Rainbow Cold"
           update_interval: 50ms
           lambda: |-
-            // Same rainbow, rotating the other way (subtract instead of add the offset).
-            static uint8_t rotation = 0;
+            // Cold rotating ring (green -> cyan -> blue -> purple) for the reply.
+            // A triangle wave keeps the hue inside the cold band so there is no seam.
+            // Same direction (+) and speed (+4) as the listening rainbow and the waiting ring.
+            static uint16_t rotation = 0;
             if (initial_run) {
               rotation = 0;
             }
+            const float cold_min = 85.0f;   // green  (hue 85  = 120 deg)
+            const float cold_max = 205.0f;  // purple (hue 205 = 288 deg)
             for (uint8_t i = 0; i < 12; i++) {
-              uint8_t hue = (uint8_t)((i * 256 / 12) - rotation);
+              float pos = (float)((i * 256 / 12 + rotation) % 256) / 256.0f;  // 0..1 around the ring
+              float t = pos < 0.5f ? (pos * 2.0f) : (2.0f - pos * 2.0f);       // 0..1..0 (stay cold)
+              uint8_t hue = (uint8_t)(cold_min + t * (cold_max - cold_min));
               ESPHSVColor hsv(hue, 255, 255);
               it[i] = hsv.to_rgb();
             }
-            rotation = rotation + 4;
+            rotation = (rotation + 4) % 256;
       - addressable_lambda:
           name: "Thinking White"
           update_interval: 10ms
@@ -751,29 +760,26 @@ light:
               brightness_decreasing = !brightness_decreasing;
             }
       - addressable_lambda:
-          name: "Waiting Teal"
-          update_interval: 16ms
+          name: "Waiting Warm"
+          update_interval: 50ms
           lambda: |-
-            // All LEDs pulse teal (breathing) while waiting for the user to speak.
-            static uint8_t brightness_step = 0;
-            static bool brightness_decreasing = true;
-            static uint8_t brightness_step_number = 20;
+            // Warm rotating ring (red -> orange -> yellow) while waiting for the user to speak.
+            // A triangle wave keeps the hue inside the warm band so there is no red->yellow seam.
+            static uint16_t rotation = 0;
             if (initial_run) {
-              brightness_step = 0;
-              brightness_decreasing = true;
+              rotation = 0;
             }
-            Color teal_color(0, 128, 128);
+            const float warm_min = 0.0f;    // red   (hue 0)
+            const float warm_max = 45.0f;   // yellow (hue ~45 = 63 deg)
             for (uint8_t i = 0; i < 12; i++) {
-              it[i] = teal_color * uint8_t(255/brightness_step_number*(brightness_step_number-brightness_step));
+              float pos = (float)((i * 256 / 12 + rotation) % 256) / 256.0f;  // 0..1 around the ring
+              float t = pos < 0.5f ? (pos * 2.0f) : (2.0f - pos * 2.0f);       // 0..1..0 (stay warm)
+              uint8_t hue = (uint8_t)(warm_min + t * (warm_max - warm_min));
+              ESPHSVColor hsv(hue, 255, 255);
+              it[i] = hsv.to_rgb();
             }
-            if (brightness_decreasing) {
-              brightness_step++;
-            } else {
-              brightness_step--;
-            }
-            if (brightness_step == 0 || brightness_step == brightness_step_number) {
-              brightness_decreasing = !brightness_decreasing;
-            }
+            // Same direction (+) and speed (+4) as the listening and reply rainbows.
+            rotation = (rotation + 4) % 256;
       - addressable_lambda:
           name: "Muted or Silent"
           update_interval: 16ms
@@ -1245,7 +1251,7 @@ script:
       - light.turn_on:
           brightness: !lambda return max( id(led_ring).current_values.get_brightness() , 0.2f );
           id: voice_assistant_leds
-          effect: "Waiting Teal"
+          effect: "Waiting Warm"
 
   # Script executed when the voice assistant is listening to a command
   # Fast clockwise spin of the LED ring.
@@ -1272,7 +1278,7 @@ script:
       - light.turn_on:
           brightness: !lambda return max( id(led_ring).current_values.get_brightness() , 0.2f );
           id: voice_assistant_leds
-          effect: "Voice Rainbow CCW"
+          effect: "Voice Rainbow Cold"
 
   # Script executed when the voice assistant is in error
   # Fast Red Pulse
@@ -1779,7 +1785,7 @@ micro_wake_word:
     gain_factor: 4
   stop_after_detection: false
   models:
-    - model: https://github.com/arvebjoe/no.arvebjoe.ai-voice-assistant/raw/main/.esp_home/wake_words/hey_homey.json
+    - model: https://raw.githubusercontent.com/arvebjoe/no.arvebjoe.ai-voice-assistant/main/.esp_home/wake_words/hey_homey.json
       id: hey_homey
     - model: https://github.com/kahrendt/microWakeWord/releases/download/okay_nabu_20241226.3/okay_nabu.json
       id: okay_nabu
