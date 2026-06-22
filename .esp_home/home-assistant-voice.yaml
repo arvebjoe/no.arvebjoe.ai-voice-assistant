@@ -712,15 +712,14 @@ light:
               ESPHSVColor hsv(hue, 255, 255);
               it[i] = hsv.to_rgb();
             }
-            // Higher step = faster rotation. 4 per 50ms = ~3.2s per full turn.
-            rotation = rotation + 4;
+            // Decrement to rotate the "other way"; 6 per 50ms = ~2.1s per full turn.
+            rotation = rotation - 6;
       - addressable_lambda:
-          name: "Voice Rainbow Cold"
+          name: "Cold Rainbow"
           update_interval: 50ms
           lambda: |-
-            // Cold rotating ring (green -> cyan -> blue -> purple) for the reply.
+            // Cold rotating ring (green -> cyan -> blue -> purple).
             // A triangle wave keeps the hue inside the cold band so there is no seam.
-            // Same direction (+) and speed (+4) as the listening rainbow and the waiting ring.
             static uint16_t rotation = 0;
             if (initial_run) {
               rotation = 0;
@@ -734,7 +733,8 @@ light:
               ESPHSVColor hsv(hue, 255, 255);
               it[i] = hsv.to_rgb();
             }
-            rotation = (rotation + 4) % 256;
+            // Decrement to rotate the "other way"; 6 per frame matches the other rings.
+            rotation = (rotation + 256 - 6) % 256;
       - addressable_lambda:
           name: "Thinking White"
           update_interval: 10ms
@@ -760,10 +760,10 @@ light:
               brightness_decreasing = !brightness_decreasing;
             }
       - addressable_lambda:
-          name: "Waiting Warm"
+          name: "Warm Rainbow"
           update_interval: 50ms
           lambda: |-
-            // Warm rotating ring (red -> orange -> yellow) while waiting for the user to speak.
+            // Warm rotating ring (red -> orange -> yellow).
             // A triangle wave keeps the hue inside the warm band so there is no red->yellow seam.
             static uint16_t rotation = 0;
             if (initial_run) {
@@ -778,8 +778,8 @@ light:
               ESPHSVColor hsv(hue, 255, 255);
               it[i] = hsv.to_rgb();
             }
-            // Same direction (+) and speed (+4) as the listening and reply rainbows.
-            rotation = (rotation + 4) % 256;
+            // Decrement to rotate the "other way"; 6 per frame matches the other rings.
+            rotation = (rotation + 256 - 6) % 256;
       - addressable_lambda:
           name: "Muted or Silent"
           update_interval: 16ms
@@ -1251,7 +1251,7 @@ script:
       - light.turn_on:
           brightness: !lambda return max( id(led_ring).current_values.get_brightness() , 0.2f );
           id: voice_assistant_leds
-          effect: "Waiting Warm"
+          effect: "Warm Rainbow"
 
   # Script executed when the voice assistant is listening to a command
   # Fast clockwise spin of the LED ring.
@@ -1269,7 +1269,7 @@ script:
       - light.turn_on:
           brightness: !lambda return max( id(led_ring).current_values.get_brightness() , 0.2f );
           id: voice_assistant_leds
-          effect: "Thinking White"
+          effect: "Cold Rainbow"
 
   # Script executed when the voice assistant is thinking to a command
   # Fast anticlockwise spin of the LED ring.
@@ -1278,7 +1278,7 @@ script:
       - light.turn_on:
           brightness: !lambda return max( id(led_ring).current_values.get_brightness() , 0.2f );
           id: voice_assistant_leds
-          effect: "Voice Rainbow Cold"
+          effect: "Warm Rainbow"
 
   # Script executed when the voice assistant is in error
   # Fast Red Pulse

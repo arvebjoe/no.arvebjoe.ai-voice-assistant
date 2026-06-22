@@ -13,6 +13,14 @@ Legend: `[ ]` open · `[~]` partially done · `[x]` done (kept for context so we
 
 ## 1. ESPHome device client (`src/voice_assistant/`)
 
+- [ ] **BUG (revisit): follow-up turn produces no audio on the PE.** Multi-turn flow: user speaks →
+  Homey asks a follow-up question → user replies → **silence**. The TTS `.flac` for the second turn
+  **is** generated and served — the LAN links play fine on a PC — but nothing comes out of the PE
+  speaker. So FLAC encoding + HTTP serving (`WebServer`) work; the suspect is the announce/playback
+  request to the device on the second turn. Investigate the announce path in
+  `src/homey/voice-assistant-device.mts` / `src/voice_assistant/esp-voice-assistant-client.mts`:
+  is a second `VoiceAssistantAnnounceRequest` (media URL) sent after the first response, and does the
+  device need re-arming/`startConversation` between turns? Related to the follow-up feature in §3.
 - [x] **BUG: devices not appearing in the pairing dialog on repeat attempts** — _fixed 2026-06-20._
   Root cause was a **reconnect leak in the discovery capability probe**, not firmware version (the
   original "v25.7 vs v26.4" framing was a red herring — both firmwares advertise `platform=ESP32` and
@@ -99,10 +107,25 @@ Remaining items from the audit (1–7, 10, 12 are already done — see the refer
 
 ## 4. Custom ESPHome / PE firmware
 
-- [ ] **Homey look for the LED ring** — the PE isn't restricted to blue; do the Homey "rainbow"
-  ring spinning around. <img src="./.resources/pe_rainbow.png" height="200" alt="PE rainbow" />
-- [ ] **Custom wake word** — is there a tool to build one? Candidates: "Hey Homey", "Hei Homey"
-  (Norwegian), "My Homey", "Major domo".
+Customizations live in `.esp_home/` (downloaded stock config + edits). Re-application guide after any
+fresh config download: [`.esp_home/CUSTOMIZATIONS.md`](./.esp_home/CUSTOMIZATIONS.md).
+
+- [x] **Custom wake word "Hey Homey"** — done via [microwakeword.com](https://microwakeword.com/).
+  Gotcha that cost hours: it must be **microWakeWord** (runs on-device), NOT **openWakeWord**
+  (server-side) — they have near-identical names but an openWakeWord `.tflite` flashes fine then
+  crash-loops the PE (`Failed to get registration from op code SHAPE` → LoadProhibited). Model lives
+  in `.esp_home/wake_words/`, referenced from the config via a **`raw.githubusercontent.com`** URL
+  (the `github.com/.../raw/` redirect form fails ESPHome's model validation). See CUSTOMIZATIONS.md.
+- [~] **Homey look for the LED ring** — per-phase rotating rainbows implemented (waiting + listening =
+  full rainbow CW; thinking = cold rainbow CCW; replying = warm rainbow CCW). Effects + phase mapping
+  documented in CUSTOMIZATIONS.md. <img src="./.resources/pe_rainbow.png" height="200" alt="PE rainbow" />
+  - [ ] **BUG (revisit): thinking still shows the old white pulse on-device.** The config is correct
+    (`control_leds_voice_assistant_thinking_phase` → `effect: "Cold Rainbow"`, and the `"Thinking White"`
+    effect is orphaned — nothing references it), but the PE keeps showing the white breathing pulse
+    after stop-speaking. Strongly suspected **stale flash** (the new build isn't reaching the device —
+    same trap hit earlier in this work), but unconfirmed after re-flash attempts. Next: confirm the
+    running build (boot-log `compiled on` timestamp), verify the editor's config actually contains
+    `Cold Rainbow`, and watch device LOGS during the thinking phase.
 
 ---
 
