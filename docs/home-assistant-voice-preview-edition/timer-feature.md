@@ -308,6 +308,24 @@ authoritative countdown owner (per §4); the PE only renders what we send.
   warns, not blocks, if the flag is absent) — only the prompt guidance is gated, so a device that
   doesn't advertise timers won't be told it can set them.
 
+### Hardware-confirmed: CANCELLED must carry `is_active=false` (LED-ring freeze fix, 2026-06-23)
+
+Cancelling a **running** timer left the PE's LED ring **frozen** at the last tick value (the
+countdown stopped but the orange arc stayed lit). Root cause is the ESPHome `voice_assistant`
+component's ordering in `on_timer_event` for `CANCELLED`:
+
+1. it **updates** its `timers_` record with `is_active = <what we send>`, then
+2. fires the `on_timer_cancelled` trigger — the PE firmware runs `control_leds` here, which checks
+   `check_if_timers_active` over the *still-present* timer — then
+3. **erases** the timer and stops the 1 Hz tick.
+
+So if we send `is_active=true`, step 2 sees an active timer and repaints the **ticking** ring; step 3
+then erases the timer and kills the tick, and `control_leds` never runs again → the ring is stuck on
+that frame. Fix (`TimerManager.clearTimer`): set the timer **inactive before** sending CANCELLED, so
+the step-2 repaint sees no active timer and clears the ring. (Cancelling an already-FINISHED/ringing
+timer was unaffected — `onFinish` already sets `is_active=false`.) Guarded by a unit test asserting
+the CANCELLED event's `isActive` is `false`.
+
 ### Still to verify on hardware (carry-overs from §5/§8)
 
 - Ring auto-stop timeout after FINISHED, and that CANCELLED reliably silences it.

@@ -1,3 +1,5 @@
+import { EventEmitter } from 'events';
+import { TypedEmitter } from 'tiny-typed-emitter';
 import { createLogger } from '../helpers/logger.mjs';
 import type { EspVoiceAssistantClient } from './esp-voice-assistant-client.mjs';
 
@@ -43,6 +45,17 @@ type CancelResult =
   | { ok: false; code: string; message: string };
 
 /**
+ * Lifecycle events for Homey Flow triggers. Note `reissue()` (re-arming the
+ * device ring after a reconnect) deliberately does NOT emit — it's not a new
+ * logical timer, just display re-sync — so flows don't re-fire on every blip.
+ */
+interface TimerManagerEvents {
+  started: (timer: TimerSummary) => void;
+  finished: (timer: TimerSummary) => void;
+  cancelled: (timer: TimerSummary) => void;
+}
+
+/**
  * Owns the single authoritative countdown for a voice device. The PE renders
  * whatever we send (it ticks its own copy of the ring for display) but it never
  * rings on its own — only when WE send a FINISHED event. So this class holds a
@@ -52,7 +65,7 @@ type CancelResult =
  * while one is active returns TIMER_ALREADY_ACTIVE unless `replace` is set, so
  * the agent can ask the user what to do.
  */
-export class TimerManager {
+export class TimerManager extends (EventEmitter as new () => TypedEmitter<TimerManagerEvents>) {
   private homey: any;
   private esp: EspVoiceAssistantClient;
   private timer: ActiveTimer | null = null;
@@ -60,6 +73,7 @@ export class TimerManager {
   private logger = createLogger('TimerManager', false);
 
   constructor(homey: any, esp: EspVoiceAssistantClient) {
+    super();
     this.homey = homey;
     this.esp = esp;
   }
@@ -137,6 +151,7 @@ export class TimerManager {
 
     this.sendEvent(TIMER_EVENT.STARTED, t);
     this.logger.info(`Timer started: ${durationSeconds}s${name ? ` ("${name}")` : ''}`);
+    this.emit('started', this.summary(t));
     return { ok: true, timer: this.summary(t) };
   }
 
@@ -191,6 +206,7 @@ export class TimerManager {
     // device button. We keep the record so cancelTimer can silence the ring.
     this.sendEvent(TIMER_EVENT.FINISHED, t, 0);
     this.logger.info('Timer finished — sent FINISHED, device is ringing');
+    this.emit('finished', this.summary(t));
   }
 
   private clearTimer(sendCancelled: boolean): void {
@@ -203,7 +219,20 @@ export class TimerManager {
       t.timeout = null;
     }
     if (sendCancelled) {
+      const summary = this.summary(t);
+      // Mark inactive BEFORE sending CANCELLED. The ESPHome voice_assistant
+      // component updates its timer record (is_active = what we send) and fires
+      // on_timer_cancelled — which repaints the PE's LEDs — *before* it erases
+      // the timer. If we send is_active=true the LED script still sees an active
+      // timer and repaints the ticking ring; the timer is then erased and the
+      // 1 Hz tick stops, so that frozen ring is never cleared. Sending
+      // is_active=false makes that repaint see no active timer and clear the ring.
+      t.isActive = false;
       this.sendEvent(TIMER_EVENT.CANCELLED, t, this.secondsLeft(t));
+      this.timer = null;
+      // Emit after clearing so a 'cancelled' listener sees no active timer.
+      this.emit('cancelled', summary);
+      return;
     }
     this.timer = null;
   }

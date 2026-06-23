@@ -1,0 +1,43 @@
+{
+  "title": {
+    "en": "Start a timer"
+  },
+  "titleFormatted": {
+    "en": "Start a [[duration]] second timer named [[name]]"
+  },
+  "hint": {
+    "en": "Start a countdown timer on the device. Replaces any timer already running (only one timer can exist at a time)."
+  },
+  "args": [
+    {
+      "type": "device",
+      "name": "device",
+      "title": {
+        "en": "Device"
+      },
+      "filter": "driver_id=home-assistant-voice-preview-edition|xiaozhi-ai"
+    },
+    {
+      "type": "number",
+      "name": "duration",
+      "title": {
+        "en": "Duration (seconds)"
+      },
+      "min": 1,
+      "step": 1,
+      "placeholder": {
+        "en": "1200"
+      }
+    },
+    {
+      "type": "text",
+      "name": "name",
+      "title": {
+        "en": "Name"
+      },
+      "placeholder": {
+        "en": "pasta"
+      }
+    }
+  ]
+}

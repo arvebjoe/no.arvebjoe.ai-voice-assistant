@@ -1,0 +1,18 @@
+{
+  "title": {
+    "en": "A timer !{{is|is not}} running"
+  },
+  "hint": {
+    "en": "True while a timer or alarm is counting down. A finished (ringing) timer does not count as running."
+  },
+  "args": [
+    {
+      "type": "device",
+      "name": "device",
+      "title": {
+        "en": "Device"
+      },
+      "filter": "driver_id=home-assistant-voice-preview-edition|xiaozhi-ai"
+    }
+  ]
+}

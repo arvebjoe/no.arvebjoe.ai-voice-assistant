@@ -1,7 +1,7 @@
 import Homey from 'homey';
 import { WebServer } from '../helpers/webserver.mjs';
 import { EspVoiceAssistantClient } from '../voice_assistant/esp-voice-assistant-client.mjs';
-import { TimerManager } from '../voice_assistant/timer-manager.mjs';
+import { TimerManager, TimerSummary } from '../voice_assistant/timer-manager.mjs';
 import { DeviceManager } from '../helpers/device-manager.mjs';
 import { settingsManager } from '../settings/settings-manager.mjs';
 import { OpenAIRealtimeAgent, RealtimeOptions } from '../llm/openai-realtime-agent.mjs';
@@ -125,6 +125,12 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     // Owns the authoritative countdown for set_timer/cancel_timer; sends timer
     // events to the device (LED ring + finish chime).
     this.timerManager = new TimerManager(this.homey, this.esp);
+
+    // Surface timer lifecycle to Homey Flow as device triggers. State carries
+    // the device so the driver's run-listener can match the selected device.
+    this.timerManager.on('started', (t) => this.fireTimerTrigger('timer-started', t));
+    this.timerManager.on('finished', (t) => this.fireTimerTrigger('timer-finished', t));
+    this.timerManager.on('cancelled', (t) => this.fireTimerTrigger('timer-cancelled', t));
 
     // Initialize tool manager - This will define all the function the agent can call.
     this.toolManager = new ToolManager(this.homey, this.currentZone, this.deviceManager, this.geoHelper, this.weatherHelper, this.timerManager);
@@ -698,6 +704,43 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
   isMuted(): boolean {
     return this.isMutedValue;
+  }
+
+  // --- Timer Flow-card surface -------------------------------------------------
+
+  /**
+   * Fire a timer device-trigger card. These cards carry a `device` argument, so
+   * they are device-trigger cards and must be obtained via getDeviceTriggerCard()
+   * (getTriggerCard() throws for them). Passing `this` as the first arg lets Homey
+   * scope each flow to the device that fired it — no run-listener needed.
+   */
+  private fireTimerTrigger(cardId: string, t: TimerSummary): void {
+    try {
+      this.homey.flow.getDeviceTriggerCard(cardId)
+        .trigger(this, { name: t.name || '', duration: t.total_seconds })
+        .catch((err: any) => this.logger.error(`Error firing ${cardId} trigger:`, err));
+    } catch (err) {
+      this.logger.error(`Error firing ${cardId} trigger:`, err);
+    }
+  }
+
+  /** Condition card: true while a countdown is active (a ringing timer is not "running"). */
+  isTimerRunning(): boolean {
+    const active = this.timerManager?.getActiveTimer();
+    return !!active && !active.finished;
+  }
+
+  /** Action card: start a timer from a flow. Replaces any existing one (no user to ask). */
+  startTimerFromFlow(durationSeconds: number, name: string): void {
+    const result = this.timerManager.startTimer(durationSeconds, name || '', true);
+    if (!result.ok) {
+      throw new Error(result.message);
+    }
+  }
+
+  /** Action card: cancel the running/ringing timer. No-op (silent) if none. */
+  cancelTimerFromFlow(): void {
+    this.timerManager?.cancelTimer();
   }
 
 

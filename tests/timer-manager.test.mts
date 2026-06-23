@@ -77,12 +77,16 @@ describe('TimerManager', () => {
         expect(tm.getActiveTimer()?.name).toBe('second');
     });
 
-    it('cancels the running timer and sends CANCELLED', () => {
+    it('cancels the running timer and sends CANCELLED with isActive=false', () => {
         tm.startTimer(600);
         const res = tm.cancelTimer();
         expect(res.ok).toBe(true);
         expect(tm.hasActiveTimer()).toBe(false);
         expect(esp.sent.at(-1)?.eventType).toBe(TIMER_EVENT.CANCELLED);
+        // is_active MUST be false on CANCELLED: the PE repaints its LED ring
+        // while the (about-to-be-erased) timer is still in its list, so an
+        // is_active=true here leaves the ticking ring frozen on the device.
+        expect(esp.sent.at(-1)?.isActive).toBe(false);
     });
 
     it('returns NO_ACTIVE_TIMER when cancelling with no timer', () => {
@@ -138,5 +142,34 @@ describe('TimerManager', () => {
         esp.sent = [];
         tm.reissue();
         expect(esp.sent).toHaveLength(0);
+    });
+
+    it('emits started/finished/cancelled lifecycle events (for Flow triggers)', () => {
+        const started: any[] = [];
+        const finished: any[] = [];
+        const cancelled: any[] = [];
+        tm.on('started', (t) => started.push(t));
+        tm.on('finished', (t) => finished.push(t));
+        tm.on('cancelled', (t) => cancelled.push(t));
+
+        tm.startTimer(5, 'eggs');
+        expect(started).toHaveLength(1);
+        expect(started[0].name).toBe('eggs');
+
+        vi.advanceTimersByTime(5000);
+        expect(finished).toHaveLength(1);
+        expect(finished[0].seconds_left).toBe(0);
+
+        tm.cancelTimer();
+        expect(cancelled).toHaveLength(1);
+        expect(cancelled[0].name).toBe('eggs');
+    });
+
+    it('does not emit cancelled on dispose (teardown is silent)', () => {
+        const cancelled: any[] = [];
+        tm.on('cancelled', (t) => cancelled.push(t));
+        tm.startTimer(60);
+        tm.dispose();
+        expect(cancelled).toHaveLength(0);
     });
 });
