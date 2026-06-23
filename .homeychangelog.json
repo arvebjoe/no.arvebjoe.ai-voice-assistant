@@ -13,5 +13,8 @@
   },
   "1.2.0": {
     "en": "Adds weather answers and awareness of your local time and location. Faster, smoother conversations with better speech understanding. Supports the latest Voice PE firmware, and fixes device pairing so devices show up reliably when you add them."
+  },
+  "1.3.0": {
+    "en": "Set timers and alarms with your voice — just say \"set a 10 minute timer\" or \"wake me at 7\". The device counts down on its LED ring and chimes when time's up, and you can cancel it by voice. New Flow cards let you start, cancel, and react to timers in your automations, and the device tile now shows the active timer's name and time remaining."
   }
 }
