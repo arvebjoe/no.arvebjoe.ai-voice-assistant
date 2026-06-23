@@ -32,8 +32,45 @@ export default abstract class VoiceAssistantDriver extends Homey.Driver {
             try {
                 return device.isMuted();
             } catch (error) {
-                this.logger.error('Error checking mute status:', error);                
+                this.logger.error('Error checking mute status:', error);
                 return false;
+            }
+        });
+
+        // Timer triggers (timer-started/finished/cancelled) carry a device arg, so
+        // they are device-trigger cards: the device fires them via
+        // getDeviceTriggerCard().trigger(this, ...) and Homey scopes each flow to
+        // that device automatically. No run-listener registration is needed here.
+
+        const cardTimerRunning = this.homey.flow.getConditionCard('timer-is-running');
+        cardTimerRunning.registerRunListener(async (args) => {
+            const device = args.device as VoiceAssistantDevice;
+            try {
+                return device.isTimerRunning();
+            } catch (error) {
+                this.logger.error('Error checking timer status:', error);
+                return false;
+            }
+        });
+
+        const startTimerCard = this.homey.flow.getActionCard('start-timer');
+        startTimerCard.registerRunListener(async (args) => {
+            const device = args.device as VoiceAssistantDevice;
+            try {
+                device.startTimerFromFlow(Number(args.duration), args.name);
+            } catch (error) {
+                this.logger.error('Error starting timer:', error);
+                throw error;
+            }
+        });
+
+        const cancelTimerCard = this.homey.flow.getActionCard('cancel-timer');
+        cancelTimerCard.registerRunListener(async (args) => {
+            const device = args.device as VoiceAssistantDevice;
+            try {
+                device.cancelTimerFromFlow();
+            } catch (error) {
+                this.logger.error('Error cancelling timer:', error);
             }
         });
 

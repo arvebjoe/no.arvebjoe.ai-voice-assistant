@@ -5,6 +5,7 @@ import { WeatherHelper } from '../helpers/weather-helper.mjs';
 import { createLogger } from '../helpers/logger.mjs';
 import { GeoHelper } from "../helpers/geo-helper.mjs";
 import { settingsManager } from "../settings/settings-manager.mjs";
+import { TimerManager } from "../voice_assistant/timer-manager.mjs";
 
 type ToolHandler = (args: any) => Promise<any> | any;
 
@@ -28,17 +29,19 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
     private deviceManager: DeviceManager;
     private geoHelper: GeoHelper;
     private weatherHelper: WeatherHelper;
+    private timerManager?: TimerManager;
     private tools: Map<string, ToolDefinition> = new Map();
     private logger = createLogger('ToolManager', true);
     private standardZone: string;
 
-    constructor(homey: any, standardZone: string, deviceManager: DeviceManager, geoHelper: GeoHelper, weatherHelper: WeatherHelper) {
+    constructor(homey: any, standardZone: string, deviceManager: DeviceManager, geoHelper: GeoHelper, weatherHelper: WeatherHelper, timerManager?: TimerManager) {
         super();
         this.homey = homey;
         this.deviceManager = deviceManager;
         this.standardZone = standardZone;
         this.geoHelper = geoHelper;
         this.weatherHelper = weatherHelper;
+        this.timerManager = timerManager;
         this.registerDefaultTools();
     }
 
@@ -91,6 +94,9 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
         this.registerSystemTools();
         this.registerDeviceManagementTools();
         this.registerWeatherTools();
+        if (this.timerManager) {
+            this.registerTimerTools();
+        }
     }
 
     private registerSystemTools(): void {
@@ -145,6 +151,72 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
                         } 
                     };
                 }
+            }
+        });
+    }
+
+    private registerTimerTools(): void {
+
+        this.registerTool({
+            type: "function",
+            name: "set_timer",
+            description: "Start a countdown timer (or an alarm) on the voice device. The device shows a countdown on its LED ring and rings when the time is up. " +
+                "For an ALARM at a specific clock time (e.g. \"set an alarm for 11:00\"): first call get_local_time, compute how many seconds from now until that time (use the next occurrence if it has already passed today), then call this with that duration_seconds. " +
+                "Only ONE timer can exist at a time. If a timer is already running this returns code TIMER_ALREADY_ACTIVE with the existing timer; in that case ask the user whether to replace it, and only retry with replace=true if they agree.",
+            parameters: {
+                type: "object",
+                properties: {
+                    duration_seconds: { type: "integer", description: "Countdown length in seconds. For an alarm, the seconds from now until the target clock time.", minimum: 1 },
+                    name: { type: "string", description: "Optional short label for the timer (e.g. \"pasta\", \"alarm 11:00\")." },
+                    replace: { type: "boolean", description: "Set true to cancel any existing timer and start this one. Only use after the user confirms replacing the running timer.", default: false }
+                },
+                required: ["duration_seconds"],
+                additionalProperties: false
+            },
+            handler: async ({ duration_seconds, name, replace }) => {
+                this.logger.info('set_timer', 'TOOL', `duration_seconds=${duration_seconds}, name=${name}, replace=${replace}`);
+                const result = this.timerManager!.startTimer(duration_seconds, name || '', replace === true);
+                if (result.ok) {
+                    return { ok: true, data: result.timer };
+                }
+                return { ok: false, error: { code: result.code, message: result.message }, active_timer: result.active };
+            }
+        });
+
+        this.registerTool({
+            type: "function",
+            name: "cancel_timer",
+            description: "Cancel the currently running timer, or stop the timer/alarm that is ringing on the device. No parameters needed.",
+            parameters: {
+                type: "object",
+                properties: {},
+                required: [],
+                additionalProperties: false
+            },
+            handler: async () => {
+                this.logger.info('cancel_timer', 'TOOL', 'Executing cancel_timer...');
+                const result = this.timerManager!.cancelTimer();
+                if (result.ok) {
+                    return { ok: true, data: result.cancelled };
+                }
+                return { ok: false, error: { code: result.code, message: result.message } };
+            }
+        });
+
+        this.registerTool({
+            type: "function",
+            name: "get_timer",
+            description: "Get the currently running timer/alarm and how much time is left on it (in seconds). No parameters needed.",
+            parameters: {
+                type: "object",
+                properties: {},
+                required: [],
+                additionalProperties: false
+            },
+            handler: async () => {
+                this.logger.info('get_timer', 'TOOL', 'Executing get_timer...');
+                const active = this.timerManager!.getActiveTimer();
+                return { ok: true, data: { active_timer: active } };
             }
         });
     }

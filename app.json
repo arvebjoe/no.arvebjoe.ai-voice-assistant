@@ -67,6 +67,125 @@
   "homeyCommunityTopicId": 142532,
   "esm": true,
   "flow": {
+    "triggers": [
+      {
+        "title": {
+          "en": "Timer cancelled"
+        },
+        "hint": {
+          "en": "Fires when a running or ringing timer is cancelled (by voice, a flow, or being replaced)."
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "title": {
+              "en": "Device"
+            },
+            "filter": "driver_id=home-assistant-voice-preview-edition|xiaozhi-ai"
+          }
+        ],
+        "tokens": [
+          {
+            "name": "name",
+            "type": "string",
+            "title": {
+              "en": "Name"
+            },
+            "example": {
+              "en": "pasta"
+            }
+          },
+          {
+            "name": "duration",
+            "type": "number",
+            "title": {
+              "en": "Duration (seconds)"
+            },
+            "example": 1200
+          }
+        ],
+        "id": "timer-cancelled"
+      },
+      {
+        "title": {
+          "en": "Timer finished"
+        },
+        "hint": {
+          "en": "Fires when a timer or alarm reaches zero and the device starts ringing."
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "title": {
+              "en": "Device"
+            },
+            "filter": "driver_id=home-assistant-voice-preview-edition|xiaozhi-ai"
+          }
+        ],
+        "tokens": [
+          {
+            "name": "name",
+            "type": "string",
+            "title": {
+              "en": "Name"
+            },
+            "example": {
+              "en": "pasta"
+            }
+          },
+          {
+            "name": "duration",
+            "type": "number",
+            "title": {
+              "en": "Duration (seconds)"
+            },
+            "example": 1200
+          }
+        ],
+        "id": "timer-finished"
+      },
+      {
+        "title": {
+          "en": "Timer started"
+        },
+        "hint": {
+          "en": "Fires when a timer or alarm starts counting down on the device."
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "title": {
+              "en": "Device"
+            },
+            "filter": "driver_id=home-assistant-voice-preview-edition|xiaozhi-ai"
+          }
+        ],
+        "tokens": [
+          {
+            "name": "name",
+            "type": "string",
+            "title": {
+              "en": "Name"
+            },
+            "example": {
+              "en": "pasta"
+            }
+          },
+          {
+            "name": "duration",
+            "type": "number",
+            "title": {
+              "en": "Duration (seconds)"
+            },
+            "example": 1200
+          }
+        ],
+        "id": "timer-started"
+      }
+    ],
     "conditions": [
       {
         "title": {
@@ -83,6 +202,25 @@
           }
         ],
         "id": "is-muted"
+      },
+      {
+        "title": {
+          "en": "A timer !{{is|is not}} running"
+        },
+        "hint": {
+          "en": "True while a timer or alarm is counting down. A finished (ringing) timer does not count as running."
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "title": {
+              "en": "Device"
+            },
+            "filter": "driver_id=home-assistant-voice-preview-edition|xiaozhi-ai"
+          }
+        ],
+        "id": "timer-is-running"
       }
     ],
     "actions": [
@@ -161,6 +299,25 @@
       },
       {
         "title": {
+          "en": "Cancel the timer"
+        },
+        "hint": {
+          "en": "Cancel the running timer, or stop the timer/alarm currently ringing on the device."
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "title": {
+              "en": "Device"
+            },
+            "filter": "driver_id=home-assistant-voice-preview-edition|xiaozhi-ai"
+          }
+        ],
+        "id": "cancel-timer"
+      },
+      {
+        "title": {
           "en": "Playback audio from URL"
         },
         "titleFormatted": {
@@ -222,6 +379,50 @@
           }
         ],
         "id": "speak-text"
+      },
+      {
+        "title": {
+          "en": "Start a timer"
+        },
+        "titleFormatted": {
+          "en": "Start a [[duration]] second timer named [[name]]"
+        },
+        "hint": {
+          "en": "Start a countdown timer on the device. Replaces any timer already running (only one timer can exist at a time)."
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "title": {
+              "en": "Device"
+            },
+            "filter": "driver_id=home-assistant-voice-preview-edition|xiaozhi-ai"
+          },
+          {
+            "type": "number",
+            "name": "duration",
+            "title": {
+              "en": "Duration (seconds)"
+            },
+            "min": 1,
+            "step": 1,
+            "placeholder": {
+              "en": "1200"
+            }
+          },
+          {
+            "type": "text",
+            "name": "name",
+            "title": {
+              "en": "Name"
+            },
+            "placeholder": {
+              "en": "pasta"
+            }
+          }
+        ],
+        "id": "start-timer"
       }
     ]
   },
@@ -235,7 +436,10 @@
       "capabilities": [
         "volume_set",
         "onoff",
-        "volume_mute"
+        "volume_mute",
+        "timer_active",
+        "timer_remaining",
+        "timer_name"
       ],
       "platforms": [
         "local"
@@ -287,7 +491,10 @@
       "capabilities": [
         "volume_set",
         "onoff",
-        "volume_mute"
+        "volume_mute",
+        "timer_active",
+        "timer_remaining",
+        "timer_name"
       ],
       "platforms": [
         "local"
@@ -327,6 +534,41 @@
       "uiComponent": "button",
       "uiQuickAction": false,
       "icon": "/assets/listening.svg"
+    },
+    "timer_active": {
+      "type": "boolean",
+      "title": {
+        "en": "Timer active"
+      },
+      "getable": true,
+      "setable": false,
+      "uiComponent": "sensor",
+      "insights": false
+    },
+    "timer_name": {
+      "type": "string",
+      "title": {
+        "en": "Timer name"
+      },
+      "getable": true,
+      "setable": false,
+      "uiComponent": "sensor",
+      "insights": false
+    },
+    "timer_remaining": {
+      "type": "number",
+      "title": {
+        "en": "Timer remaining"
+      },
+      "units": {
+        "en": "s"
+      },
+      "decimals": 0,
+      "min": 0,
+      "getable": true,
+      "setable": false,
+      "uiComponent": "sensor",
+      "insights": false
     }
   },
   "discovery": {

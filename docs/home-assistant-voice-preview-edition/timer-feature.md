@@ -1,7 +1,9 @@
 # Voice PE Timers — ESPHome Native API + Homey Mapping
 
-Research/design notes for adding timer support (gap-analysis #5, `TODO.md` §1/§3).
-**Nothing is implemented yet** — this maps out the full mechanism so implementation is mechanical.
+Research/design notes for timer support (gap-analysis #5, `TODO.md` §1/§3).
+**Status: implemented (2026-06-23)** — voice-driven timers + alarms. The original
+research below maps out the full mechanism; see **§9 Implementation** for what was
+actually built and the decisions that differ from the research.
 
 ---
 
@@ -255,6 +257,109 @@ Fine as a *fallback* for long "wake me at 07:00" style requests; not the primary
 - Whether the PE renders the `name` field anywhere (LED/voice) or ignores it.
 - Behavior with multiple simultaneous timers on the ring.
 - Whether any UPDATED cadence is needed to keep the ring visually accurate over long timers (drift).
+
+---
+
+## 9. Implementation (2026-06-23)
+
+Voice-driven timers and alarms, exposed to the LLM as three tools. The app is the
+authoritative countdown owner (per §4); the PE only renders what we send.
+
+### What was built
+
+| File | Change |
+|---|---|
+| `src/voice_assistant/timer-manager.mts` | **New.** `TimerManager` — owns the single authoritative countdown: `startTimer/cancelTimer/getActiveTimer/reissue/dispose`. Holds a real `homey.setTimeout` that fires `onFinish` → sends **FINISHED**. Computes `seconds_left` from wall-clock `endAt` so it survives drift. Exposes `TIMER_EVENT` enum + `TimerSummary`. |
+| `src/voice_assistant/esp-voice-assistant-client.mts` | Added `sendTimerEvent(eventType, {...})` — sends `VoiceAssistantTimerEventResponse` (id 115). Parsed `voiceAssistantFeatureFlags` in the `DeviceInfoResponse` handler → `supportsTimers` getter (TIMERS = `1 << 3`). |
+| `src/llm/tool-manager.mts` | Optional 6th ctor arg `timerManager`; registers `set_timer` / `cancel_timer` / `get_timer` only when present (keeps the existing 5-arg test calls working). |
+| `src/homey/voice-assistant-device.mts` | Create `esp` → `TimerManager(homey, esp)` → `ToolManager(..., timerManager)` (reordered so the timer tools have the client). Re-issue STARTED on ESP `Healthy` (reconnect re-arm). `dispose()` on `onDeleted`. |
+| `src/llm/agent-instructions.{en,no}.mts` | New "TIMERS & ALARMS" section — countdown phrasing, alarm-via-`get_local_time` math, single-timer conflict flow, "don't read out seconds". |
+
+### Agent tools
+
+- **`set_timer(duration_seconds, name?, replace?)`** — start a countdown. Returns
+  `{ ok:false, error:{code:'TIMER_ALREADY_ACTIVE'}, active_timer }` when one is already
+  running and `replace !== true`.
+- **`cancel_timer()`** — cancels the running timer; also the way to **silence the ring**
+  after FINISHED (sends CANCELLED).
+- **`get_timer()`** — returns the active timer + `seconds_left`.
+
+### Key decisions (differ from / refine the research)
+
+- **Single timer only** (product decision, not a protocol limit — the PE supports many).
+  Enforced in `TimerManager`: a second `set_timer` returns `TIMER_ALREADY_ACTIVE` with the
+  current timer so the **agent asks the user** whether to replace; on "yes" it retries with
+  `replace=true` (which sends CANCELLED then STARTED). Instructions in both languages drive this.
+- **Alarms are just timers.** "Sett alarm til kl 11" → the LLM calls `get_local_time`,
+  computes seconds until the next 11:00, and calls `set_timer` with that duration. No separate
+  alarm tool, no `ManagerAlarms` (see §7). The app does **not** persist timers across a restart —
+  an in-flight timer is dropped on app restart, by design. Resurrecting a countdown (or firing a
+  long-elapsed one) after a restart would be more surprising than losing it, so this is intended
+  final behavior, not a deferred TODO.
+- **Ring after FINISHED is retained.** After FINISHED the timer record is kept (`finished=true`,
+  `is_active=false`) so `cancel_timer` can stop the looping chime. A new `set_timer` while ringing
+  still hits the single-timer conflict (use `replace=true` to take over).
+- **Reconnect re-arm.** `reissue()` re-sends STARTED with the current `seconds_left` on ESP
+  `Healthy`, because the device drops its timers on disconnect while our `setTimeout` keeps running.
+- **Instructions are gated on the feature flag.** `getDefaultInstructions(...)` takes a
+  `supportsTimers` arg; the timer tool list + "TIMERS & ALARMS" section is only added to the prompt
+  for devices that advertised the `TIMERS` flag. The ESP `capabilities` event (fired after the flag
+  is parsed, and on every reconnect) calls `agent.updateTimerSupport(esp.supportsTimers)`, which
+  rebuilds the instructions and pushes a live `session.update` (no reconnect). The `set_timer` /
+  `cancel_timer` / `get_timer` **tools** are still registered (and the executor `startTimer` only
+  warns, not blocks, if the flag is absent) — only the prompt guidance is gated, so a device that
+  doesn't advertise timers won't be told it can set them.
+
+### Tile capabilities (2026-06-23)
+
+The owned timer state (§7) is now surfaced on the Homey device tile via three read-only custom
+capabilities, on both drivers (`.homeycompose/capabilities/`):
+
+- `timer_active` (boolean) — true only while a countdown is *running* (a finished/ringing timer reads
+  false, mirroring the `timer-is-running` condition card).
+- `timer_remaining` (number, seconds) — ticks down at 1 Hz while active; 0 when idle/ringing.
+- `timer_name` (string) — the active timer's spoken name (`""` when none).
+
+`voice-assistant-device.mts` mirrors the `TimerManager` lifecycle onto these: `syncTimerCapabilities()`
+reads `getActiveTimer()` and pushes the values, driven by the `started`/`finished`/`cancelled` events
+plus a 1 Hz interval (`startTimerCapabilityTick`) that runs **only** while a timer counts down.
+`ensureTimerCapabilities()` in `onInit` `addCapability`s them onto devices paired before they existed
+and sets the idle defaults. No new timer logic — purely surfacing the existing authoritative state.
+
+### Hardware-confirmed: CANCELLED must carry `is_active=false` (LED-ring freeze fix, 2026-06-23)
+
+Cancelling a **running** timer left the PE's LED ring **frozen** at the last tick value (the
+countdown stopped but the orange arc stayed lit). Root cause is the ESPHome `voice_assistant`
+component's ordering in `on_timer_event` for `CANCELLED`:
+
+1. it **updates** its `timers_` record with `is_active = <what we send>`, then
+2. fires the `on_timer_cancelled` trigger — the PE firmware runs `control_leds` here, which checks
+   `check_if_timers_active` over the *still-present* timer — then
+3. **erases** the timer and stops the 1 Hz tick.
+
+So if we send `is_active=true`, step 2 sees an active timer and repaints the **ticking** ring; step 3
+then erases the timer and kills the tick, and `control_leds` never runs again → the ring is stuck on
+that frame. Fix (`TimerManager.clearTimer`): set the timer **inactive before** sending CANCELLED, so
+the step-2 repaint sees no active timer and clears the ring. (Cancelling an already-FINISHED/ringing
+timer was unaffected — `onFinish` already sets `is_active=false`.) Guarded by a unit test asserting
+the CANCELLED event's `isActive` is `false`.
+
+### LED-drift resync (2026-06-23)
+
+The PE ticks its own copy of `seconds_left` for the LED ring (§2), which can drift from our
+authoritative wall-clock countdown over a long (alarm-length) timer. `TimerManager.startResync()`
+arms a 30 s interval that re-issues `UPDATED` with the true `seconds_left` (`is_active=true`) to snap
+the device's counter back. It's a **quiet** send (no TX log, so a multi-hour alarm doesn't spam) and
+is skipped while `!esp.isConnected` — `reissue()` already re-arms authoritatively on reconnect. The
+interval is torn down in `clearTimer`/`onFinish`. HA treats this as optional; we do it because a
+short kitchen timer never drifts visibly but an alarm hours out can. Unit-tested (resync fires,
+stops on cancel, suppressed while disconnected).
+
+### Still to verify on hardware (carry-overs from §5/§8)
+
+- Ring auto-stop timeout after FINISHED, and that CANCELLED reliably silences it.
+- Whether the PE renders the `name` field.
+- That the 30 s `UPDATED` resync keeps a long countdown's ring visibly accurate (and is unobtrusive).
 
 ---
 

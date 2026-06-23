@@ -1,0 +1,38 @@
+{
+  "title": {
+    "en": "Timer finished"
+  },
+  "hint": {
+    "en": "Fires when a timer or alarm reaches zero and the device starts ringing."
+  },
+  "args": [
+    {
+      "type": "device",
+      "name": "device",
+      "title": {
+        "en": "Device"
+      },
+      "filter": "driver_id=home-assistant-voice-preview-edition|xiaozhi-ai"
+    }
+  ],
+  "tokens": [
+    {
+      "name": "name",
+      "type": "string",
+      "title": {
+        "en": "Name"
+      },
+      "example": {
+        "en": "pasta"
+      }
+    },
+    {
+      "name": "duration",
+      "type": "number",
+      "title": {
+        "en": "Duration (seconds)"
+      },
+      "example": 1200
+    }
+  ]
+}

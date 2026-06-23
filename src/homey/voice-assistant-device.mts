@@ -1,6 +1,7 @@
 import Homey from 'homey';
 import { WebServer } from '../helpers/webserver.mjs';
 import { EspVoiceAssistantClient } from '../voice_assistant/esp-voice-assistant-client.mjs';
+import { TimerManager, TimerSummary } from '../voice_assistant/timer-manager.mjs';
 import { DeviceManager } from '../helpers/device-manager.mjs';
 import { settingsManager } from '../settings/settings-manager.mjs';
 import { OpenAIRealtimeAgent, RealtimeOptions } from '../llm/openai-realtime-agent.mjs';
@@ -25,6 +26,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
   private geoHelper!: GeoHelper;
   private weatherHelper!: WeatherHelper;
   private toolManager!: ToolManager;
+  private timerManager!: TimerManager;
   private agent!: OpenAIRealtimeAgent;
   private segmenter!: PcmSegmenter;
   private reSampler!: Pcm16kTo24k;
@@ -55,6 +57,10 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
   private lastTurnEndedAt: number = 0;
   private readonly CONTEXT_TTL_MS: number = 10_000;
 
+  // 1 Hz interval that pushes the active countdown onto the tile capabilities;
+  // only runs while a timer is counting down (cleared on finish/cancel).
+  private timerTickInterval: NodeJS.Timeout | null = null;
+
   /**
    * onInit is called when the device is initialized.
    */
@@ -64,6 +70,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     this.setUnavailable();
     this.setCapabilityValue('onoff', false);
     this.RegisterCapabilities();
+    await this.ensureTimerCapabilities();
 
     const store = this.getStore() as DeviceStore;
     const settings = this.getSettings();
@@ -107,20 +114,41 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       languageCode: settingsManager.getGlobal('selected_language_code') || 'en',
       languageName: settingsManager.getGlobal('selected_language_name') || 'English',
       additionalInstructions: settingsManager.getGlobal('ai_instructions') || '',
-      deviceZone: this.currentZone
+      deviceZone: this.currentZone,
+      // Start false; flipped on once the ESP handshake reports the TIMERS flag
+      // (see the 'capabilities' handler below), which rebuilds the instructions.
+      supportsTimers: false
     };
 
-    // Initialize tool manager - This will define all the function the agent can call.
-    this.toolManager = new ToolManager(this.homey, this.currentZone, this.deviceManager, this.geoHelper, this.weatherHelper);
-
-    // Initialize open ai agent - Will use the tool manager for function calls
-    this.agent = new OpenAIRealtimeAgent(this.homey, this.toolManager, this.agentOptions);
-
-    // Initialize ESP voice client - Uses stored address and port
+    // Initialize ESP voice client - Uses stored address and port.
+    // Created before the tool manager because the timer tools drive it.
     this.esp = new EspVoiceAssistantClient(this.homey, {
       host: store.address,
       apiPort: store.port
     });
+
+    // Owns the authoritative countdown for set_timer/cancel_timer; sends timer
+    // events to the device (LED ring + finish chime).
+    this.timerManager = new TimerManager(this.homey, this.esp);
+
+    // Surface timer lifecycle to Homey Flow as device triggers. State carries
+    // the device so the driver's run-listener can match the selected device.
+    this.timerManager.on('started', (t) => this.fireTimerTrigger('timer-started', t));
+    this.timerManager.on('finished', (t) => this.fireTimerTrigger('timer-finished', t));
+    this.timerManager.on('cancelled', (t) => this.fireTimerTrigger('timer-cancelled', t));
+
+    // Mirror the same lifecycle onto the device tile (timer_active/remaining/name).
+    // started → push state + start the 1 Hz tick; finished/cancelled → stop the
+    // tick and push the cleared/idle state.
+    this.timerManager.on('started', () => { this.syncTimerCapabilities(); this.startTimerCapabilityTick(); });
+    this.timerManager.on('finished', () => { this.stopTimerCapabilityTick(); this.syncTimerCapabilities(); });
+    this.timerManager.on('cancelled', () => { this.stopTimerCapabilityTick(); this.syncTimerCapabilities(); });
+
+    // Initialize tool manager - This will define all the function the agent can call.
+    this.toolManager = new ToolManager(this.homey, this.currentZone, this.deviceManager, this.geoHelper, this.weatherHelper, this.timerManager);
+
+    // Initialize open ai agent - Will use the tool manager for function calls
+    this.agent = new OpenAIRealtimeAgent(this.homey, this.toolManager, this.agentOptions);
 
     // Initialize PCM segmenter for audio processing - This will split long audio streams into manageable chunks -> Makes response quicker
     this.segmenter = new PcmSegmenter();
@@ -455,6 +483,23 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       this.updateAvailable();
     });
 
+    // Once the ESP handshake completes we know the device's feature flags
+    // (parsed from DeviceInfoResponse). Tell the agent whether this device
+    // supports timers so the timer/alarm section is only added to the prompt
+    // for capable devices. Fires again on reconnect — updateTimerSupport is a
+    // no-op when the value is unchanged.
+    this.esp.on('capabilities', () => {
+      this.agentOptions.supportsTimers = this.esp.supportsTimers;
+      this.agent.updateTimerSupport(this.esp.supportsTimers);
+      // Re-arm the LED ring for any timer still counting down on our side. This
+      // must happen here, not on 'Healthy': 'Healthy' fires right after TCP
+      // connect, before the device has subscribed to the voice assistant, so a
+      // timer event sent then is dropped (the ring never shows). By 'capabilities'
+      // the handshake is complete and the device renders the ring. No-op on the
+      // initial connect (no timer running yet).
+      this.timerManager?.reissue();
+    });
+
 
     // Actually start the ESP and agent.
     await this.esp.start();
@@ -673,6 +718,89 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     return this.isMutedValue;
   }
 
+  // --- Timer Flow-card surface -------------------------------------------------
+
+  /**
+   * Fire a timer device-trigger card. These cards carry a `device` argument, so
+   * they are device-trigger cards and must be obtained via getDeviceTriggerCard()
+   * (getTriggerCard() throws for them). Passing `this` as the first arg lets Homey
+   * scope each flow to the device that fired it — no run-listener needed.
+   */
+  private fireTimerTrigger(cardId: string, t: TimerSummary): void {
+    try {
+      this.homey.flow.getDeviceTriggerCard(cardId)
+        .trigger(this, { name: t.name || '', duration: t.total_seconds })
+        .catch((err: any) => this.logger.error(`Error firing ${cardId} trigger:`, err));
+    } catch (err) {
+      this.logger.error(`Error firing ${cardId} trigger:`, err);
+    }
+  }
+
+  /** Condition card: true while a countdown is active (a ringing timer is not "running"). */
+  isTimerRunning(): boolean {
+    const active = this.timerManager?.getActiveTimer();
+    return !!active && !active.finished;
+  }
+
+  /** Action card: start a timer from a flow. Replaces any existing one (no user to ask). */
+  startTimerFromFlow(durationSeconds: number, name: string): void {
+    const result = this.timerManager.startTimer(durationSeconds, name || '', true);
+    if (!result.ok) {
+      throw new Error(result.message);
+    }
+  }
+
+  /** Action card: cancel the running/ringing timer. No-op (silent) if none. */
+  cancelTimerFromFlow(): void {
+    this.timerManager?.cancelTimer();
+  }
+
+  // --- Timer tile capabilities -------------------------------------------------
+
+  /**
+   * Add the timer capabilities to devices that were paired before they existed
+   * (new pairings get them from the driver manifest) and set the idle defaults.
+   */
+  private async ensureTimerCapabilities(): Promise<void> {
+    for (const cap of ['timer_active', 'timer_remaining', 'timer_name']) {
+      if (!this.hasCapability(cap)) {
+        await this.addCapability(cap).catch((err: any) =>
+          this.logger.error(`Failed to add capability ${cap}:`, err));
+      }
+    }
+    this.syncTimerCapabilities();
+  }
+
+  /** Push the active timer's state onto the tile (idle/cleared when there is none). */
+  private syncTimerCapabilities(): void {
+    const t = this.timerManager?.getActiveTimer();
+    // A ringing (finished) timer is not "running" — mirrors the timer-is-running condition.
+    const running = !!t && !t.finished;
+    this.setTimerCapability('timer_active', running);
+    this.setTimerCapability('timer_remaining', running ? t!.seconds_left : 0);
+    this.setTimerCapability('timer_name', t ? (t.name || '') : '');
+  }
+
+  private setTimerCapability(cap: string, value: boolean | number | string): void {
+    if (!this.hasCapability(cap)) {
+      return;
+    }
+    this.setCapabilityValue(cap, value).catch((err: any) =>
+      this.logger.error(`Failed to set ${cap}:`, err));
+  }
+
+  private startTimerCapabilityTick(): void {
+    this.stopTimerCapabilityTick();
+    this.timerTickInterval = this.homey.setInterval(() => this.syncTimerCapabilities(), 1000);
+  }
+
+  private stopTimerCapabilityTick(): void {
+    if (this.timerTickInterval) {
+      this.homey.clearInterval(this.timerTickInterval);
+      this.timerTickInterval = null;
+    }
+  }
+
 
   private async saveInputBuffer() {
 
@@ -832,9 +960,18 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     //Unregister with device manager
     this.deviceManager.unRegisterDevice(this.macAddress);
 
+    // Stop any running countdown so its setTimeout can't fire after teardown.
+    try {
+      this.stopTimerCapabilityTick();
+      this.timerManager?.dispose();
+    } catch (err) {
+      this.logger.error('Failed to dispose timer manager:', err);
+    }
+
     // Cleanup other resources
     this.segmenter = null!;
     this.toolManager = null!;
+    this.timerManager = null!;
   }
 
 }
