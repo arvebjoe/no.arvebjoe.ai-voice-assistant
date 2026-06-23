@@ -65,7 +65,7 @@ Legend: `[ ]` open · `[~]` partially done · `[x]` done (kept for context so we
       (like the wake word); it does not dismiss the timer, so there's nothing to receive/clear.
   - [x] **Flow cards (done, hardware-verified 2026-06-23):** triggers (started/finished/cancelled),
     condition (timer-is-running), actions (start/cancel) — see §7.
-  - [x] **Tile capabilities (done 2026-06-23, pending hardware verify):** read-only
+  - [x] **Tile capabilities (done, hardware-verified 2026-06-23):** read-only
     `timer_active` / `timer_remaining` (seconds, 1 Hz tick) / `timer_name` on the device card,
     on both drivers; the device mirrors the TimerManager lifecycle onto them — see §7.
   - [x] **LED-drift resync (done 2026-06-23, pending hardware verify):** `TimerManager` re-issues a
