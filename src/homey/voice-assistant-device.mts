@@ -57,6 +57,10 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
   private lastTurnEndedAt: number = 0;
   private readonly CONTEXT_TTL_MS: number = 10_000;
 
+  // 1 Hz interval that pushes the active countdown onto the tile capabilities;
+  // only runs while a timer is counting down (cleared on finish/cancel).
+  private timerTickInterval: NodeJS.Timeout | null = null;
+
   /**
    * onInit is called when the device is initialized.
    */
@@ -66,6 +70,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     this.setUnavailable();
     this.setCapabilityValue('onoff', false);
     this.RegisterCapabilities();
+    await this.ensureTimerCapabilities();
 
     const store = this.getStore() as DeviceStore;
     const settings = this.getSettings();
@@ -131,6 +136,13 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     this.timerManager.on('started', (t) => this.fireTimerTrigger('timer-started', t));
     this.timerManager.on('finished', (t) => this.fireTimerTrigger('timer-finished', t));
     this.timerManager.on('cancelled', (t) => this.fireTimerTrigger('timer-cancelled', t));
+
+    // Mirror the same lifecycle onto the device tile (timer_active/remaining/name).
+    // started → push state + start the 1 Hz tick; finished/cancelled → stop the
+    // tick and push the cleared/idle state.
+    this.timerManager.on('started', () => { this.syncTimerCapabilities(); this.startTimerCapabilityTick(); });
+    this.timerManager.on('finished', () => { this.stopTimerCapabilityTick(); this.syncTimerCapabilities(); });
+    this.timerManager.on('cancelled', () => { this.stopTimerCapabilityTick(); this.syncTimerCapabilities(); });
 
     // Initialize tool manager - This will define all the function the agent can call.
     this.toolManager = new ToolManager(this.homey, this.currentZone, this.deviceManager, this.geoHelper, this.weatherHelper, this.timerManager);
@@ -743,6 +755,52 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     this.timerManager?.cancelTimer();
   }
 
+  // --- Timer tile capabilities -------------------------------------------------
+
+  /**
+   * Add the timer capabilities to devices that were paired before they existed
+   * (new pairings get them from the driver manifest) and set the idle defaults.
+   */
+  private async ensureTimerCapabilities(): Promise<void> {
+    for (const cap of ['timer_active', 'timer_remaining', 'timer_name']) {
+      if (!this.hasCapability(cap)) {
+        await this.addCapability(cap).catch((err: any) =>
+          this.logger.error(`Failed to add capability ${cap}:`, err));
+      }
+    }
+    this.syncTimerCapabilities();
+  }
+
+  /** Push the active timer's state onto the tile (idle/cleared when there is none). */
+  private syncTimerCapabilities(): void {
+    const t = this.timerManager?.getActiveTimer();
+    // A ringing (finished) timer is not "running" — mirrors the timer-is-running condition.
+    const running = !!t && !t.finished;
+    this.setTimerCapability('timer_active', running);
+    this.setTimerCapability('timer_remaining', running ? t!.seconds_left : 0);
+    this.setTimerCapability('timer_name', t ? (t.name || '') : '');
+  }
+
+  private setTimerCapability(cap: string, value: boolean | number | string): void {
+    if (!this.hasCapability(cap)) {
+      return;
+    }
+    this.setCapabilityValue(cap, value).catch((err: any) =>
+      this.logger.error(`Failed to set ${cap}:`, err));
+  }
+
+  private startTimerCapabilityTick(): void {
+    this.stopTimerCapabilityTick();
+    this.timerTickInterval = this.homey.setInterval(() => this.syncTimerCapabilities(), 1000);
+  }
+
+  private stopTimerCapabilityTick(): void {
+    if (this.timerTickInterval) {
+      this.homey.clearInterval(this.timerTickInterval);
+      this.timerTickInterval = null;
+    }
+  }
+
 
   private async saveInputBuffer() {
 
@@ -904,6 +962,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
     // Stop any running countdown so its setTimeout can't fire after teardown.
     try {
+      this.stopTimerCapabilityTick();
       this.timerManager?.dispose();
     } catch (err) {
       this.logger.error('Failed to dispose timer manager:', err);

@@ -1,0 +1,8 @@
+{
+  "type": "boolean",
+  "title": { "en": "Timer active" },
+  "getable": true,
+  "setable": false,
+  "uiComponent": "sensor",
+  "insights": false
+}

@@ -6,8 +6,11 @@
   "discovery": "esphome",
   "capabilities": [
     "volume_set",
-    "onoff",    
-    "volume_mute"
+    "onoff",
+    "volume_mute",
+    "timer_active",
+    "timer_remaining",
+    "timer_name"
   ],
   "platforms": [
     "local"

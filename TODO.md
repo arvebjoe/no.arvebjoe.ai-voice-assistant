@@ -63,10 +63,14 @@ Legend: `[ ]` open · `[~]` partially done · `[x]` done (kept for context so we
       reconnect (`reissue` skips finished timers). Intended — a stale alarm shouldn't fire late.
     - **No device→host timer events to handle:** pressing the device button just triggers the mic
       (like the wake word); it does not dismiss the timer, so there's nothing to receive/clear.
-  - [ ] **Not done (carry-over):** Homey-tile surfacing (custom capabilities + Flow cards, §7) —
-    voice-only for now. Timers don't persist across an app restart (in-memory `setTimeout`).
-    Possible polish: periodic `UPDATED` resync to correct LED drift on long countdowns
-    _(gap analysis #5)_.
+  - [x] **Flow cards (done, hardware-verified 2026-06-23):** triggers (started/finished/cancelled),
+    condition (timer-is-running), actions (start/cancel) — see §7.
+  - [x] **Tile capabilities (done 2026-06-23, pending hardware verify):** read-only
+    `timer_active` / `timer_remaining` (seconds, 1 Hz tick) / `timer_name` on the device card,
+    on both drivers; the device mirrors the TimerManager lifecycle onto them — see §7.
+  - [ ] **Possible polish (carry-over):** periodic `UPDATED` resync to correct LED drift on long
+    countdowns _(gap analysis #5)_. (Timers are intentionally **not** persisted across an app
+    restart — an in-flight timer is dropped, which is the expected, least-surprising behavior.)
 - [ ] **Configuration sync / wake-word selection** — parse `ListEntitiesSelectResponse`, store the
   wake-word + pipeline select keys, optionally expose wake-word choice in Homey device settings.
   _(gap analysis #7, Medium)_

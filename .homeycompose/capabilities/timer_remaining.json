@@ -1,0 +1,11 @@
+{
+  "type": "number",
+  "title": { "en": "Timer remaining" },
+  "units": { "en": "s" },
+  "decimals": 0,
+  "min": 0,
+  "getable": true,
+  "setable": false,
+  "uiComponent": "sensor",
+  "insights": false
+}

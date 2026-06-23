@@ -292,8 +292,10 @@ authoritative countdown owner (per §4); the PE only renders what we send.
   `replace=true` (which sends CANCELLED then STARTED). Instructions in both languages drive this.
 - **Alarms are just timers.** "Sett alarm til kl 11" → the LLM calls `get_local_time`,
   computes seconds until the next 11:00, and calls `set_timer` with that duration. No separate
-  alarm tool, no `ManagerAlarms` (see §7). The app does **not** persist across restarts — an
-  in-flight timer is lost on app restart (acceptable for now; matches the transient-timer model).
+  alarm tool, no `ManagerAlarms` (see §7). The app does **not** persist timers across a restart —
+  an in-flight timer is dropped on app restart, by design. Resurrecting a countdown (or firing a
+  long-elapsed one) after a restart would be more surprising than losing it, so this is intended
+  final behavior, not a deferred TODO.
 - **Ring after FINISHED is retained.** After FINISHED the timer record is kept (`finished=true`,
   `is_active=false`) so `cancel_timer` can stop the looping chime. A new `set_timer` while ringing
   still hits the single-timer conflict (use `replace=true` to take over).
@@ -307,6 +309,22 @@ authoritative countdown owner (per §4); the PE only renders what we send.
   `cancel_timer` / `get_timer` **tools** are still registered (and the executor `startTimer` only
   warns, not blocks, if the flag is absent) — only the prompt guidance is gated, so a device that
   doesn't advertise timers won't be told it can set them.
+
+### Tile capabilities (2026-06-23)
+
+The owned timer state (§7) is now surfaced on the Homey device tile via three read-only custom
+capabilities, on both drivers (`.homeycompose/capabilities/`):
+
+- `timer_active` (boolean) — true only while a countdown is *running* (a finished/ringing timer reads
+  false, mirroring the `timer-is-running` condition card).
+- `timer_remaining` (number, seconds) — ticks down at 1 Hz while active; 0 when idle/ringing.
+- `timer_name` (string) — the active timer's spoken name (`""` when none).
+
+`voice-assistant-device.mts` mirrors the `TimerManager` lifecycle onto these: `syncTimerCapabilities()`
+reads `getActiveTimer()` and pushes the values, driven by the `started`/`finished`/`cancelled` events
+plus a 1 Hz interval (`startTimerCapabilityTick`) that runs **only** while a timer counts down.
+`ensureTimerCapabilities()` in `onInit` `addCapability`s them onto devices paired before they existed
+and sets the idle defaults. No new timer logic — purely surfacing the existing authoritative state.
 
 ### Hardware-confirmed: CANCELLED must carry `is_active=false` (LED-ring freeze fix, 2026-06-23)
 

@@ -436,7 +436,10 @@
       "capabilities": [
         "volume_set",
         "onoff",
-        "volume_mute"
+        "volume_mute",
+        "timer_active",
+        "timer_remaining",
+        "timer_name"
       ],
       "platforms": [
         "local"
@@ -488,7 +491,10 @@
       "capabilities": [
         "volume_set",
         "onoff",
-        "volume_mute"
+        "volume_mute",
+        "timer_active",
+        "timer_remaining",
+        "timer_name"
       ],
       "platforms": [
         "local"
@@ -528,6 +534,41 @@
       "uiComponent": "button",
       "uiQuickAction": false,
       "icon": "/assets/listening.svg"
+    },
+    "timer_active": {
+      "type": "boolean",
+      "title": {
+        "en": "Timer active"
+      },
+      "getable": true,
+      "setable": false,
+      "uiComponent": "sensor",
+      "insights": false
+    },
+    "timer_name": {
+      "type": "string",
+      "title": {
+        "en": "Timer name"
+      },
+      "getable": true,
+      "setable": false,
+      "uiComponent": "sensor",
+      "insights": false
+    },
+    "timer_remaining": {
+      "type": "number",
+      "title": {
+        "en": "Timer remaining"
+      },
+      "units": {
+        "en": "s"
+      },
+      "decimals": 0,
+      "min": 0,
+      "getable": true,
+      "setable": false,
+      "uiComponent": "sensor",
+      "insights": false
     }
   },
   "discovery": {
