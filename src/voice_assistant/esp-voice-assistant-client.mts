@@ -44,6 +44,10 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
   private subscribeVoiceAssistantCount: number;
   private voiceAssistantConfigurationCount: number;
   private discoveryMode: boolean;
+  // Whether the device advertised the TIMERS voice-assistant feature flag
+  // (DeviceInfoResponse.voice_assistant_feature_flags & 8). Used to gate the
+  // timer feature; the PE sets it.
+  private timersSupported: boolean = false;
   // Whether to auto-reconnect on disconnect. Disabled for one-shot discovery
   // probes (which have their own timeout) so a failed/finished probe can never
   // spawn an orphaned reconnect loop that holds the device's API connection slot.
@@ -425,6 +429,13 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
 
     else if (name === 'DeviceInfoResponse') {
       this.subscribeVoiceAssistantCount++;
+
+      // Parse the voice-assistant feature flags so we know whether the device
+      // supports timers. TIMERS = 1 << 3 = 8 (aioesphomeapi VoiceAssistantFeature).
+      const featureFlags = message?.voiceAssistantFeatureFlags ?? 0;
+      this.timersSupported = (featureFlags & 8) !== 0;
+      this.logger.info(`Voice assistant feature flags: ${featureFlags} (timers ${this.timersSupported ? 'supported' : 'NOT advertised'})`);
+
       this.send('VoiceAssistantConfigurationRequest', {});
 
     }
@@ -687,6 +698,31 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
       mediaId: url,
       text: '',
       startConversation: startConversation,
+    });
+  }
+
+  /** Whether the device advertised support for on-device timers. */
+  get supportsTimers(): boolean {
+    return this.timersSupported;
+  }
+
+  /**
+   * Send a VoiceAssistantTimerEventResponse (id 115) to drive the device's
+   * on-device timer (LED-ring countdown + finish chime). Despite the
+   * "...Response" suffix this is a CLIENT→device message in the ESPHome model.
+   * Driven by TimerManager; see docs/.../timer-feature.md.
+   */
+  sendTimerEvent(
+    eventType: number,
+    opts: { timerId: string; name?: string; totalSeconds: number; secondsLeft: number; isActive: boolean }
+  ): void {
+    this.send('VoiceAssistantTimerEventResponse', {
+      eventType,
+      timerId: opts.timerId,
+      name: opts.name ?? '',
+      totalSeconds: opts.totalSeconds,
+      secondsLeft: opts.secondsLeft,
+      isActive: opts.isActive,
     });
   }
 

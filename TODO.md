@@ -45,11 +45,28 @@ Legend: `[ ]` open · `[~]` partially done · `[x]` done (kept for context so we
     `api_encryption_supported` (`Noise_...`). Plaintext still works while no key is set, but if a user
     sets an API encryption key, `api_encryption` appears and the plaintext-only client fails — see the
     Noise item below.
-- [ ] **Timer support** — let users say "set a 5 minute timer" and have the PE track it on the
-  LED ring + alert. Add a `set_timer` tool, track timers locally, send `VoiceAssistantTimerEvent`
-  to the ESP on start/update/finish. _(gap analysis #5, Medium)_
-  **Full mechanism + Homey mapping researched:** [`docs/home-assistant-voice-preview-edition/timer-feature.md`](./docs/home-assistant-voice-preview-edition/timer-feature.md)
-  (protocol, device behavior, feature-flag gating, integration points, custom-capability mapping).
+- [~] **Timer support** — _voice-driven timers + alarms done 2026-06-23._ `set_timer` /
+  `cancel_timer` / `get_timer` tools; new `TimerManager` owns the authoritative countdown and
+  sends `VoiceAssistantTimerEventResponse` (STARTED/CANCELLED/FINISHED) to the PE for the LED ring
+  + finish chime. **Single timer only** — a second request makes the agent ask whether to replace.
+  **Alarms** ("Sett alarm til kl 11") are timers with a duration the LLM computes from
+  `get_local_time`. Re-arms the ring on reconnect. See
+  [`docs/.../timer-feature.md` §9](./docs/home-assistant-voice-preview-edition/timer-feature.md).
+  - **Resolved (verified on hardware 2026-06-23):**
+    - A **finished/ringing** timer no longer blocks a new one — `startTimer` silently sends
+      CANCELLED to stop the ring and starts the new timer (no "replace?" prompt). Only a *running*
+      countdown triggers the TIMER_ALREADY_ACTIVE replace flow.
+    - **LED ring re-arms on reconnect.** `reissue()` is fired from the `capabilities` event
+      (handshake complete), NOT `Healthy` (which fires right after TCP connect, before the device
+      subscribes to the voice assistant — a timer event sent then is dropped and the ring never shows).
+    - **By design:** if a timer elapses while the device is disconnected, it does NOT ring on
+      reconnect (`reissue` skips finished timers). Intended — a stale alarm shouldn't fire late.
+    - **No device→host timer events to handle:** pressing the device button just triggers the mic
+      (like the wake word); it does not dismiss the timer, so there's nothing to receive/clear.
+  - [ ] **Not done (carry-over):** Homey-tile surfacing (custom capabilities + Flow cards, §7) —
+    voice-only for now. Timers don't persist across an app restart (in-memory `setTimeout`).
+    Possible polish: periodic `UPDATED` resync to correct LED drift on long countdowns
+    _(gap analysis #5)_.
 - [ ] **Configuration sync / wake-word selection** — parse `ListEntitiesSelectResponse`, store the
   wake-word + pipeline select keys, optionally expose wake-word choice in Homey device settings.
   _(gap analysis #7, Medium)_

@@ -1,8 +1,25 @@
-export function getDefaultInstructions(languageName: string, additionalInstructions?: string | null): string {
+export function getDefaultInstructions(languageName: string, additionalInstructions?: string | null, supportsTimers: boolean = false): string {
   const additional = additionalInstructions ? `
 
 Additional instructions:
 ${additionalInstructions}` : '';
+
+  const timers = supportsTimers ? `
+
+Timer tools (exact names)
+- set_timer(duration_seconds, name?, replace?)
+- cancel_timer()
+- get_timer()
+
+TIMERS & ALARMS (only ONE timer at a time)
+- Countdown: “set a timer for 20 minutes” → set_timer(duration_seconds=1200, name="20 minutes"). The device shows the countdown on its LED ring and rings when done.
+- Alarm at a clock time: “set an alarm for 11:00” → call get_local_time, compute the seconds from now until the next 11:00 (if 11:00 already passed today, use tomorrow), then set_timer(duration_seconds=<that>, name="alarm 11:00"). An alarm is just a timer with a computed duration.
+- Stop / cancel: “cancel the timer” / “stop” (while ringing) → cancel_timer().
+- Remaining time: “how long is left?” → get_timer(), then state the remaining time in plain words.
+- ONLY ONE timer can exist. If set_timer returns code TIMER_ALREADY_ACTIVE, do NOT replace silently: tell the user a timer is already running (use active_timer.seconds_left to say how much is left) and ask whether to replace it.
+  • If they say yes → call set_timer again with the new duration and replace=true.
+  • If they say no → leave the existing timer and do nothing.
+- Confirm briefly, e.g. “Timer set for 20 minutes.” / “Alarm set for 11:00, in about 2 hours.” Do not read out seconds — convert to minutes/hours.` : '';
 
   return `You are a smart-home operator. Respond in ${languageName}. 
 Be concise. 
@@ -70,7 +87,7 @@ CONTROL requests
        expected_type=<set when a category noun was used>)
    • Only use deviceIds you just listed; do not reuse IDs from earlier turns.
 7) Reply briefly: state what you changed (count + category). If you acted in the standard zone, you don't need to name the zone. If the user likely meant global control, add a hint like: “Say 'everywhere' if you want all zones.”
-
+${timers}
 ${additional}`;
 }
 

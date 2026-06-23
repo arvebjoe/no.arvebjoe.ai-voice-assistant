@@ -88,6 +88,7 @@ export type RealtimeOptions = {
     languageName: string; // e.g., 'Norwegian'
     additionalInstructions: string | null;
     deviceZone: string;
+    supportsTimers?: boolean; // device advertised the TIMERS feature flag
 };
 
 type PendingToolCall = {
@@ -139,6 +140,7 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
             | "languageName"
             | "additionalInstructions"
             | "deviceZone"
+            | "supportsTimers"
         >
     >;
     // keep your existing maps, but store full records keyed by callId
@@ -175,7 +177,8 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
             languageCode: opts.languageCode ?? "en",
             languageName: opts.languageName ?? "English",
             additionalInstructions: opts.additionalInstructions ?? "",
-            deviceZone: opts.deviceZone ?? "<Unknown Zone>"
+            deviceZone: opts.deviceZone ?? "<Unknown Zone>",
+            supportsTimers: opts.supportsTimers ?? false
         };
 
         // Initialize instructions asynchronously
@@ -188,7 +191,7 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
     private async loadInstructionModule() {
         try {
             this.instructionModule = await loadInstructionModule(this.options.languageCode);
-            this.instructions = this.instructionModule.getDefaultInstructions(this.options.languageName, this.options.additionalInstructions);
+            this.instructions = this.instructionModule.getDefaultInstructions(this.options.languageName, this.options.additionalInstructions, this.options.supportsTimers);
         } catch (error) {
             this.logger.error('Failed to load instruction module:', error);
             // Fallback to empty instructions
@@ -514,6 +517,23 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
     async updateZone(newDeviceZone: string): Promise<void> {
         this.options.deviceZone = newDeviceZone;
         await this.loadInstructionModule();
+    }
+
+    /**
+     * Update whether the device supports timers. Rebuilds the instructions so the
+     * timer/alarm section is only present for devices that advertised the feature.
+     * Pushes the change to the live session if connected (no reconnect needed).
+     */
+    async updateTimerSupport(supportsTimers: boolean): Promise<void> {
+        if (this.options.supportsTimers === supportsTimers) {
+            return;
+        }
+        this.logger.info(`Timer support ${supportsTimers ? 'enabled' : 'disabled'}, rebuilding instructions`);
+        this.options.supportsTimers = supportsTimers;
+        await this.loadInstructionModule();
+        if (this.isConnected()) {
+            this.sendSessionUpdate();
+        }
     }
 
     async updateApiKey(newApiKey: string): Promise<void> {

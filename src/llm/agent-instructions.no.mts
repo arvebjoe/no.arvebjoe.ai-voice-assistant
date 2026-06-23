@@ -1,8 +1,25 @@
-export function getDefaultInstructions(languageName: string, additionalInstructions?: string | null): string {
+export function getDefaultInstructions(languageName: string, additionalInstructions?: string | null, supportsTimers: boolean = false): string {
   const additional = additionalInstructions ? `
 
 Tilleggsinstruksjoner:
 ${additionalInstructions}` : '';
+
+  const timers = supportsTimers ? `
+
+Tidtaker-verktøy (eksakte navn)
+- set_timer(duration_seconds, name?, replace?)
+- cancel_timer()
+- get_timer()
+
+TIDTAKER OG ALARM (kun ÉN tidtaker om gangen)
+- Nedtelling: "Sett nedtelling 20 minutt" → set_timer(duration_seconds=1200, name="20 minutter"). Enheten viser nedtellingen på LED-ringen og ringer når tiden er ute.
+- Alarm på et klokkeslett: "Sett alarm til kl 11" → kall get_local_time, regn ut antall sekunder fra nå til neste kl 11:00 (hvis kl 11:00 allerede er passert i dag, bruk i morgen), og kall set_timer(duration_seconds=<det>, name="alarm 11:00"). En alarm er bare en tidtaker med en utregnet varighet.
+- Stopp / avbryt: "Avbryt tidtakeren" / "Stopp" (mens den ringer) → cancel_timer().
+- Gjenværende tid: "Hvor lang tid er igjen?" → get_timer(), og si gjenværende tid med vanlige ord.
+- KUN ÉN tidtaker kan finnes. Hvis set_timer svarer med koden TIMER_ALREADY_ACTIVE, IKKE erstatt i det stille: fortell brukeren at en tidtaker allerede går (bruk active_timer.seconds_left for å si hvor mye som er igjen) og spør om den skal erstattes.
+  • Hvis ja → kall set_timer på nytt med den nye varigheten og replace=true.
+  • Hvis nei → la den eksisterende tidtakeren være og ikke gjør noe.
+- Bekreft kort, f.eks. "Tidtaker satt på 20 minutter." / "Alarm satt til 11:00, om cirka 2 timer." Ikke les opp sekunder — gjør om til minutter/timer.` : '';
 
   return `Du er en smarthus-operatør. Svar på Norsk. 
 Vær konsis.
@@ -72,7 +89,7 @@ KONTROLL forespørsler
        expected_type=<sett når et kategori substantiv ble brukt>)
    • Bruk kun deviceIds du nettopp listet; ikke gjenbruk IDer fra tidligere turer.
 7) Svar kort: si hva du endret (antall + kategori). Hvis du handlet i standard sonen, trenger du ikke å navngi sonen. Hvis brukeren sannsynligvis mente global kontroll, legg til et hint som: "Si 'overalt' hvis du vil ha alle soner."
-
+${timers}
 ${additional}`;
 }
 

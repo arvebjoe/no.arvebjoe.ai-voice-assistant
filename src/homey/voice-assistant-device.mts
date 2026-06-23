@@ -1,6 +1,7 @@
 import Homey from 'homey';
 import { WebServer } from '../helpers/webserver.mjs';
 import { EspVoiceAssistantClient } from '../voice_assistant/esp-voice-assistant-client.mjs';
+import { TimerManager } from '../voice_assistant/timer-manager.mjs';
 import { DeviceManager } from '../helpers/device-manager.mjs';
 import { settingsManager } from '../settings/settings-manager.mjs';
 import { OpenAIRealtimeAgent, RealtimeOptions } from '../llm/openai-realtime-agent.mjs';
@@ -25,6 +26,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
   private geoHelper!: GeoHelper;
   private weatherHelper!: WeatherHelper;
   private toolManager!: ToolManager;
+  private timerManager!: TimerManager;
   private agent!: OpenAIRealtimeAgent;
   private segmenter!: PcmSegmenter;
   private reSampler!: Pcm16kTo24k;
@@ -107,20 +109,28 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       languageCode: settingsManager.getGlobal('selected_language_code') || 'en',
       languageName: settingsManager.getGlobal('selected_language_name') || 'English',
       additionalInstructions: settingsManager.getGlobal('ai_instructions') || '',
-      deviceZone: this.currentZone
+      deviceZone: this.currentZone,
+      // Start false; flipped on once the ESP handshake reports the TIMERS flag
+      // (see the 'capabilities' handler below), which rebuilds the instructions.
+      supportsTimers: false
     };
 
-    // Initialize tool manager - This will define all the function the agent can call.
-    this.toolManager = new ToolManager(this.homey, this.currentZone, this.deviceManager, this.geoHelper, this.weatherHelper);
-
-    // Initialize open ai agent - Will use the tool manager for function calls
-    this.agent = new OpenAIRealtimeAgent(this.homey, this.toolManager, this.agentOptions);
-
-    // Initialize ESP voice client - Uses stored address and port
+    // Initialize ESP voice client - Uses stored address and port.
+    // Created before the tool manager because the timer tools drive it.
     this.esp = new EspVoiceAssistantClient(this.homey, {
       host: store.address,
       apiPort: store.port
     });
+
+    // Owns the authoritative countdown for set_timer/cancel_timer; sends timer
+    // events to the device (LED ring + finish chime).
+    this.timerManager = new TimerManager(this.homey, this.esp);
+
+    // Initialize tool manager - This will define all the function the agent can call.
+    this.toolManager = new ToolManager(this.homey, this.currentZone, this.deviceManager, this.geoHelper, this.weatherHelper, this.timerManager);
+
+    // Initialize open ai agent - Will use the tool manager for function calls
+    this.agent = new OpenAIRealtimeAgent(this.homey, this.toolManager, this.agentOptions);
 
     // Initialize PCM segmenter for audio processing - This will split long audio streams into manageable chunks -> Makes response quicker
     this.segmenter = new PcmSegmenter();
@@ -453,6 +463,23 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       this.logger.info('ESP Voice Client unhealthy');
       this.isEspClientHealthy = false;
       this.updateAvailable();
+    });
+
+    // Once the ESP handshake completes we know the device's feature flags
+    // (parsed from DeviceInfoResponse). Tell the agent whether this device
+    // supports timers so the timer/alarm section is only added to the prompt
+    // for capable devices. Fires again on reconnect — updateTimerSupport is a
+    // no-op when the value is unchanged.
+    this.esp.on('capabilities', () => {
+      this.agentOptions.supportsTimers = this.esp.supportsTimers;
+      this.agent.updateTimerSupport(this.esp.supportsTimers);
+      // Re-arm the LED ring for any timer still counting down on our side. This
+      // must happen here, not on 'Healthy': 'Healthy' fires right after TCP
+      // connect, before the device has subscribed to the voice assistant, so a
+      // timer event sent then is dropped (the ring never shows). By 'capabilities'
+      // the handshake is complete and the device renders the ring. No-op on the
+      // initial connect (no timer running yet).
+      this.timerManager?.reissue();
     });
 
 
@@ -832,9 +859,17 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     //Unregister with device manager
     this.deviceManager.unRegisterDevice(this.macAddress);
 
+    // Stop any running countdown so its setTimeout can't fire after teardown.
+    try {
+      this.timerManager?.dispose();
+    } catch (err) {
+      this.logger.error('Failed to dispose timer manager:', err);
+    }
+
     // Cleanup other resources
     this.segmenter = null!;
     this.toolManager = null!;
+    this.timerManager = null!;
   }
 
 }
