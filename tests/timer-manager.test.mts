@@ -15,7 +15,8 @@ interface SentEvent {
 class FakeEsp {
     public sent: SentEvent[] = [];
     public supportsTimers = true;
-    sendTimerEvent(eventType: number, opts: Omit<SentEvent, 'eventType'>): void {
+    public isConnected = true;
+    sendTimerEvent(eventType: number, opts: Omit<SentEvent, 'eventType'>, _quiet?: boolean): void {
         this.sent.push({ eventType, ...opts } as SentEvent);
     }
 }
@@ -171,5 +172,37 @@ describe('TimerManager', () => {
         tm.startTimer(60);
         tm.dispose();
         expect(cancelled).toHaveLength(0);
+    });
+
+    it('periodically re-issues UPDATED to correct device LED-ring drift', () => {
+        tm.startTimer(3600, 'bread'); // long countdown
+        expect(esp.sent.map(e => e.eventType)).toEqual([TIMER_EVENT.STARTED]);
+
+        vi.advanceTimersByTime(30_000);
+        const updates = esp.sent.filter(e => e.eventType === TIMER_EVENT.UPDATED);
+        expect(updates).toHaveLength(1);
+        expect(updates[0].isActive).toBe(true);
+        expect(updates[0].secondsLeft).toBeLessThanOrEqual(3600);
+        expect(updates[0].secondsLeft).toBeGreaterThan(3500);
+
+        vi.advanceTimersByTime(30_000); // a second interval → a second resync
+        expect(esp.sent.filter(e => e.eventType === TIMER_EVENT.UPDATED)).toHaveLength(2);
+    });
+
+    it('stops the resync once the timer is cancelled', () => {
+        tm.startTimer(3600);
+        vi.advanceTimersByTime(30_000);
+        const before = esp.sent.filter(e => e.eventType === TIMER_EVENT.UPDATED).length;
+        tm.cancelTimer();
+        vi.advanceTimersByTime(120_000);
+        const after = esp.sent.filter(e => e.eventType === TIMER_EVENT.UPDATED).length;
+        expect(after).toBe(before);
+    });
+
+    it('does not resync while the ESP is disconnected', () => {
+        esp.isConnected = false;
+        tm.startTimer(3600);
+        vi.advanceTimersByTime(90_000);
+        expect(esp.sent.filter(e => e.eventType === TIMER_EVENT.UPDATED)).toHaveLength(0);
     });
 });

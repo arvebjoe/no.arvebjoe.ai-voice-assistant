@@ -72,6 +72,12 @@ export class TimerManager extends (EventEmitter as new () => TypedEmitter<TimerM
   private seq = 0;
   private logger = createLogger('TimerManager', false);
 
+  // Periodic drift-correction (see startResync). The device ticks its own copy
+  // of seconds_left for the LED ring and can drift over a long countdown; we
+  // snap it back with an occasional UPDATED.
+  private resyncTimer: NodeJS.Timeout | null = null;
+  private static readonly RESYNC_INTERVAL_MS = 30_000;
+
   constructor(homey: any, esp: EspVoiceAssistantClient) {
     super();
     this.homey = homey;
@@ -150,6 +156,7 @@ export class TimerManager extends (EventEmitter as new () => TypedEmitter<TimerM
     t.timeout = this.homey.setTimeout(() => this.onFinish(id), durationSeconds * 1000);
 
     this.sendEvent(TIMER_EVENT.STARTED, t);
+    this.startResync(t);
     this.logger.info(`Timer started: ${durationSeconds}s${name ? ` ("${name}")` : ''}`);
     this.emit('started', this.summary(t));
     return { ok: true, timer: this.summary(t) };
@@ -198,6 +205,7 @@ export class TimerManager extends (EventEmitter as new () => TypedEmitter<TimerM
     if (!t || t.id !== id) {
       return;
     }
+    this.stopResync();
     t.timeout = null;
     t.isActive = false;
     t.finished = true;
@@ -214,6 +222,7 @@ export class TimerManager extends (EventEmitter as new () => TypedEmitter<TimerM
     if (!t) {
       return;
     }
+    this.stopResync();
     if (t.timeout) {
       this.homey.clearTimeout(t.timeout);
       t.timeout = null;
@@ -237,7 +246,7 @@ export class TimerManager extends (EventEmitter as new () => TypedEmitter<TimerM
     this.timer = null;
   }
 
-  private sendEvent(eventType: number, t: ActiveTimer, secondsLeftOverride?: number): void {
+  private sendEvent(eventType: number, t: ActiveTimer, secondsLeftOverride?: number, quiet: boolean = false): void {
     const secondsLeft = secondsLeftOverride ?? this.secondsLeft(t);
     this.esp.sendTimerEvent(eventType, {
       timerId: t.id,
@@ -245,6 +254,38 @@ export class TimerManager extends (EventEmitter as new () => TypedEmitter<TimerM
       totalSeconds: t.totalSeconds,
       secondsLeft,
       isActive: t.isActive,
-    });
+    }, quiet);
+  }
+
+  /**
+   * Periodically re-issue UPDATED with our authoritative seconds_left so the
+   * PE's display counter (which it ticks locally for the LED ring, §2 of
+   * timer-feature.md) can't drift over a long countdown. HA treats this as
+   * optional; it only matters for alarm-length timers. The send is quiet (no TX
+   * log) and skipped while disconnected — reissue() re-arms on reconnect.
+   */
+  private startResync(t: ActiveTimer): void {
+    this.stopResync();
+    this.resyncTimer = this.homey.setInterval(() => {
+      const cur = this.timer;
+      if (!cur || cur.id !== t.id || cur.finished || !cur.isActive) {
+        return;
+      }
+      const left = this.secondsLeft(cur);
+      if (left <= 0) {
+        return; // about to finish; onFinish will send FINISHED
+      }
+      if (!this.esp.isConnected) {
+        return;
+      }
+      this.sendEvent(TIMER_EVENT.UPDATED, cur, left, true);
+    }, TimerManager.RESYNC_INTERVAL_MS);
+  }
+
+  private stopResync(): void {
+    if (this.resyncTimer) {
+      this.homey.clearInterval(this.resyncTimer);
+      this.resyncTimer = null;
+    }
   }
 }

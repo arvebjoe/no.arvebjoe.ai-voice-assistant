@@ -706,6 +706,11 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
     return this.timersSupported;
   }
 
+  /** Whether the native-API TCP connection is established (handshake complete). */
+  get isConnected(): boolean {
+    return this.connected;
+  }
+
   /**
    * Send a VoiceAssistantTimerEventResponse (id 115) to drive the device's
    * on-device timer (LED-ring countdown + finish chime). Despite the
@@ -714,8 +719,11 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
    */
   sendTimerEvent(
     eventType: number,
-    opts: { timerId: string; name?: string; totalSeconds: number; secondsLeft: number; isActive: boolean }
+    opts: { timerId: string; name?: string; totalSeconds: number; secondsLeft: number; isActive: boolean },
+    quiet: boolean = false
   ): void {
+    // quiet suppresses the TX log line — used for the periodic drift-resync
+    // UPDATED so a long countdown doesn't spam the log every interval.
     this.send('VoiceAssistantTimerEventResponse', {
       eventType,
       timerId: opts.timerId,
@@ -723,7 +731,7 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
       totalSeconds: opts.totalSeconds,
       secondsLeft: opts.secondsLeft,
       isActive: opts.isActive,
-    });
+    }, !quiet);
   }
 
   /**

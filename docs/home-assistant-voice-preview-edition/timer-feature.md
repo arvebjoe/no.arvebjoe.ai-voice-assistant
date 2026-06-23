@@ -344,12 +344,22 @@ the step-2 repaint sees no active timer and clears the ring. (Cancelling an alre
 timer was unaffected — `onFinish` already sets `is_active=false`.) Guarded by a unit test asserting
 the CANCELLED event's `isActive` is `false`.
 
+### LED-drift resync (2026-06-23)
+
+The PE ticks its own copy of `seconds_left` for the LED ring (§2), which can drift from our
+authoritative wall-clock countdown over a long (alarm-length) timer. `TimerManager.startResync()`
+arms a 30 s interval that re-issues `UPDATED` with the true `seconds_left` (`is_active=true`) to snap
+the device's counter back. It's a **quiet** send (no TX log, so a multi-hour alarm doesn't spam) and
+is skipped while `!esp.isConnected` — `reissue()` already re-arms authoritatively on reconnect. The
+interval is torn down in `clearTimer`/`onFinish`. HA treats this as optional; we do it because a
+short kitchen timer never drifts visibly but an alarm hours out can. Unit-tested (resync fires,
+stops on cancel, suppressed while disconnected).
+
 ### Still to verify on hardware (carry-overs from §5/§8)
 
 - Ring auto-stop timeout after FINISHED, and that CANCELLED reliably silences it.
 - Whether the PE renders the `name` field.
-- LED-ring visual drift over long (e.g. alarm-length) countdowns — add a periodic UPDATED only if needed.
-- The Homey-tile surfacing (custom capabilities + Flow cards, §7) was **not** built — voice-only for now.
+- That the 30 s `UPDATED` resync keeps a long countdown's ring visibly accurate (and is unobtrusive).
 
 ---
 

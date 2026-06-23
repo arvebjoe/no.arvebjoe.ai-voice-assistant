@@ -68,9 +68,12 @@ Legend: `[ ]` open · `[~]` partially done · `[x]` done (kept for context so we
   - [x] **Tile capabilities (done 2026-06-23, pending hardware verify):** read-only
     `timer_active` / `timer_remaining` (seconds, 1 Hz tick) / `timer_name` on the device card,
     on both drivers; the device mirrors the TimerManager lifecycle onto them — see §7.
-  - [ ] **Possible polish (carry-over):** periodic `UPDATED` resync to correct LED drift on long
-    countdowns _(gap analysis #5)_. (Timers are intentionally **not** persisted across an app
-    restart — an in-flight timer is dropped, which is the expected, least-surprising behavior.)
+  - [x] **LED-drift resync (done 2026-06-23, pending hardware verify):** `TimerManager` re-issues a
+    quiet `UPDATED` with the authoritative `seconds_left` every 30 s while a timer counts down, so the
+    PE's locally-ticked LED ring can't drift on long/alarm-length countdowns (skipped while
+    disconnected; `reissue()` still re-arms on reconnect). _(gap analysis #5)_
+  - (Timers are intentionally **not** persisted across an app restart — an in-flight timer is dropped,
+    which is the expected, least-surprising behavior.)
 - [ ] **Configuration sync / wake-word selection** — parse `ListEntitiesSelectResponse`, store the
   wake-word + pipeline select keys, optionally expose wake-word choice in Homey device settings.
   _(gap analysis #7, Medium)_
