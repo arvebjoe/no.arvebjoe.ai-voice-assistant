@@ -43,6 +43,11 @@ describe('Quick OpenAI Connection Test', () => {
   });
 
   it('should check API key and create agent', () => {
+    if (testApiKey === 'test-api-key') {
+      console.log('⚠️ Skipping - no valid API key (set OPENAI_API_KEY in env.json to run this integration test)');
+      return;
+    }
+
     console.log('🔑 API Key available:', testApiKey ? 'YES' : 'NO');
     console.log('🔑 API Key length:', testApiKey ? testApiKey.length : 0);
     console.log('🔑 API Key starts with sk-:', testApiKey ? testApiKey.startsWith('sk-') : false);
