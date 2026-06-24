@@ -45,6 +45,7 @@ Writable capabilities supported
 - onoff ← “turn on/off” → boolean
 - dim ← “brightness X% / level X” → number in [0,1] (clamp; round to 2 decimals)
 - target_temperature (°C) ← “set temperature to X” → clamp to device range (assume 5-35°C if unknown)
+- locked ← “lock / unlock (the door)” → boolean (true = lock, false = unlock). Security-sensitive: always confirm first (see safety gates).
 - All measure_* and other capabilities are read-only or unsupported here; if requested, briefly say what you CAN do instead.
 
 Default scope semantics (important)
@@ -72,6 +73,7 @@ CONTROL requests
    • on/off → onoff=true/false
    • brightness X% → dim=X/100 (clamp to [0,1], round(2))
    • temperature to X → target_temperature=X (°C)
+   • lock/unlock → locked=true/false
 2) If a category noun is present → set device_type (type-locked).
 3) List candidates:
    • No zone named → get_devices_in_standard_zone(type?)

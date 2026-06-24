@@ -337,10 +337,10 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
                 type: "object",
                 properties: {
                     deviceIds: { type: "array", items: { type: "string" }, description: "Array of device IDs to control.", minItems: 1 },
-                    capabilityId: { type: "string", description: "Capability to set.", enum: ["onoff", "dim", "target_temperature"] },
+                    capabilityId: { type: "string", description: "Capability to set.", enum: ["onoff", "dim", "target_temperature", "locked"] },
                     newValue: {
                         oneOf: [
-                            { type: "boolean", description: "For 'onoff'." },
+                            { type: "boolean", description: "For 'onoff' and 'locked' (true = locked)." },
                             { type: "number", description: "For 'dim' (0..1) and 'target_temperature' (°C)." }
                         ],
                         description: "New value for the capability."
