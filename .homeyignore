@@ -25,3 +25,6 @@ vitest.config.*
 .sounds/
 .resources/
 .bruno/
+
+# Homey Emulator (dev-only, never ship)
+emulator/
