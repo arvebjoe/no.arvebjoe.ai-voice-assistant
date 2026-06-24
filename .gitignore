@@ -3,3 +3,6 @@
 /.homeybuild/
 *.bat
 /.idea/
+
+# Emulator local config (holds the OpenAI API key)
+/emulator/settings.json

@@ -1,0 +1,36 @@
+{
+  "global": {
+    "openai_api_key": "sk-REPLACE-ME",
+    "selected_language_code": "en",
+    "selected_language_name": "English",
+    "selected_voice": "alloy",
+    "ai_instructions": "",
+    "openweather_api_key": ""
+  },
+  "geolocation": { "latitude": 59.9139, "longitude": 10.7522 },
+  "timezone": "Europe/Oslo",
+  "pe": {
+    "name": "Living Room PE",
+    "mac": "AA:BB:CC:DD:EE:FF",
+    "address": "192.168.1.50",
+    "port": 6053,
+    "zone": "z-living",
+    "settings": { "initial_audio_skip": 0 }
+  },
+  "zones": [
+    { "id": "z-home", "name": "Home", "parent": null },
+    { "id": "z-living", "name": "Living Room", "parent": "z-home" },
+    { "id": "z-kitchen", "name": "Kitchen", "parent": "z-home" },
+    { "id": "z-bedroom", "name": "Bedroom", "parent": "z-home" }
+  ],
+  "devices": [
+    { "id": "light-living-ceiling", "name": "Ceiling Light", "zone": "z-living", "class": "light", "capabilities": { "onoff": true, "dim": 0.8 } },
+    { "id": "light-living-lamp", "name": "Floor Lamp", "zone": "z-living", "class": "light", "capabilities": { "onoff": false, "dim": 0.3 } },
+    { "id": "light-kitchen", "name": "Kitchen Light", "zone": "z-kitchen", "class": "light", "capabilities": { "onoff": false } },
+    { "id": "thermostat-living", "name": "Living Room Thermostat", "zone": "z-living", "class": "thermostat", "capabilities": { "target_temperature": 21, "measure_temperature": 20.5 } },
+    { "id": "lock-front", "name": "Front Door Lock", "zone": "z-home", "class": "lock", "capabilities": { "locked": true } },
+    { "id": "speaker-living", "name": "Living Room Speaker", "zone": "z-living", "class": "speaker", "capabilities": { "speaker_playing": false, "volume_set": 0.4 } },
+    { "id": "blinds-bedroom", "name": "Bedroom Blinds", "zone": "z-bedroom", "class": "windowcoverings", "capabilities": { "windowcoverings_set": 0.5 } },
+    { "id": "sensor-bedroom", "name": "Bedroom Temp Sensor", "zone": "z-bedroom", "class": "sensor", "capabilities": { "measure_temperature": 19.2, "measure_humidity": 45 } }
+  ]
+}

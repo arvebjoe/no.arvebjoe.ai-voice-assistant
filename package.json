@@ -9,7 +9,8 @@
     "test:watch": "vitest",
     "test:run": "vitest run",
     "test:ui": "vitest --ui",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "emulator": "node --import tsx --import ./emulator/register.mjs ./emulator/main.mts"
   },
   "devDependencies": {
     "@tsconfig/node22": "^22.0.5",
@@ -17,12 +18,13 @@
     "@types/node": "^24.12.4",
     "@types/varint": "^6.0.3",
     "@types/ws": "^8.18.1",
-    "@vitest/ui": "^3.2.4",
+    "@vitest/ui": "^3.2.6",
     "eslint": "^7.32.0",
     "eslint-config-athom": "^3.1.5",
     "tiny-typed-emitter": "^2.1.0",
+    "tsx": "^4.19.2",
     "typescript": "^5.9.3",
-    "vitest": "^3.2.4"
+    "vitest": "^3.2.6"
   },
   "dependencies": {
     "homey-api": "^3.19.0",
@@ -33,5 +35,10 @@
     "uuid": "^11.1.1",
     "varint": "^6.0.0",
     "ws": "^8.21.0"
+  },
+  "overrides": {
+    "@typescript-eslint/typescript-estree": {
+      "minimatch": "^9.0.7"
+    }
   }
 }

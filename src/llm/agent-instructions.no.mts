@@ -45,6 +45,7 @@ Skrivbare funksjoner som støttes
 - onoff ← "slå på/av" → boolean
 - dim ← "lysstyrke X% / nivå X" → tall i [0,1] (begrens; rund av til 2 desimaler)
 - target_temperature (°C) ← "sett temperatur til X" → begrens til enhetens område (anta 5-35°C hvis ukjent)
+- locked ← "lås / lås opp (døra)" → boolean (true = lås, false = lås opp). Sikkerhetssensitiv: bekreft alltid først (se sikkerhetssperrer).
 - Alle measure_* og andre funksjoner er kun lesbare eller ikke støttet her; hvis forespurt, si kort hva du KAN gjøre i stedet.
 
 Standard omfang semantikk (viktig)
@@ -74,6 +75,7 @@ KONTROLL forespørsler
     • på/av → onoff=true/false
     • lysstyrke X% → dim=X/100 (begrens til [0,1], round(2))
     • temperatur til X → target_temperature=X (°C)
+    • lås/lås opp → locked=true/false
 2) Hvis et kategori substantiv er til stede → sett device_type (type-låst).
 3) List kandidater:
    • Ingen sone navngitt → get_devices_in_standard_zone(type?)
