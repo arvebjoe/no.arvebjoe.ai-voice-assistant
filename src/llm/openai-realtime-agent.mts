@@ -3,6 +3,7 @@ import { EventEmitter } from "events";
 import { TypedEmitter } from "tiny-typed-emitter";
 import { createLogger } from '../helpers/logger.mjs';
 import { ToolManager } from './tool-manager.mjs';
+import { IVoiceProvider, VoiceProviderEvents, VoiceProviderOptions } from './voice-provider.mjs';
 
 /**
  * Dynamically load instruction functions based on language code
@@ -22,73 +23,16 @@ async function loadInstructionModule(languageCode: string) {
 }
 
 /**
- * Minimal shape of Realtime events we care about.
- * We keep them loose to stay forward-compatible with the evolving Realtime API.
+ * Event/option shapes now live in the provider-agnostic seam (`voice-provider.mts`).
+ * These aliases preserve the historical names used across this file and the tests.
  */
-type RealtimeEvents = {
-    connected: () => void;
-    open: () => void;
-    close: (code: number, reason: string) => void;
-    event: (message: any) => void;
-    silence: (source: string) => void;
-    error: (err: Error) => void;
-
-    // Reconnection events
-    reconnecting: (attempt: number, delay: number) => void;
-    reconnected: () => void;
-    reconnectFailed: (attempt: number, error: Error) => void;
-    Healthy: () => void;
-    Unhealthy: () => void;
-    missing_api_key: () => void;
-
-    "input_audio_buffer.committed": () => void;
-
-    "session.updated": (msg: any) => void;
-
-    "audio.delta": (chunk: Buffer) => void;
-    "audio.done": () => void;
-
-    "text.delta": (delta: string) => void;
-    "text.done": (msg: any) => void;
-
-    "transcript.delta": (delta: string) => void;        // ASSISTANT spoken-output transcript
-    "transcript.done": (transcript: string) => void;     // USER input transcript (final)
-    "input_transcript.delta": (delta: string) => void;   // USER input transcript (streaming)
-
-    "response.output_item.added": () => void;
-    "response.progress": () => void;
-    "response.output_item.done": () => void;
-    "response.done": () => void;
-    "response.error": (msg: any) => void;
-
-    "conversation.item.created": () => void;
-
-
-    "tool.arguments.delta": (d: { callId: string; name?: string; delta: string }) => void;
-    "tool.arguments.done": (d: { callId: string; name?: string; args: any }) => void;
-    "tool.called": (d: { callId: string; name: string; args: any }) => void;
-    "tool.call.started": (d: { callId: string; name?: string; itemId?: string }) => void;
-
-    "rate_limits.updated": (msg: any) => void;
-};
-
+export type RealtimeEvents = VoiceProviderEvents;
+export type RealtimeOptions = VoiceProviderOptions;
 
 
 type RealtimeEvent = {
     type: string;
     [k: string]: any;
-};
-
-
-export type RealtimeOptions = {
-    url?: string;
-    apiKey?: string | null;
-    voice: string;
-    languageCode: string; // e.g., 'no'
-    languageName: string; // e.g., 'Norwegian'
-    additionalInstructions: string | null;
-    deviceZone: string;
-    supportsTimers?: boolean; // device advertised the TIMERS feature flag
 };
 
 type PendingToolCall = {
@@ -122,7 +66,7 @@ type PendingToolCall = {
  * - Text input methods allow explicit output mode control
  */
 
-export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter<RealtimeEvents>) {
+export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmitter<VoiceProviderEvents>) implements IVoiceProvider {
     private ws?: WebSocket;
     private homey: any;
     private logger = createLogger('AGENT', true);
@@ -1123,4 +1067,8 @@ export class OpenAIRealtimeAgent extends (EventEmitter as new () => TypedEmitter
     }
 
 }
+
+// Back-compat: the class was historically named OpenAIRealtimeAgent. Keep a value
+// alias so existing imports and `instanceof` checks (in tests) keep working.
+export { OpenAIRealtimeProvider as OpenAIRealtimeAgent };
 
