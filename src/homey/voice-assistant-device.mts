@@ -30,7 +30,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
   private timerManager!: TimerManager;
   private provider!: IVoiceProvider;
   private segmenter!: PcmSegmenter;
-  private reSampler!: Pcm16kTo24k;
+  private reSampler?: Pcm16kTo24k;
 
   private settingsUnsubscribe?: () => void;
   private providerOptions!: VoiceProviderOptions;
@@ -97,13 +97,6 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       }
     });
 
-    this.reSampler = new Pcm16kTo24k({
-      outRate: 24000,
-      frameDurationMs: 20,
-      method: "cubic"
-    });
-
-
     if (settings.initial_audio_skip) {
       this.skipInitialBytes = this.msToBytes(settings.initial_audio_skip, 16000, 1, 2);
     }
@@ -151,6 +144,17 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     // Initialize the voice/LLM provider (via the factory, selected by the
     // 'voice_provider' setting) - it uses the tool manager for function calls.
     this.provider = createVoiceProvider(this.homey, this.toolManager, this.providerOptions);
+
+    // Match the mic resampler to the provider's expected input rate. The PE mic is
+    // PCM16 mono 16 kHz; providers wanting 24 kHz (OpenAI) get an upsampler, while
+    // providers wanting 16 kHz (Gemini) take the raw stream (passthrough).
+    if (this.provider.inputSampleRate !== 16000) {
+      this.reSampler = new Pcm16kTo24k({
+        outRate: this.provider.inputSampleRate,
+        frameDurationMs: 20,
+        method: "cubic"
+      });
+    }
 
     // Initialize PCM segmenter for audio processing - This will split long audio streams into manageable chunks -> Makes response quicker
     this.segmenter = new PcmSegmenter();
@@ -234,17 +238,18 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       }
 
 
-      // ESP voice client return a PCM 16bit mono audio stream at 16khz, but OpenAI expects 24khz
-      const frames = this.reSampler.push(data);
-      for (const pcm24 of frames as Buffer[]) {
+      // ESP client emits PCM16 mono 16 kHz. Resample to the provider's input rate
+      // when it differs (e.g. OpenAI 24 kHz); otherwise pass the 16 kHz through.
+      const frames: Buffer[] = this.reSampler ? (this.reSampler.push(data) as Buffer[]) : [data];
+      for (const chunk of frames) {
 
         if (this.inputBufferDebug) {
-          // Add pcm24 to input buffer, used for debugging.
-          this.inputBuffer.push(pcm24);
+          // Add chunk to input buffer, used for debugging.
+          this.inputBuffer.push(chunk);
         }
 
-        // Send audio chunk to agent
-        this.provider.sendAudioChunk(pcm24);
+        // Send audio chunk to provider
+        this.provider.sendAudioChunk(chunk);
       }
 
 
@@ -275,7 +280,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       this.hasIntent = true;
       this.isSteamingMic = false;
       this.esp.closeMic();
-      this.reSampler.reset();
+      this.reSampler?.reset();
       this.esp.stt_vad_end(''); // TODO: Which we had some text to pass back here. Will look into this.                  
       // Save input buffer to file, used for debugging to hear what was captured
       if (this.inputBufferDebug) {
@@ -526,8 +531,8 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     try {
       let needRestart: boolean = false;
 
-      // Check if API key changed
-      const newApiKey = newSettings.openai_api_key;
+      // Check if the active provider's API key changed
+      const newApiKey = newSettings[this.provider.apiKeySettingKey];
 
       if (newApiKey !== this.providerOptions.apiKey) {
         this.logger.info(`API key changed, updating agent and restarting.`);

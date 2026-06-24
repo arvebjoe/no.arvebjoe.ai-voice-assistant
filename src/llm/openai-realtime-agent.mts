@@ -4,23 +4,7 @@ import { TypedEmitter } from "tiny-typed-emitter";
 import { createLogger } from '../helpers/logger.mjs';
 import { ToolManager } from './tool-manager.mjs';
 import { IVoiceProvider, VoiceProviderEvents, VoiceProviderOptions } from './voice-provider.mjs';
-
-/**
- * Dynamically load instruction functions based on language code
- */
-async function loadInstructionModule(languageCode: string) {
-    try {
-        // Try to load language-specific instructions (e.g., 'no' -> agent-instructions.no.mjs)
-        if (languageCode === 'no') {
-            return await import('./agent-instructions.no.mjs');
-        }
-        // Default to English instructions
-        return await import('./agent-instructions.en.mjs');
-    } catch (error) {
-        // Fallback to English if language-specific file doesn't exist
-        return await import('./agent-instructions.en.mjs');
-    }
-}
+import { loadInstructionModule } from './agent-instructions.mjs';
 
 /**
  * Event/option shapes now live in the provider-agnostic seam (`voice-provider.mts`).
@@ -67,6 +51,10 @@ type PendingToolCall = {
  */
 
 export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmitter<VoiceProviderEvents>) implements IVoiceProvider {
+    // Seam contract: OpenAI Realtime expects 24 kHz PCM input; its key lives under 'openai_api_key'.
+    readonly inputSampleRate = 24000;
+    readonly apiKeySettingKey = 'openai_api_key';
+
     private ws?: WebSocket;
     private homey: any;
     private logger = createLogger('AGENT', true);

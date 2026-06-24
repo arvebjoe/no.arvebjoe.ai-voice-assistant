@@ -89,6 +89,16 @@ export type VoiceProviderOptions = {
  * them synchronously; the device awaits only where it needs to.
  */
 export interface IVoiceProvider extends TypedEmitter<VoiceProviderEvents> {
+    // --- provider-declared facts the device needs ---
+    /**
+     * Sample rate (Hz) this provider expects for `sendAudioChunk`. The PE mic is
+     * 16 kHz; the device resamples up to this rate (or passes through at 16 kHz).
+     * OpenAI Realtime = 24000, Gemini Live = 16000.
+     */
+    readonly inputSampleRate: number;
+    /** Which global setting holds this provider's API key (e.g. 'openai_api_key'). */
+    readonly apiKeySettingKey: string;
+
     // --- lifecycle ---
     start(): Promise<void>;
     close(code?: number, reason?: string): void;
