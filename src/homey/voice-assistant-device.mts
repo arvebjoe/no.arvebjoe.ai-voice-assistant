@@ -4,7 +4,8 @@ import { EspVoiceAssistantClient } from '../voice_assistant/esp-voice-assistant-
 import { TimerManager, TimerSummary } from '../voice_assistant/timer-manager.mjs';
 import { DeviceManager } from '../helpers/device-manager.mjs';
 import { settingsManager } from '../settings/settings-manager.mjs';
-import { OpenAIRealtimeAgent, RealtimeOptions } from '../llm/openai-realtime-agent.mjs';
+import { IVoiceProvider, VoiceProviderOptions } from '../llm/voice-provider.mjs';
+import { createVoiceProvider } from '../llm/voice-provider-factory.mjs';
 import { pcmToFlacBuffer } from '../helpers/audio-encoders.mjs';
 import { PcmSegmenter } from '../helpers/pcm-segmenter.mjs';
 import { AudioData, FileInfo } from '../helpers/interfaces.mjs';
@@ -27,12 +28,12 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
   private weatherHelper!: WeatherHelper;
   private toolManager!: ToolManager;
   private timerManager!: TimerManager;
-  private agent!: OpenAIRealtimeAgent;
+  private provider!: IVoiceProvider;
   private segmenter!: PcmSegmenter;
-  private reSampler!: Pcm16kTo24k;
+  private reSampler?: Pcm16kTo24k;
 
   private settingsUnsubscribe?: () => void;
-  private agentOptions!: RealtimeOptions;
+  private providerOptions!: VoiceProviderOptions;
   private currentZone: string = '';
   private macAddress: string = '';
 
@@ -55,6 +56,9 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
   private isEspClientHealthy: boolean = false;
   private continueConversation: boolean = false;
   private lastTurnEndedAt: number = 0;
+  // Accumulates the assistant's streamed reply (audio transcript or text) for the
+  // current turn so the full reply can be logged on response.done.
+  private replyText: string = '';
   private readonly CONTEXT_TTL_MS: number = 10_000;
 
   // 1 Hz interval that pushes the active countdown onto the tile capabilities;
@@ -90,25 +94,18 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
     this.currentZone = this.deviceManager.registerDevice(this.macAddress, (changed) => {
       this.logger.info(`Device ${changed.device.name} changed zone from ${changed.oldZone} to ${changed.newZone}`);
-      if (this.agent) {
-        this.agent.updateZone(changed.newZone);
-        this.agent.restart();
+      if (this.provider) {
+        this.provider.updateZone(changed.newZone);
+        this.provider.restart();
       }
     });
-
-    this.reSampler = new Pcm16kTo24k({
-      outRate: 24000,
-      frameDurationMs: 20,
-      method: "cubic"
-    });
-
 
     if (settings.initial_audio_skip) {
       this.skipInitialBytes = this.msToBytes(settings.initial_audio_skip, 16000, 1, 2);
     }
 
 
-    this.agentOptions = {
+    this.providerOptions = {
       apiKey: settingsManager.getGlobal('openai_api_key'),
       voice: settingsManager.getGlobal('selected_voice') || 'alloy',
       languageCode: settingsManager.getGlobal('selected_language_code') || 'en',
@@ -147,8 +144,20 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     // Initialize tool manager - This will define all the function the agent can call.
     this.toolManager = new ToolManager(this.homey, this.currentZone, this.deviceManager, this.geoHelper, this.weatherHelper, this.timerManager);
 
-    // Initialize open ai agent - Will use the tool manager for function calls
-    this.agent = new OpenAIRealtimeAgent(this.homey, this.toolManager, this.agentOptions);
+    // Initialize the voice/LLM provider (via the factory, selected by the
+    // 'voice_provider' setting) - it uses the tool manager for function calls.
+    this.provider = createVoiceProvider(this.homey, this.toolManager, this.providerOptions);
+
+    // Match the mic resampler to the provider's expected input rate. The PE mic is
+    // PCM16 mono 16 kHz; providers wanting 24 kHz (OpenAI) get an upsampler, while
+    // providers wanting 16 kHz (Gemini) take the raw stream (passthrough).
+    if (this.provider.inputSampleRate !== 16000) {
+      this.reSampler = new Pcm16kTo24k({
+        outRate: this.provider.inputSampleRate,
+        frameDurationMs: 20,
+        method: "cubic"
+      });
+    }
 
     // Initialize PCM segmenter for audio processing - This will split long audio streams into manageable chunks -> Makes response quicker
     this.segmenter = new PcmSegmenter();
@@ -163,10 +172,10 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     // The esp voice client has woken (by wake word or user action)
     this.esp.on('starting', async () => {
 
-      if (!this.agent.isConnected()) {
+      if (!this.provider.isConnected()) {
         // The agent doesn't have an active web socket. Either the API Key is missing or the internet connection failed.
         // Play a pre-recorded message to inform the user.
-        const hasKey = this.agent.hasApiKey();
+        const hasKey = this.provider.hasApiKey();
         const url = hasKey ? SOUND_URLS.agent_not_connected : SOUND_URLS.missing_api_key;
         this.esp.run_start();
         this.esp.pipeline_error('agent-not-connected', hasKey ? 'Voice agent is not connected.' : 'API key is missing.');
@@ -183,7 +192,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       const idleMs = Date.now() - this.lastTurnEndedAt;
       if (this.lastTurnEndedAt > 0 && idleMs > this.CONTEXT_TTL_MS) {
         this.logger.info(`Idle ${Math.round(idleMs / 1000)}s since last turn — starting fresh conversation`);
-        this.agent.resetConversation();
+        this.provider.resetConversation();
       }
 
       // Initialize input buffer, only used for debugging.
@@ -232,17 +241,18 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       }
 
 
-      // ESP voice client return a PCM 16bit mono audio stream at 16khz, but OpenAI expects 24khz
-      const frames = this.reSampler.push(data);
-      for (const pcm24 of frames as Buffer[]) {
+      // ESP client emits PCM16 mono 16 kHz. Resample to the provider's input rate
+      // when it differs (e.g. OpenAI 24 kHz); otherwise pass the 16 kHz through.
+      const frames: Buffer[] = this.reSampler ? (this.reSampler.push(data) as Buffer[]) : [data];
+      for (const chunk of frames) {
 
         if (this.inputBufferDebug) {
-          // Add pcm24 to input buffer, used for debugging.
-          this.inputBuffer.push(pcm24);
+          // Add chunk to input buffer, used for debugging.
+          this.inputBuffer.push(chunk);
         }
 
-        // Send audio chunk to agent
-        this.agent.sendAudioChunk(pcm24);
+        // Send audio chunk to provider
+        this.provider.sendAudioChunk(chunk);
       }
 
 
@@ -250,7 +260,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
 
     // Handle missing API key
-    this.agent.on("missing_api_key", async () => {
+    this.provider.on("missing_api_key", async () => {
 
       await this.homey.notifications.createNotification({
         excerpt: 'AI Assistant: Please set **api key** in app settings.'
@@ -259,7 +269,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     });
 
 
-    this.agent.on("open", () => {
+    this.provider.on("open", () => {
       this.logger.info('Agent connection opened');
       this.isAgentHealthy = true;
       this.updateAvailable();
@@ -268,12 +278,12 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
 
     // The agent has detected that the user has stopped speaking.
-    this.agent.on('silence', async (source: string) => {
+    this.provider.on('silence', async (source: string) => {
       this.logger.info(`Silence detected by agent (${source}), closing microphone.`);
       this.hasIntent = true;
       this.isSteamingMic = false;
       this.esp.closeMic();
-      this.reSampler.reset();
+      this.reSampler?.reset();
       this.esp.stt_vad_end(''); // TODO: Which we had some text to pass back here. Will look into this.                  
       // Save input buffer to file, used for debugging to hear what was captured
       if (this.inputBufferDebug) {
@@ -283,11 +293,13 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     });
 
     // The agent is sending audio data back. We can't play each chunk individually, so we need to buffer them.
-    this.agent.on('audio.delta', (audioBuffer: Buffer) => {
+    this.provider.on('audio.delta', (audioBuffer: Buffer) => {
       this.segmenter.feed(audioBuffer);
     });
 
-    this.agent.on('transcript.delta', (delta: string) => {
+    this.provider.on('transcript.delta', (delta: string) => {
+      this.replyText += delta ?? '';
+
       // Check if the delta contains a question, and if so, set continueConversation to true
       // Dirt simple, but works more reliably than having the AI call a tool.
       const text = (delta ?? '').trim();
@@ -301,7 +313,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       }
     });
 
-    this.agent.on('transcript.done', (transcript: any) => {
+    this.provider.on('transcript.done', (transcript: any) => {
       this.logger.info('Final transcript: '+ transcript, "transcript");
 
       transcript = (transcript ?? '').trim();
@@ -319,10 +331,12 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       this.esp.intent_start();
     });
 
-
-    this.agent.on('text.done', (msg: any) => {
-      this.logger.info('Text processing done:', undefined, msg);
+    // Text-mode replies stream as text deltas (e.g. the emulator's `ask`); accumulate
+    // them too so response.done can log the full reply regardless of output mode.
+    this.provider.on('text.delta', (delta: string) => {
+      this.replyText += delta ?? '';
     });
+
 
     // The segmenter has detected a small silent gap in what the agent said and has produced a new chunk of audio data for us to play.
     this.segmenter.on('chunk', async (chunk: Buffer) => {
@@ -409,13 +423,19 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
 
     // The agent want's to use a tool. We need to make sure we have all the data from the API now.    
-    this.agent.on('tool.called', async (d: { callId: string; name: string; args: any }) => {
+    this.provider.on('tool.called', async (d: { callId: string; name: string; args: any }) => {
       this.logger.info(`${d.name}`, 'TOOL_CALLED', d.args);
       await this.devicePromise;
     });
 
     // The agent has finished processing the response. Tell the segmenter there is no more data coming.
-    this.agent.on('response.done', () => {
+    this.provider.on('response.done', () => {
+      const reply = this.replyText.trim();
+      if (reply) {
+        this.logger.info(`LLM reply: ${reply}`, "LLM");
+      }
+      this.replyText = '';
+
       this.logger.info("Conversation completed");
       this.segmenter.flush(); // If there is anything left in the segmenter, flush it. This will force it to play on the speaker.
 
@@ -427,7 +447,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     });
 
 
-    this.agent.on('error', (error: Error) => {
+    this.provider.on('error', (error: Error) => {
       this.logger.error("Realtime agent error:", error);
       if (this.isSteamingMic || this.isPlaying) {
         this.esp.pipeline_error('agent-error', error.message || 'An error occurred in the voice agent.');
@@ -459,13 +479,13 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     });
 
     // This will toggle the device in homey available or not
-    this.agent.on('Healthy', () => {
+    this.provider.on('Healthy', () => {
       this.logger.info('Agent connection healthy');
       this.isAgentHealthy = true;
       this.updateAvailable();
     });
 
-    this.agent.on('Unhealthy', () => {
+    this.provider.on('Unhealthy', () => {
       this.logger.info('Agent connection unhealthy');
       this.isAgentHealthy = false;
       this.updateAvailable();
@@ -489,8 +509,8 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     // for capable devices. Fires again on reconnect — updateTimerSupport is a
     // no-op when the value is unchanged.
     this.esp.on('capabilities', () => {
-      this.agentOptions.supportsTimers = this.esp.supportsTimers;
-      this.agent.updateTimerSupport(this.esp.supportsTimers);
+      this.providerOptions.supportsTimers = this.esp.supportsTimers;
+      this.provider.updateTimerSupport(this.esp.supportsTimers);
       // Re-arm the LED ring for any timer still counting down on our side. This
       // must happen here, not on 'Healthy': 'Healthy' fires right after TCP
       // connect, before the device has subscribed to the voice assistant, so a
@@ -503,7 +523,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
     // Actually start the ESP and agent.
     await this.esp.start();
-    await this.agent.start();
+    await this.provider.start();
 
     this.logger.info('Initialized');
   }
@@ -517,53 +537,53 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
   private async handleSettingsChange(newSettings: any): Promise<void> {
     this.logger.info('Settings changed, updating agent...', undefined, newSettings);
 
-    if (this.agentOptions == null) {
+    if (this.providerOptions == null) {
       return;
     }
 
     try {
       let needRestart: boolean = false;
 
-      // Check if API key changed
-      const newApiKey = newSettings.openai_api_key;
+      // Check if the active provider's API key changed
+      const newApiKey = newSettings[this.provider.apiKeySettingKey];
 
-      if (newApiKey !== this.agentOptions.apiKey) {
+      if (newApiKey !== this.providerOptions.apiKey) {
         this.logger.info(`API key changed, updating agent and restarting.`);
-        this.agentOptions.apiKey = newApiKey;
-        await this.agent.updateApiKey(newApiKey);
+        this.providerOptions.apiKey = newApiKey;
+        await this.provider.updateApiKey(newApiKey);
         needRestart = true;
       }
 
       const newVoice = newSettings.selected_voice;
-      if (newVoice && newVoice !== this.agentOptions.voice) {
-        this.logger.info(`Voice changed from ${this.agentOptions.voice} to ${newVoice}`);
-        this.agentOptions.voice = newVoice;
-        this.agent.updateVoice(this.agentOptions.voice);
+      if (newVoice && newVoice !== this.providerOptions.voice) {
+        this.logger.info(`Voice changed from ${this.providerOptions.voice} to ${newVoice}`);
+        this.providerOptions.voice = newVoice;
+        this.provider.updateVoice(this.providerOptions.voice);
         needRestart = true;
       }
 
       // Check if language changed
       const newLanguageCode = newSettings.selected_language_code;
       const newLanguageName = newSettings.selected_language_name;
-      if (newLanguageCode && newLanguageCode !== this.agentOptions.languageCode) {
-        this.logger.info(`Language code changed from ${this.agentOptions.languageCode} to ${newLanguageCode}`);
-        this.agentOptions.languageCode = newLanguageCode;
-        this.agentOptions.languageName = newLanguageName || 'English';
-        this.agent.updateLanguage(this.agentOptions.languageCode, this.agentOptions.languageName);
+      if (newLanguageCode && newLanguageCode !== this.providerOptions.languageCode) {
+        this.logger.info(`Language code changed from ${this.providerOptions.languageCode} to ${newLanguageCode}`);
+        this.providerOptions.languageCode = newLanguageCode;
+        this.providerOptions.languageName = newLanguageName || 'English';
+        this.provider.updateLanguage(this.providerOptions.languageCode, this.providerOptions.languageName);
         needRestart = true;
       }
 
       // Check if AI instructions changed
       const newInstructions = newSettings.ai_instructions;
-      if (newInstructions !== this.agentOptions.additionalInstructions) {
+      if (newInstructions !== this.providerOptions.additionalInstructions) {
         this.logger.info('AI instructions changed, updating...');
-        this.agentOptions.additionalInstructions = newInstructions || '';
-        this.agent.updateAdditionalInstructions(this.agentOptions.additionalInstructions);
+        this.providerOptions.additionalInstructions = newInstructions || '';
+        this.provider.updateAdditionalInstructions(this.providerOptions.additionalInstructions);
         needRestart = true;
       }
 
       if (needRestart) {
-        this.agent.restart();
+        this.provider.restart();
       }
 
 
@@ -639,9 +659,9 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
   async speakText(text: string): Promise<void> {
     this.logger.info(`Speaking text: ${text}`);
-    if (this.agent && this.agent.textToSpeech) {
+    if (this.provider && this.provider.textToSpeech) {
 
-      const flacBuffer = await this.agent.textToSpeech(text);
+      const flacBuffer = await this.provider.textToSpeech(text);
 
       const audioData: AudioData = {
         data: flacBuffer,
@@ -660,9 +680,9 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
   async askAgentOutputToSpeaker(question: string): Promise<void> {
     this.logger.info(`Asking agent to output to speaker: ${question}`);
 
-    if (this.agent && this.agent.sendTextForAudioResponse) {
+    if (this.provider && this.provider.sendTextForAudioResponse) {
       await this.deviceManager.fetchData();
-      this.agent.sendTextForAudioResponse(question);
+      this.provider.sendTextForAudioResponse(question);
     } else {
       this.logger.error('Agent not initialized or sendTextForAudioResponse method not available');
     }
@@ -673,7 +693,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
   async askAgentOutputToText(question: string): Promise<string> {
     this.logger.info(`Asking agent to output as text: ${question}`);
 
-    if (this.agent && this.agent.sendTextForTextResponse) {
+    if (this.provider && this.provider.sendTextForTextResponse) {
       await this.deviceManager.fetchData();
 
       return new Promise<string>((resolve, reject) => {
@@ -689,22 +709,22 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
         };
 
         // Add the event listener for this specific request
-        this.agent.once('text.done', textDoneHandler);
+        this.provider.once('text.done', textDoneHandler);
 
         // Set a timeout in case the response never comes
         let timeoutId: any = this.homey.setTimeout(() => {
-          this.agent.off('text.done', textDoneHandler);
+          this.provider.off('text.done', textDoneHandler);
           reject(new Error('Timeout waiting for text response'));
         }, 30000); // 30 seconds timeout
 
         try {
           // Send the request
-          this.agent.sendTextForTextResponse(question);
+          this.provider.sendTextForTextResponse(question);
         } catch (error) {
           // Clear the timeout and remove the listener if sending fails
           this.homey.clearTimeout(timeoutId);
           timeoutId = null;
-          this.agent.off('text.done', textDoneHandler);
+          this.provider.off('text.done', textDoneHandler);
           reject(error);
         }
       });
@@ -948,13 +968,13 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
     // Safely close agent
     try {
-      if (this.agent) {
-        this.agent.close();
+      if (this.provider) {
+        this.provider.close();
       }
     } catch (err) {
       this.error('Failed to close agent:', err);
     } finally {
-      this.agent = null!;
+      this.provider = null!;
     }
 
     //Unregister with device manager

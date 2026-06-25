@@ -85,6 +85,22 @@
     </div>
 
     <div class="homey-form-group">
+      <label class="homey-form-label" for="gemini_api_key">Google Gemini API key</label>
+      <textarea class="homey-form-input" id="gemini_api_key" rows="5"
+        placeholder="Enter your Google Gemini API key here..."></textarea>
+      <div class="help-text">Visit https://aistudio.google.com/apikey to get one (only needed for the Gemini provider)</div>
+    </div>
+
+    <div class="homey-form-group">
+      <label class="homey-form-label" for="provider_select">Voice provider</label>
+      <select class="homey-form-input" id="provider_select">
+        <option value="openai-realtime">OpenAI Realtime</option>
+        <option value="gemini-realtime">Google Gemini Live</option>
+      </select>
+      <div class="help-text">Which backend handles speech &amp; language. Set the matching API key above.</div>
+    </div>
+
+    <div class="homey-form-group">
       <label class="homey-form-label" for="language_select">Language</label>
       <select class="homey-form-input" id="language_select">
         <option value="en">English</option>
@@ -136,6 +152,8 @@
 
 
       var apiKeyElement = document.getElementById("openai_api_key");
+      var geminiApiKeyElement = document.getElementById("gemini_api_key");
+      var providerSelectElement = document.getElementById("provider_select");
       var languageSelectElement = document.getElementById("language_select");
       var voiceSelectElement = document.getElementById("voice_select");
       var aiInstructionsElement = document.getElementById("ai_instructions");
@@ -144,6 +162,20 @@
       Homey.get("openai_api_key", function (err, apiKey) {
         if (err) return Homey.alert(err);
         apiKeyElement.value = apiKey;
+      });
+
+      Homey.get("gemini_api_key", function (err, apiKey) {
+        if (err) return Homey.alert(err);
+        if (apiKey) geminiApiKeyElement.value = apiKey;
+      });
+
+      Homey.get("voice_provider", function (err, provider) {
+        if (err) return Homey.alert(err);
+        if (provider) {
+          providerSelectElement.value = provider;
+        } else {
+          providerSelectElement.value = "openai-realtime"; // default provider
+        }
       });
 
       Homey.get("selected_language_code", function (err, language) {
@@ -171,6 +203,16 @@
 
       saveElement.addEventListener("click", function (e) {
         Homey.set("openai_api_key", apiKeyElement.value, function (err) {
+          if (err) return Homey.alert(err);
+        });
+
+        // Save Gemini API key
+        Homey.set("gemini_api_key", geminiApiKeyElement.value, function (err) {
+          if (err) return Homey.alert(err);
+        });
+
+        // Save selected voice provider
+        Homey.set("voice_provider", providerSelectElement.value, function (err) {
           if (err) return Homey.alert(err);
         });
 

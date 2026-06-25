@@ -348,7 +348,7 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
                     expected_zone: { type: "string", description: "Zone the agent expects these devices to be in (defense-in-depth)." },
                     expected_type: { type: "string", description: "Expected device type (e.g., 'light') to prevent over-broad actions." },
                     allow_cross_zone: { type: "boolean", description: "Must be true to allow cross-zone writes.", default: false },
-                    confirmed: { type: "boolean", description: "Must be true if >10 devices or security-sensitive actions." }
+                    confirmed: { type: "boolean", description: "Must be true if >10 devices would change." }
                 },
                 required: ["deviceIds", "capabilityId", "newValue"],
                 additionalProperties: false

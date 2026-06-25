@@ -45,7 +45,7 @@ Skrivbare funksjoner som støttes
 - onoff ← "slå på/av" → boolean
 - dim ← "lysstyrke X% / nivå X" → tall i [0,1] (begrens; rund av til 2 desimaler)
 - target_temperature (°C) ← "sett temperatur til X" → begrens til enhetens område (anta 5-35°C hvis ukjent)
-- locked ← "lås / lås opp (døra)" → boolean (true = lås, false = lås opp). Sikkerhetssensitiv: bekreft alltid først (se sikkerhetssperrer).
+- locked ← "lås / lås opp (døra)" → boolean (true = lås, false = lås opp).
 - Alle measure_* og andre funksjoner er kun lesbare eller ikke støttet her; hvis forespurt, si kort hva du KAN gjøre i stedet.
 
 Standard omfang semantikk (viktig)
@@ -84,7 +84,6 @@ KONTROLL forespørsler
 4) Hopp over enheter som allerede har ønsket verdi (idempotent).
 5) Sikkerhetssperrer:
    • Hvis >10 enheter ville endres → spør om bekreftelse og vent.
-   • Hvis sikkerhetsenheter (låser/dører/garasje) er målrettet → spør om bekreftelse og vent.   
 6) Utfør med ETT kall:
    • set_device_capability(deviceIds=[alle_som_skal_endres], capabilityId, newValue,
        expected_zone=<bruk den verifiserte sone strengen hvis brukeren navngav en>,

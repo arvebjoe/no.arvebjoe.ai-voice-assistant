@@ -25,6 +25,40 @@ const colors = {
 };
 
 
+// Field names whose string values are secrets and must never appear in logs.
+const SECRET_KEY_RE = /(api[_-]?key|access[_-]?key|secret|token|password|passwd|_key$|^key$)/i;
+
+// Mask a secret string as first-4 + "...." + last-4 (e.g. "sk-p....8AA").
+// Values too short to partially reveal are fully masked.
+function maskSecretValue(value: string): string {
+    if (value.length <= 8) {
+        return '....';
+    }
+    return `${value.slice(0, 4)}....${value.slice(-4)}`;
+}
+
+// Return a copy of `details` with any secret-looking string fields masked.
+// Only plain objects/arrays are traversed; Buffers, Errors and class instances
+// pass through untouched so util.inspect still renders them normally.
+function maskSecrets(details: any): any {
+    if (Array.isArray(details)) {
+        return details.map(maskSecrets);
+    }
+    if (details && typeof details === 'object' &&
+        (details.constructor === Object || details.constructor === undefined)) {
+        const out: Record<string, any> = {};
+        for (const [key, value] of Object.entries(details)) {
+            if (typeof value === 'string' && value && SECRET_KEY_RE.test(key)) {
+                out[key] = maskSecretValue(value);
+            } else {
+                out[key] = maskSecrets(value);
+            }
+        }
+        return out;
+    }
+    return details;
+}
+
 
 class Logger {
     private from: string;
@@ -62,7 +96,8 @@ class Logger {
             if (typeof details === 'object') {
 
                 // Convert object to string with indentation for each line
-                const detailsLines = util.inspect(details, {
+                // (secret-looking fields masked first so keys never hit the log).
+                const detailsLines = util.inspect(maskSecrets(details), {
                     colors: true,
                     depth: null,
                     compact: false

@@ -55,6 +55,14 @@ export class SettingsManager {
     ];
   }
 
+  /** Get available voice/LLM providers (for the settings UI). */
+  static getAvailableProviders(): { value: string; name: string }[] {
+    return [
+      { value: 'openai-realtime', name: 'OpenAI Realtime' },
+      { value: 'gemini-realtime', name: 'Google Gemini Live' }
+    ];
+  }
+
   /** Get BCP-47 locale from language code */
   static getLocaleFromLanguageCode(languageCode: string): string {
     const localeMap: Record<string, string> = {
@@ -126,7 +134,7 @@ export class SettingsManager {
     
     // Homey settings API does not expose list directly; define keys we care about explicitly.
     // Extend this list as needed.
-    const knownKeys = ['openai_api_key', 'openweather_api_key', 'selected_language_code', 'selected_language_name', 'selected_voice', 'ai_instructions'];
+    const knownKeys = ['openai_api_key', 'gemini_api_key', 'openweather_api_key', 'selected_language_code', 'selected_language_name', 'selected_voice', 'ai_instructions', 'voice_provider'];
 
     for (const k of knownKeys) {
       this.globals[k] = this.homey.settings.get(k);
