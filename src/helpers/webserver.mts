@@ -31,6 +31,15 @@ export class WebServer {
 
     getLanIP(): string {
 
+        // Allow overriding the advertised host IP (e.g. when running under the
+        // emulator, where auto-detection may pick the wrong interface so the PE
+        // can't reach the FLAC URL). Unset on a real Homey.
+        const override = process.env.HE_HOST_IP?.trim();
+        if (override) {
+            this.logger.info(`Using IP override from HE_HOST_IP: ${override}`, 'IP');
+            return override;
+        }
+
         this.logger.info('Determining LAN IP address...', 'IP');
         let bestChoice: {
             address: string | null,
