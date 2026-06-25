@@ -56,6 +56,9 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
   private isEspClientHealthy: boolean = false;
   private continueConversation: boolean = false;
   private lastTurnEndedAt: number = 0;
+  // Accumulates the assistant's streamed reply (audio transcript or text) for the
+  // current turn so the full reply can be logged on response.done.
+  private replyText: string = '';
   private readonly CONTEXT_TTL_MS: number = 10_000;
 
   // 1 Hz interval that pushes the active countdown onto the tile capabilities;
@@ -295,6 +298,8 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     });
 
     this.provider.on('transcript.delta', (delta: string) => {
+      this.replyText += delta ?? '';
+
       // Check if the delta contains a question, and if so, set continueConversation to true
       // Dirt simple, but works more reliably than having the AI call a tool.
       const text = (delta ?? '').trim();
@@ -326,10 +331,12 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       this.esp.intent_start();
     });
 
-
-    this.provider.on('text.done', (msg: any) => {
-      this.logger.info('Text processing done:', undefined, msg);
+    // Text-mode replies stream as text deltas (e.g. the emulator's `ask`); accumulate
+    // them too so response.done can log the full reply regardless of output mode.
+    this.provider.on('text.delta', (delta: string) => {
+      this.replyText += delta ?? '';
     });
+
 
     // The segmenter has detected a small silent gap in what the agent said and has produced a new chunk of audio data for us to play.
     this.segmenter.on('chunk', async (chunk: Buffer) => {
@@ -423,6 +430,12 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
     // The agent has finished processing the response. Tell the segmenter there is no more data coming.
     this.provider.on('response.done', () => {
+      const reply = this.replyText.trim();
+      if (reply) {
+        this.logger.info(`LLM reply: ${reply}`, "LLM");
+      }
+      this.replyText = '';
+
       this.logger.info("Conversation completed");
       this.segmenter.flush(); // If there is anything left in the segmenter, flush it. This will force it to play on the speaker.
 
