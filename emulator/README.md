@@ -69,6 +69,13 @@ node --import tsx --import ./emulator/register.mjs ./emulator/main.mts
 - `main.mts` constructs the fake `homey` context, the `App`, the PE `Driver`, and
   one PE `Device`, calls their `onInit()` in order, then starts the console.
 
+## Environment variables
+
+| var          | meaning                                                              |
+|--------------|---------------------------------------------------------------------|
+| `HE_SETTINGS`| Path to an alternate settings file (defaults to `emulator/settings.json`). |
+| `HE_HOST_IP` | Override the host IP the app advertises in playback URLs. Set this when auto-detection picks the wrong interface (VPN/Docker/WSL/virtual adapter) and the PE can't fetch the FLAC URL. Use the dev machine's LAN IP reachable by the PE, e.g. `HE_HOST_IP=192.168.1.50 npm run emulator`. |
+
 ## Notes / limitations
 
 - **Internet is required** — the app uses the OpenAI Realtime API (and open-meteo
