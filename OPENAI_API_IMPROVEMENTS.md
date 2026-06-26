@@ -3,7 +3,7 @@
 > **Note to Claude (continuing this task):**
 > This document was created in a remote Claude Code session (web) that couldn't push to GitHub due to missing write permissions on the GitHub App integration.
 >
-> **What we did:** Audited the OpenAI Realtime API implementation in `src/llm/openai-realtime-agent.mts` against the current OpenAI documentation and identified 12 improvements.
+> **What we did:** Audited the OpenAI Realtime API implementation in `src/llm/providers/openai-realtime-agent.mts` against the current OpenAI documentation and identified 12 improvements.
 >
 > **What was done:** Items 1, 2, 3, 4, 5, 6, 7, 10, and 12 (all trivial/low-effort) have been implemented. Remaining: items 8 (simplify VAD), 9 (expose gpt-realtime-mini), and 11 (rate limit handling) are medium-effort or optional and still TODO.
 
@@ -15,7 +15,7 @@ Audit of the current implementation against the OpenAI Realtime API GA release a
 
 ## 1. Upgrade to Latest Realtime Model Snapshot
 
-**File:** `src/llm/openai-realtime-agent.mts:171`
+**File:** `src/llm/providers/openai-realtime-agent.mts:171`
 
 **Current:**
 ```typescript
@@ -39,7 +39,7 @@ Available snapshots:
 
 ## 2. Upgrade Transcription Model to `gpt-realtime-whisper`
 
-**File:** `src/llm/openai-realtime-agent.mts:825`
+**File:** `src/llm/providers/openai-realtime-agent.mts:825`
 
 **Current:**
 ```typescript
@@ -71,7 +71,7 @@ For a voice assistant answering commands, `"low"` is a sensible starting point; 
 
 ## 3. Enable Noise Reduction for Input Audio
 
-**File:** `src/llm/openai-realtime-agent.mts:829`
+**File:** `src/llm/providers/openai-realtime-agent.mts:829`
 
 **Current:**
 ```typescript
@@ -96,7 +96,7 @@ This can meaningfully improve transcription quality without any code changes bey
 
 ## 4. Handle `response.output_audio.done` (Missing GA Event Alias)
 
-**File:** `src/llm/openai-realtime-agent.mts:588`
+**File:** `src/llm/providers/openai-realtime-agent.mts:588`
 
 **Current:**
 ```typescript
@@ -119,7 +119,7 @@ case "response.audio.done":
 
 ## 5. Handle Streaming Input Transcription Events
 
-**File:** `src/llm/openai-realtime-agent.mts` (switch block, no current handler)
+**File:** `src/llm/providers/openai-realtime-agent.mts` (switch block, no current handler)
 
 Two transcription events from the GA API are currently unhandled and fall through to the default `event` emitter:
 
@@ -146,7 +146,7 @@ The delta events would let the UI display a live "what I heard" transcript durin
 
 ## 6. Add `instructions` Parameter to the TTS Call
 
-**File:** `src/llm/openai-realtime-agent.mts:401`
+**File:** `src/llm/providers/openai-realtime-agent.mts:401`
 
 **Current:**
 ```typescript
@@ -197,7 +197,7 @@ The TTS API now supports **13 voices**. Three are missing from the selector:
 
 ## 8. Simplify VAD Response Trigger
 
-**File:** `src/llm/openai-realtime-agent.mts:836–838` and `614–629`
+**File:** `src/llm/providers/openai-realtime-agent.mts:836–838` and `614–629`
 
 **Current approach:**
 - `turn_detection.create_response` is set to `false`
@@ -236,7 +236,7 @@ The `gpt-realtime-mini` model (snapshots: `gpt-realtime-mini-2025-10-06`, `gpt-r
 
 ## 10. Pin `OpenAI-Beta` Header Removal (Already Done — Verify)
 
-**File:** `src/llm/openai-realtime-agent.mts:222`
+**File:** `src/llm/providers/openai-realtime-agent.mts:222`
 
 The GA API requires that the `OpenAI-Beta: realtime=v1` header is **not** sent. The current code only sends `Authorization`, which is correct. However, this should be explicitly documented in the code or in a migration note so it isn't accidentally re-added.
 
@@ -253,7 +253,7 @@ this.ws = new WebSocket(this.options.url, {
 
 ## 11. Rate Limit Event Handling
 
-**File:** `src/llm/openai-realtime-agent.mts:559`
+**File:** `src/llm/providers/openai-realtime-agent.mts:559`
 
 **Current:**
 ```typescript
@@ -272,7 +272,7 @@ The event is forwarded but nothing acts on it. The `rate_limits.updated` payload
 
 ## 12. `idle_timeout_ms` for Inactive Sessions
 
-**File:** `src/llm/openai-realtime-agent.mts:835`
+**File:** `src/llm/providers/openai-realtime-agent.mts:835`
 
 **Current:**
 ```typescript

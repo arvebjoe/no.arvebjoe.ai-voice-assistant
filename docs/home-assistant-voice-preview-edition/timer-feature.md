@@ -188,7 +188,7 @@ Rules:
 | Reconnect | same, `handleDisconnect`/connect flow | clear or re-issue STARTED for active timers |
 | Agent tool | `src/llm/tool-manager.mts` | add `set_timer` (+ `cancel_timer`, maybe `pause_timer`) tool calling the client helpers; register in `getToolDefinitions()` / `getToolHandlers()` |
 | Orchestration | `src/homey/voice-assistant-device.mts` | own the per-device timer registry; surface state to Homey (custom capabilities + Flow triggers, §7) |
-| Agent prompt | `src/llm/agent-instructions.*.mts` | teach the agent it can set/cancel timers |
+| Agent prompt | `src/llm/instructions/agent-instructions.*.mts` | teach the agent it can set/cancel timers |
 
 The existing `vaEvent()` helper is **not** reused (that's id 92 for the STT/TTS pipeline); timers need
 a new `send('VoiceAssistantTimerEventResponse', …)` path.
@@ -273,7 +273,7 @@ authoritative countdown owner (per §4); the PE only renders what we send.
 | `src/voice_assistant/esp-voice-assistant-client.mts` | Added `sendTimerEvent(eventType, {...})` — sends `VoiceAssistantTimerEventResponse` (id 115). Parsed `voiceAssistantFeatureFlags` in the `DeviceInfoResponse` handler → `supportsTimers` getter (TIMERS = `1 << 3`). |
 | `src/llm/tool-manager.mts` | Optional 6th ctor arg `timerManager`; registers `set_timer` / `cancel_timer` / `get_timer` only when present (keeps the existing 5-arg test calls working). |
 | `src/homey/voice-assistant-device.mts` | Create `esp` → `TimerManager(homey, esp)` → `ToolManager(..., timerManager)` (reordered so the timer tools have the client). Re-issue STARTED on ESP `Healthy` (reconnect re-arm). `dispose()` on `onDeleted`. |
-| `src/llm/agent-instructions.{en,no}.mts` | New "TIMERS & ALARMS" section — countdown phrasing, alarm-via-`get_local_time` math, single-timer conflict flow, "don't read out seconds". |
+| `src/llm/instructions/agent-instructions.*.mts` | New "TIMERS & ALARMS" section — countdown phrasing, alarm-via-`get_local_time` math, single-timer conflict flow, "don't read out seconds". |
 
 ### Agent tools
 

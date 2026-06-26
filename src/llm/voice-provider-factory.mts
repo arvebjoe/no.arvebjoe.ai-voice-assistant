@@ -1,5 +1,5 @@
 import { IVoiceProvider, VoiceProviderOptions } from './voice-provider.mjs';
-import { OpenAIRealtimeProvider } from './openai-realtime-agent.mjs';
+import { OpenAIRealtimeProvider } from './providers/openai-realtime-agent.mjs';
 import { GeminiLiveProvider } from './providers/gemini-live-provider.mjs';
 import { ToolManager } from './tool-manager.mjs';
 import { settingsManager } from '../settings/settings-manager.mjs';
@@ -15,6 +15,22 @@ const API_KEY_SETTING: Record<string, string> = {
     'openai-realtime': 'openai_api_key',
     'gemini-realtime': 'gemini_api_key',
 };
+
+/**
+ * Voices each provider offers, for the settings UI. Each provider owns its own
+ * list (single source of truth); unknown ids fall back to the default provider's
+ * list so the dropdown is never empty.
+ */
+export function getVoicesForProvider(providerId: string): { value: string; name: string }[] {
+    switch (providerId) {
+        case 'openai-realtime':
+            return OpenAIRealtimeProvider.getAvailableVoices();
+        case 'gemini-realtime':
+            return GeminiLiveProvider.getAvailableVoices();
+        default:
+            return OpenAIRealtimeProvider.getAvailableVoices();
+    }
+}
 
 /**
  * Construct the voice/LLM provider for a device.

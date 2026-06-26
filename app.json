@@ -65,6 +65,12 @@
     ]
   },
   "homeyCommunityTopicId": 142532,
+  "api": {
+    "getVoices": {
+      "method": "GET",
+      "path": "/voices"
+    }
+  },
   "esm": true,
   "flow": {
     "triggers": [
