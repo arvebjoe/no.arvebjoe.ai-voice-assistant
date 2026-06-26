@@ -9,6 +9,29 @@ interface EspVoiceClientOptions {
   host: string;
   apiPort?: number;
   discoveryMode?: boolean;
+  // When set (and not NONE/0) the client subscribes to the device's OWN ESPHome
+  // logs over the native API and surfaces them inline (see deviceLogger). Accepts
+  // a LogLevel name ('DEBUG') or number (0-7). Defaults to the ESP_LOG_LEVEL env
+  // var so it can be toggled for emulator debugging without a code change.
+  logLevel?: string | number;
+}
+
+// ESPHome LogLevel enum (api.proto). Used to drive SubscribeLogsRequest.
+const LOG_LEVELS: Record<string, number> = {
+  NONE: 0, ERROR: 1, WARN: 2, INFO: 3, CONFIG: 4, DEBUG: 5, VERBOSE: 6, VERY_VERBOSE: 7,
+};
+
+// Resolve a level name/number/env string to a LogLevel int; anything unknown or
+// out of range (incl. undefined) means "don't subscribe" (0 = NONE).
+function resolveLogLevel(value: string | number | undefined): number {
+  if (value === undefined || value === null || value === '') {
+    return 0;
+  }
+  const n = typeof value === 'number' ? value : Number(value);
+  if (!Number.isNaN(n)) {
+    return n >= 0 && n <= 7 ? n : 0;
+  }
+  return LOG_LEVELS[String(value).toUpperCase().replace(/[\s-]/g, '_')] ?? 0;
 }
 
 type EspVoiceEvents = {
@@ -56,7 +79,13 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
   // any further reconnect scheduling, even from a late socket error/close event.
   private closed: boolean = false;
   private deviceType: string | null;
-  private logger = createLogger('ESP', true);
+  private logger = createLogger('ESP', false);
+  // The device's OWN ESPHome firmware logs, streamed over the native API
+  // (SubscribeLogsRequest) and printed under [PE] so the device-side view of the
+  // voice flow interleaves with our [ESP] client logs and the app's flow logs.
+  private deviceLogger = createLogger('PE', false);
+  // Resolved LogLevel for the device-log subscription (0 = NONE = disabled).
+  private readonly logLevel: number;
   private shouldAnnounceFinished: boolean = true;
 
   // Store entity keys by object_id for easier access
@@ -69,13 +98,15 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
   private isMutedValue: boolean = false;
 
 
-  constructor(homey: any, { host, apiPort = 6053, discoveryMode = false }: EspVoiceClientOptions) {
+  constructor(homey: any, { host, apiPort = 6053, discoveryMode = false, logLevel }: EspVoiceClientOptions) {
     super();
 
     this.homey = homey;
     this.host = host;
     this.apiPort = apiPort;
     this.discoveryMode = discoveryMode;
+    // Opt-in via the option or the ESP_LOG_LEVEL env var (e.g. ESP_LOG_LEVEL=DEBUG).
+    this.logLevel = resolveLogLevel(logLevel ?? process.env.ESP_LOG_LEVEL);
     // Discovery probes are one-shot; never reconnect them.
     this.autoReconnect = !discoveryMode;
 
@@ -516,6 +547,14 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
         this.emit('chunk', Buffer.from(message.data));
       }
 
+    } else if (name === 'SubscribeLogsResponse') {
+      // The device's own firmware log line (bytes, field 3). It already carries
+      // ESPHome's level tag + ANSI colors, so print it raw under [PE].
+      if (message?.message && message.message.length > 0) {
+        const line = Buffer.from(message.message).toString('utf8').replace(/\r?\n$/, '');
+        this.deviceLogger.info(line);
+      }
+
     } else if (name === 'PingRequest') {
       this.send('PingResponse', {});
     }
@@ -539,6 +578,14 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
     this.subscribeVoiceAssistantCount = 0;
     this.voiceAssistantConfigurationCount = 0;
     this.entityKeys = {};
+
+    // Stream the device's own ESPHome logs over this same connection (opt-in).
+    // Sent before ListEntities so we capture the device-side view from the start.
+    // dump_config off — we only want the running log, not the boot config dump.
+    if (this.logLevel > 0) {
+      this.send('SubscribeLogsRequest', { level: this.logLevel, dumpConfig: false });
+      this.logger.info(`Subscribed to device logs at LogLevel ${this.logLevel}`);
+    }
 
     this.send('ListEntitiesRequest', {});
   }
@@ -825,7 +872,9 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
   logRx(f: any): void {
 
 
-    if (f.name === 'VoiceAssistantAudio') {
+    // VoiceAssistantAudio is per-chunk mic audio (too noisy); SubscribeLogsResponse
+    // is the device's own log, surfaced under [PE] in dispatch (skip the raw RX dump).
+    if (f.name === 'VoiceAssistantAudio' || f.name === 'SubscribeLogsResponse') {
       return;
     }
 
