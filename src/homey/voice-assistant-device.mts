@@ -41,6 +41,16 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
   private logger = createLogger('Voice_Assistant_Device', false);
   private skippedBytes: number = 0;
   private skipInitialBytes: number | null = null;
+  // Effective initial-skip for the CURRENT turn (bytes). Derived per turn in 'starting'
+  // from skipInitialBytes plus, on PE-auto-reopened conversation turns, a floor (see
+  // CONVERSATION_REOPEN_SKIP_MS). The chunk handler uses this, not skipInitialBytes.
+  private currentTurnSkipBytes: number = 0;
+  // Floor initial-skip for turns inside a start_conversation session. Those turns open
+  // the mic immediately after the PE's own speaker finished the reply, so the PE's
+  // mic-open noise/echo burst lands at t=0 and trips OpenAI's server VAD (speech_started
+  // -> speech_stopped ~silence_duration later) before the user can answer — the ~0.5s
+  // dead window. Skipping this much swallows the burst so the mic stays open for the user.
+  private readonly CONVERSATION_REOPEN_SKIP_MS: number = 500;
   abstract readonly needDelayedPlayback: boolean;
 
   private inputBufferDebug: boolean = false;
@@ -56,6 +66,22 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
   private isEspClientHealthy: boolean = false;
   private continueConversation: boolean = false;
   private lastTurnEndedAt: number = 0;
+  // True while the PE is in a start_conversation session: from when we send the one
+  // continue-conversation reopen (send_voice_assistant_request, startConversation:true)
+  // until the session ends (a silent turn the user doesn't answer, or >CONTEXT_TTL_MS
+  // idle). While true, EVERY turn delivers its reply in-band on TTS_END, because the PE
+  // drops standalone announces mid-conversation. The PE auto-reopens the mic after each
+  // in-band reply (it is in start_conversation mode), so we send exactly ONE reopen
+  // (turn 1 -> first follow-up) and let the PE drive the rest of the chain. Set only when
+  // we actually send that reopen (not on every "?"), and cleared on session end and at
+  // the start of any say — so it cannot leak across unrelated turns the way the old
+  // conversationActive flag did.
+  private peConversationActive: boolean = false;
+  // True for the follow-up run only: route its reply via the TTS_END URL instead of
+  // the announce queue (the PE drops standalone announces mid-conversation).
+  // Accumulates the reply PCM to ship as one file.
+  private replyViaTtsUrl: boolean = false;
+  private replyPcm: Buffer[] = [];
   // Accumulates the assistant's streamed reply (audio transcript or text) for the
   // current turn so the full reply can be logged on response.done.
   private replyText: string = '';
@@ -172,6 +198,15 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     // The esp voice client has woken (by wake word or user action)
     this.esp.on('starting', async () => {
 
+      // Drop a duplicate wake while we're already streaming the mic. After an
+      // in-band reply the PE sometimes auto-reopens the mic itself AND our
+      // post-playback reopen fires — without this guard the second 'starting'
+      // would start a second run that clobbers the first (empty transcript).
+      if (this.isSteamingMic) {
+        this.logger.info('Ignoring duplicate wake — already streaming mic');
+        return;
+      }
+
       if (!this.provider.isConnected()) {
         // The agent doesn't have an active web socket. Either the API Key is missing or the internet connection failed.
         // Play a pre-recorded message to inform the user.
@@ -193,6 +228,9 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       if (this.lastTurnEndedAt > 0 && idleMs > this.CONTEXT_TTL_MS) {
         this.logger.info(`Idle ${Math.round(idleMs / 1000)}s since last turn — starting fresh conversation`);
         this.provider.resetConversation();
+        // Long gap => any prior start_conversation session is over; next reply goes
+        // via the announce path, and the PE is no longer in conversation mode.
+        this.peConversationActive = false;
       }
 
       // Initialize input buffer, only used for debugging.
@@ -202,6 +240,23 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       this.skippedBytes = 0;
 
       this.isSteamingMic = true;
+
+      // While the PE is in a start_conversation session, every turn (the follow-up our
+      // reopen opened AND every turn the PE auto-reopens after an in-band reply) must
+      // deliver its reply in-band on TTS_END — a standalone announce gets dropped
+      // mid-conversation. A plain say / wake / manual-on turn has peConversationActive
+      // false, so it uses the announce path (which is what fires the first reopen).
+      this.replyViaTtsUrl = this.peConversationActive;
+      this.replyPcm = [];
+
+      // Pick this turn's effective initial-skip. Conversation turns (peConversationActive)
+      // always carry the PE's mic-open noise burst right after playback, so enforce a
+      // floor that swallows it; honor a larger global initial_audio_skip if configured.
+      // Plain wake/say turns keep just the global value so a fast first utterance isn't clipped.
+      const floorSkipBytes = this.peConversationActive
+        ? this.msToBytes(this.CONVERSATION_REOPEN_SKIP_MS, 16000, 1, 2)
+        : 0;
+      this.currentTurnSkipBytes = Math.max(this.skipInitialBytes ?? 0, floorSkipBytes);
 
       this.logger.info("Voice session started");
       // Let's start getting device state over the API, this might take a while, but should be done when we actually need it
@@ -222,8 +277,10 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     this.esp.on('chunk', (data: Buffer) => {
 
       // Skip initial bytes to eliminate microphone noise at the start - This is a problem on the PE.
-      if (this.skipInitialBytes && this.skippedBytes < this.skipInitialBytes) {
-        const remainingToSkip = this.skipInitialBytes - this.skippedBytes;
+      // Uses the per-turn effective skip (currentTurnSkipBytes), which is raised on
+      // conversation reopens — see CONVERSATION_REOPEN_SKIP_MS.
+      if (this.currentTurnSkipBytes && this.skippedBytes < this.currentTurnSkipBytes) {
+        const remainingToSkip = this.currentTurnSkipBytes - this.skippedBytes;
         const bytesToSkip = Math.min(data.length, remainingToSkip);
         this.skippedBytes += bytesToSkip;
 
@@ -320,6 +377,12 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
       if (transcript == '' || transcript.toLowerCase() === "undertekster av ai-media") {
         // Yeah, this is a strange one. If the STT engine doesn't hear anything useful, it will return this text. I don't know why.
+        // No answer => the user has left the conversation: end the PE's start_conversation
+        // session so it stops auto-reopening and the next turn starts fresh on the
+        // announce path. Clear replyViaTtsUrl too so a stray segmenter 'done' can't emit
+        // a duplicate in-band tts_end/run_end on top of the run_end we send here.
+        this.peConversationActive = false;
+        this.replyViaTtsUrl = false;
         this.esp.stt_end('');
         this.esp.run_end();
         this.setCapabilityValue('onoff', false);
@@ -341,6 +404,20 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     // The segmenter has detected a small silent gap in what the agent said and has produced a new chunk of audio data for us to play.
     this.segmenter.on('chunk', async (chunk: Buffer) => {
       this.logger.info(`New TX chunk: ${chunk.length} bytes`);
+
+      // Continue run: the PE won't fetch a standalone announce mid-conversation,
+      // so don't stream per-chunk announces. Accumulate the PCM and ship the whole
+      // reply as one file on TTS_END (see the segmenter 'done' handler). Still emit
+      // the intent_end -> tts_start transition so the PE shows the "replying" state.
+      if (this.replyViaTtsUrl) {
+        if (this.hasIntent) {
+          this.esp.intent_end('');
+          this.hasIntent = false;
+          this.esp.tts_start();
+        }
+        this.replyPcm.push(chunk);
+        return;
+      }
 
 
       // If we have an input buffer to play, do that first, before playing the new chunk from the segmenter
@@ -382,6 +459,15 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
 
     this.esp.on('announce_finished', () => {
+      // This handler only drives the multi-segment announce QUEUE (say/wake replies).
+      // The reopen and continue-reply announces also ack with AnnounceFinished, often
+      // late (during a later turn). Those arrive with isPlaying=false; ignore them so
+      // they can't spuriously end a run or trigger a second reopen.
+      if (!this.isPlaying) {
+        this.logger.info('Ignoring stray announce_finished (no announce queue active)');
+        return;
+      }
+
       this.logger.info('Announcement finished');
 
       if (this.announceUrls.length === 0) {
@@ -394,6 +480,12 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
         if (this.continueConversation) {
           this.continueConversation = false;
+          // The reply ended in a question: open the conversation. Reopen the mic once
+          // ourselves (startConversation:true puts the PE into conversation mode) and
+          // mark the session active so this turn AND every turn the PE auto-reopens
+          // afterwards delivers its reply in-band on TTS_END. We send only THIS reopen;
+          // the PE drives the rest of the chain.
+          this.peConversationActive = true;
 
           this.homey.setTimeout(() => {
             this.esp.send_voice_assistant_request();
@@ -444,6 +536,40 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     // The segmenter has emitted all its chunks, so tell the esp to stop and clean all resources.
     this.segmenter.on('done', async () => {
       this.esp.closeMic();
+
+      // In-band reply for a turn inside the PE's start_conversation session: deliver on
+      // TTS_END carrying the FLAC URL — the only mechanism the PE reliably plays
+      // mid-conversation (standalone announces, even with startConversation:true, get
+      // dropped). After this the PE auto-reopens the mic for the next turn, so chained
+      // questions keep flowing in-band; the session ends when the user answers with
+      // silence (see transcript.done) or after CONTEXT_TTL_MS idle.
+      if (this.replyViaTtsUrl) {
+        this.replyViaTtsUrl = false;
+        const pcm = this.replyPcm;
+        this.replyPcm = [];
+
+        let fileUrl: string | null = null;
+        if (pcm.length > 0) {
+          const flac = await pcmToFlacBuffer(Buffer.concat(pcm), {
+            sampleRate: 24_000,
+            channels: 1,
+            bitsPerSample: 16,
+          });
+          const fileInfo = await this.webServer.buildStream({ data: flac, extension: 'flac', prefix: 'tx' });
+          fileUrl = fileInfo.url;
+        }
+
+        if (fileUrl) {
+          this.logger.info(`Continue reply via TTS_END URL: ${fileUrl}`);
+          this.esp.tts_end(fileUrl);
+        } else {
+          this.esp.tts_end();
+        }
+        this.esp.run_end();
+        this.continueConversation = false;
+        this.setCapabilityValue('onoff', false);
+        this.lastTurnEndedAt = Date.now();
+      }
     });
 
 
@@ -679,6 +805,13 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
   async askAgentOutputToSpeaker(question: string): Promise<void> {
     this.logger.info(`Asking agent to output to speaker: ${question}`);
+
+    // A say always starts a fresh turn on the announce path: clear any stale session
+    // state so the reply isn't mis-routed in-band, and so turn 1 of a multi-question
+    // quiz goes out as an announce (which is what fires the first reopen).
+    this.peConversationActive = false;
+    this.replyViaTtsUrl = false;
+    this.replyPcm = [];
 
     if (this.provider && this.provider.sendTextForAudioResponse) {
       await this.deviceManager.fetchData();
