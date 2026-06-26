@@ -36,24 +36,9 @@ export class SettingsManager {
     return this.instance;
   }
 
-  /** Get available OpenAI realtime voices */
-  static getAvailableVoices(): { value: string; name: string }[] {
-    return [
-      { value: 'alloy', name: 'Alloy' },
-      { value: 'ash', name: 'Ash' },
-      { value: 'ballad', name: 'Ballad' },
-      { value: 'coral', name: 'Coral' },
-      { value: 'echo', name: 'Echo' },
-      { value: 'fable', name: 'Fable' },
-      { value: 'nova', name: 'Nova' },
-      { value: 'onyx', name: 'Onyx' },
-      { value: 'sage', name: 'Sage' },
-      { value: 'shimmer', name: 'Shimmer' },
-      { value: 'verse', name: 'Verse' },
-      { value: 'cedar', name: 'Cedar' },
-      { value: 'marin', name: 'Marin' }
-    ];
-  }
+  // Available voices now live with each provider (IVoiceProvider.getAvailableVoices,
+  // surfaced per-provider via the factory's getVoicesForProvider) so the settings
+  // UI can switch the list when the provider changes.
 
   /** Get available voice/LLM providers (for the settings UI). */
   static getAvailableProviders(): { value: string; name: string }[] {

@@ -1,6 +1,6 @@
 // Shared loader for the language-specific agent instruction modules
-// (agent-instructions.{en,no}.mts). Used by every provider so the system prompt
-// is identical regardless of which backend is active.
+// (instructions/agent-instructions.<code>.mts). Used by every provider so the
+// system prompt is identical regardless of which backend is active.
 
 export interface InstructionModule {
     getDefaultInstructions(languageName: string, additionalInstructions?: string | null, supportsTimers?: boolean): string;
@@ -9,19 +9,17 @@ export interface InstructionModule {
 }
 
 /**
- * Dynamically load the instruction module for a language code, falling back to
- * English if a language-specific module is missing.
+ * Dynamically load the instruction module for a language code (e.g. 'de' ->
+ * instructions/agent-instructions.de.mjs), falling back to English if a
+ * language-specific module is missing. Codes match the options in
+ * settings/index.html.
  */
 export async function loadInstructionModule(languageCode: string): Promise<InstructionModule> {
+    const code = (languageCode || 'en').toLowerCase();
     try {
-        // Language-specific instructions (e.g. 'no' -> agent-instructions.no.mjs)
-        if (languageCode === 'no') {
-            return await import('./agent-instructions.no.mjs');
-        }
-        // Default to English instructions
-        return await import('./agent-instructions.en.mjs');
+        return await import(`./instructions/agent-instructions.${code}.mjs`);
     } catch (error) {
-        // Fallback to English if a language-specific file doesn't exist
-        return await import('./agent-instructions.en.mjs');
+        // Fallback to English if a language-specific file doesn't exist.
+        return await import('./instructions/agent-instructions.en.mjs');
     }
 }

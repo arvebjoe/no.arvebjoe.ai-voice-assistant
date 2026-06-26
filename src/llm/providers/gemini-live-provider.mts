@@ -13,6 +13,61 @@ const GEMINI_LIVE_MODEL = "gemini-3.1-flash-live-preview"; // realtime audio ses
 const GEMINI_TEXT_MODEL = "gemini-2.5-flash";              // one-shot text Q&A (ask-as-text)
 const GEMINI_TTS_MODEL = "gemini-2.5-flash-preview-tts";   // direct TTS (speak-text)
 
+// Gemini's native-audio voice if none is configured (or the stored OpenAI voice
+// doesn't map to a Gemini one). Kore is a clear, neutral prebuilt voice.
+const GEMINI_DEFAULT_VOICE = "Kore";
+
+/**
+ * The app stores a single `selected_voice` setting using OpenAI's voice names
+ * (see SettingsManager.getAvailableVoices). Gemini uses its own prebuilt voice
+ * names, so translate from one to the other. Anything already a Gemini voice
+ * name (or unknown) falls through to GEMINI_DEFAULT_VOICE via geminiVoiceName().
+ */
+const OPENAI_TO_GEMINI_VOICE: Record<string, string> = {
+    alloy: "Aoede",
+    ash: "Charon",
+    ballad: "Enceladus",
+    coral: "Leda",
+    echo: "Puck",
+    fable: "Fenrir",
+    nova: "Kore",
+    onyx: "Orus",
+    sage: "Zephyr",
+    shimmer: "Aoede",
+    verse: "Algieba",
+    cedar: "Iapetus",
+    marin: "Autonoe",
+};
+
+// Gemini prebuilt voices offered in the settings UI (also the set accepted as-is
+// when the shared `selected_voice` setting already holds a Gemini name). Every
+// OPENAI_TO_GEMINI_VOICE target must appear here so mapped values pass validation.
+const GEMINI_VOICES_LIST: { value: string; name: string }[] = [
+    { value: "Kore", name: "Kore" },
+    { value: "Puck", name: "Puck" },
+    { value: "Charon", name: "Charon" },
+    { value: "Aoede", name: "Aoede" },
+    { value: "Fenrir", name: "Fenrir" },
+    { value: "Leda", name: "Leda" },
+    { value: "Orus", name: "Orus" },
+    { value: "Zephyr", name: "Zephyr" },
+    { value: "Enceladus", name: "Enceladus" },
+    { value: "Iapetus", name: "Iapetus" },
+    { value: "Algieba", name: "Algieba" },
+    { value: "Autonoe", name: "Autonoe" },
+];
+
+// Valid Gemini prebuilt voices — accepted as-is if the setting already holds one.
+const GEMINI_VOICES = new Set(GEMINI_VOICES_LIST.map((v) => v.value));
+
+/** Resolve the configured voice to a Gemini prebuilt voice name. */
+function geminiVoiceName(voice: string | undefined | null): string {
+    if (!voice) return GEMINI_DEFAULT_VOICE;
+    if (OPENAI_TO_GEMINI_VOICE[voice]) return OPENAI_TO_GEMINI_VOICE[voice];
+    if (GEMINI_VOICES.has(voice)) return voice; // already a Gemini voice name
+    return GEMINI_DEFAULT_VOICE;
+}
+
 /**
  * Strip JSON-Schema fields Gemini's function declarations reject (notably
  * `additionalProperties`). ToolManager emits OpenAI's function-parameter shape;
@@ -45,6 +100,11 @@ export class GeminiLiveProvider extends (EventEmitter as new () => TypedEmitter<
     // Seam contract: Gemini Live wants 16 kHz PCM input (the PE mic's native rate).
     readonly inputSampleRate = 16000;
     readonly apiKeySettingKey = "gemini_api_key";
+
+    /** Voices offered for this provider in the settings UI. */
+    static getAvailableVoices(): { value: string; name: string }[] {
+        return GEMINI_VOICES_LIST;
+    }
 
     private homey: any;
     private toolManager: ToolManager;
@@ -119,7 +179,8 @@ export class GeminiLiveProvider extends (EventEmitter as new () => TypedEmitter<
         }
         if (!this.instructions) await this.refreshInstructions();
 
-        this.logger.info("Connecting Gemini Live session", "START");
+        const voiceName = geminiVoiceName(this.options.voice);
+        this.logger.info("Connecting Gemini Live session", "START", { voice: voiceName });
         try {
             this.session = await this.client().live.connect({
                 model: GEMINI_LIVE_MODEL,
@@ -146,6 +207,7 @@ export class GeminiLiveProvider extends (EventEmitter as new () => TypedEmitter<
                 },
                 config: {
                     responseModalities: [Modality.AUDIO],
+                    speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName } } },
                     inputAudioTranscription: {},
                     outputAudioTranscription: {},
                     systemInstruction: this.instructions,
@@ -393,7 +455,10 @@ export class GeminiLiveProvider extends (EventEmitter as new () => TypedEmitter<
         const resp: any = await ai.models.generateContent({
             model: GEMINI_TTS_MODEL,
             contents: [{ role: "user", parts: [{ text }] }],
-            config: { responseModalities: [Modality.AUDIO] },
+            config: {
+                responseModalities: [Modality.AUDIO],
+                speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: geminiVoiceName(this.options.voice) } } },
+            },
         });
 
         const b64: string | undefined = resp?.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
@@ -411,8 +476,9 @@ export class GeminiLiveProvider extends (EventEmitter as new () => TypedEmitter<
     }
 
     async updateVoice(newVoice: string): Promise<void> {
-        // Gemini uses its own voice names (e.g. Puck/Charon), not OpenAI's. Stored
-        // but not yet applied — voice mapping is future work.
+        // The app stores OpenAI voice names; geminiVoiceName() maps them to Gemini's
+        // own voices when the session connects. A live session's voice is fixed at
+        // connect time, so the device calls restart() after this to apply it.
         this.options.voice = newVoice;
     }
 
