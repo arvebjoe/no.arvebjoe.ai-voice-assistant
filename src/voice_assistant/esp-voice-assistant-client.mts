@@ -658,8 +658,15 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
     this.vaEvent(VA_EVENT.VOICE_ASSISTANT_TTS_START, {}, 'TTS_START');
   }
 
-  tts_end(): void {
-    this.vaEvent(VA_EVENT.VOICE_ASSISTANT_TTS_END, {}, 'TTS_END');
+  // Optionally carries the reply audio URL. In the start_conversation follow-up
+  // flow the PE is in "conversation" mode and silently drops a standalone
+  // VoiceAssistantAnnounceRequest (acks AnnounceFinished without fetching), so the
+  // reply must be delivered in-band on TTS_END as the pipeline's tts_output. The
+  // URL goes in the repeated `data` field as {name:'url', value:url}, NOT a spread
+  // property (which protobufjs would drop as an unknown field).
+  tts_end(url?: string): void {
+    const extra = url ? { data: [{ name: 'url', value: url }] } : {};
+    this.vaEvent(VA_EVENT.VOICE_ASSISTANT_TTS_END, extra, 'TTS_END');
   }
 
   stt_vad_start(): void {

@@ -56,6 +56,20 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
   private isEspClientHealthy: boolean = false;
   private continueConversation: boolean = false;
   private lastTurnEndedAt: number = 0;
+  // Latched true ONLY when WE send a continue-conversation reopen
+  // (send_voice_assistant_request) from the announce_finished handler. Consumed
+  // exactly once by the next 'starting' (the follow-up turn that reopen opened) to
+  // set replyViaTtsUrl. Self-clearing, so it can't leak across unrelated turns: a
+  // plain say / wake / manual-on turn never sets it and therefore always uses the
+  // announce path (which is what fires the reopen). The PE does NOT auto-reopen
+  // after an in-band reply (confirmed on PE firmware 2026.6.2), so we drive the
+  // single reopen ourselves rather than relying on the PE to continue.
+  private pendingContinueOpen: boolean = false;
+  // True for the follow-up run only: route its reply via the TTS_END URL instead of
+  // the announce queue (the PE drops standalone announces mid-conversation).
+  // Accumulates the reply PCM to ship as one file.
+  private replyViaTtsUrl: boolean = false;
+  private replyPcm: Buffer[] = [];
   // Accumulates the assistant's streamed reply (audio transcript or text) for the
   // current turn so the full reply can be logged on response.done.
   private replyText: string = '';
@@ -172,6 +186,15 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     // The esp voice client has woken (by wake word or user action)
     this.esp.on('starting', async () => {
 
+      // Drop a duplicate wake while we're already streaming the mic. After an
+      // in-band reply the PE sometimes auto-reopens the mic itself AND our
+      // post-playback reopen fires — without this guard the second 'starting'
+      // would start a second run that clobbers the first (empty transcript).
+      if (this.isSteamingMic) {
+        this.logger.info('Ignoring duplicate wake — already streaming mic');
+        return;
+      }
+
       if (!this.provider.isConnected()) {
         // The agent doesn't have an active web socket. Either the API Key is missing or the internet connection failed.
         // Play a pre-recorded message to inform the user.
@@ -202,6 +225,15 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       this.skippedBytes = 0;
 
       this.isSteamingMic = true;
+
+      // This turn delivers its reply in-band on TTS_END only if it is the follow-up
+      // turn our own reopen just opened (pendingContinueOpen latched in
+      // announce_finished). Consume the latch here: every other turn (plain say,
+      // wake word, manual on/off) keeps replyViaTtsUrl false and uses the announce
+      // path, so a reply ending in "?" can fire the reopen.
+      this.replyViaTtsUrl = this.pendingContinueOpen;
+      this.pendingContinueOpen = false;
+      this.replyPcm = [];
 
       this.logger.info("Voice session started");
       // Let's start getting device state over the API, this might take a while, but should be done when we actually need it
@@ -342,6 +374,20 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     this.segmenter.on('chunk', async (chunk: Buffer) => {
       this.logger.info(`New TX chunk: ${chunk.length} bytes`);
 
+      // Continue run: the PE won't fetch a standalone announce mid-conversation,
+      // so don't stream per-chunk announces. Accumulate the PCM and ship the whole
+      // reply as one file on TTS_END (see the segmenter 'done' handler). Still emit
+      // the intent_end -> tts_start transition so the PE shows the "replying" state.
+      if (this.replyViaTtsUrl) {
+        if (this.hasIntent) {
+          this.esp.intent_end('');
+          this.hasIntent = false;
+          this.esp.tts_start();
+        }
+        this.replyPcm.push(chunk);
+        return;
+      }
+
 
       // If we have an input buffer to play, do that first, before playing the new chunk from the segmenter
       if (this.inputBufferDebug && this.inputPlaybackUrl) {
@@ -382,6 +428,15 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
 
     this.esp.on('announce_finished', () => {
+      // This handler only drives the multi-segment announce QUEUE (say/wake replies).
+      // The reopen and continue-reply announces also ack with AnnounceFinished, often
+      // late (during a later turn). Those arrive with isPlaying=false; ignore them so
+      // they can't spuriously end a run or trigger a second reopen.
+      if (!this.isPlaying) {
+        this.logger.info('Ignoring stray announce_finished (no announce queue active)');
+        return;
+      }
+
       this.logger.info('Announcement finished');
 
       if (this.announceUrls.length === 0) {
@@ -394,6 +449,12 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
         if (this.continueConversation) {
           this.continueConversation = false;
+          // The reply ended in a question: reopen the mic ourselves for a single
+          // follow-up turn. Latch pendingContinueOpen so that turn's 'starting'
+          // routes its reply in-band on TTS_END (the PE won't fetch a standalone
+          // announce mid-conversation). We do not chain further — the PE does not
+          // auto-reopen after the in-band reply, so the conversation ends there.
+          this.pendingContinueOpen = true;
 
           this.homey.setTimeout(() => {
             this.esp.send_voice_assistant_request();
@@ -444,6 +505,39 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     // The segmenter has emitted all its chunks, so tell the esp to stop and clean all resources.
     this.segmenter.on('done', async () => {
       this.esp.closeMic();
+
+      // Follow-up run: deliver the reply in-band on TTS_END — the only mechanism the
+      // PE reliably plays mid-conversation (standalone announces, even with
+      // startConversation:true, get dropped). This ends the conversation: the PE does
+      // NOT auto-reopen after an in-band reply (confirmed on PE firmware 2026.6.2),
+      // and we intentionally do not chain a further reopen (single follow-up only).
+      if (this.replyViaTtsUrl) {
+        this.replyViaTtsUrl = false;
+        const pcm = this.replyPcm;
+        this.replyPcm = [];
+
+        let fileUrl: string | null = null;
+        if (pcm.length > 0) {
+          const flac = await pcmToFlacBuffer(Buffer.concat(pcm), {
+            sampleRate: 24_000,
+            channels: 1,
+            bitsPerSample: 16,
+          });
+          const fileInfo = await this.webServer.buildStream({ data: flac, extension: 'flac', prefix: 'tx' });
+          fileUrl = fileInfo.url;
+        }
+
+        if (fileUrl) {
+          this.logger.info(`Continue reply via TTS_END URL: ${fileUrl}`);
+          this.esp.tts_end(fileUrl);
+        } else {
+          this.esp.tts_end();
+        }
+        this.esp.run_end();
+        this.continueConversation = false;
+        this.setCapabilityValue('onoff', false);
+        this.lastTurnEndedAt = Date.now();
+      }
     });
 
 
