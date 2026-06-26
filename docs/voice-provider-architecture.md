@@ -23,7 +23,7 @@ voice-assistant-device.mts
         ▼
 createVoiceProvider(homey, toolManager, options)   ← src/llm/voice-provider-factory.mts
         │  picks by the `voice_provider` setting
-        ├── OpenAIRealtimeProvider   (src/llm/openai-realtime-agent.mts)
+        ├── OpenAIRealtimeProvider   (src/llm/providers/openai-realtime-agent.mts)
         └── GeminiLiveProvider       (src/llm/providers/gemini-live-provider.mts)
 ```
 
@@ -33,7 +33,7 @@ Key files:
 |------|------|
 | `src/llm/voice-provider.mts` | The port: `IVoiceProvider` interface, `VoiceProviderOptions`, `VoiceProviderEvents` |
 | `src/llm/voice-provider-factory.mts` | `createVoiceProvider()` — selects provider + resolves its API key |
-| `src/llm/openai-realtime-agent.mts` | `OpenAIRealtimeProvider` (default) |
+| `src/llm/providers/openai-realtime-agent.mts` | `OpenAIRealtimeProvider` (default) |
 | `src/llm/providers/gemini-live-provider.mts` | `GeminiLiveProvider` |
 | `src/llm/agent-instructions.mts` | Shared system-prompt loader used by every provider |
 
@@ -121,6 +121,14 @@ Global settings (Homey app settings, `settings/index.html`):
 `SettingsManager.getAvailableProviders()` lists the options for the UI; the
 known keys are read into the globals snapshot in `refreshGlobals()`.
 
+The **voice list is per-provider**: each provider exposes a static
+`getAvailableVoices()`, surfaced via `getVoicesForProvider()` in the factory and
+served to the settings page through the `GET /voices?provider=<id>` app API
+(`api.mts`). `settings/index.html` re-fetches the list when the provider
+dropdown changes. `selected_voice` is shared across providers, so each provider
+normalizes an unknown voice to its own default (`openaiVoiceName()` →
+`ash`; `geminiVoiceName()` → `Kore`) rather than sending an invalid value.
+
 Switching providers currently takes effect on the next device/app init (live
 in-session switching is not implemented).
 
@@ -128,7 +136,9 @@ in-session switching is not implemented).
 
 1. Create a class in `src/llm/providers/` that `implements IVoiceProvider`
    (set `inputSampleRate` + `apiKeySettingKey`; honor the audio/FLAC contracts).
-2. Add a `case` and key mapping in `voice-provider-factory.mts`.
+   Add a static `getAvailableVoices()` and normalize unknown voices to a default.
+2. Add a `case` and key mapping in `voice-provider-factory.mts`, plus a `case` in
+   `getVoicesForProvider()`.
 3. Add it to `SettingsManager.getAvailableProviders()` and add the option (and a
    key field if needed) to `settings/index.html`.
 4. Keep `VoiceProviderEvents` a superset; reuse `agent-instructions.mts` for the

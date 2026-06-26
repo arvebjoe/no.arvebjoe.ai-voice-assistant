@@ -1,10 +1,10 @@
 import WebSocket from "ws";
 import { EventEmitter } from "events";
 import { TypedEmitter } from "tiny-typed-emitter";
-import { createLogger } from '../helpers/logger.mjs';
-import { ToolManager } from './tool-manager.mjs';
-import { IVoiceProvider, VoiceProviderEvents, VoiceProviderOptions } from './voice-provider.mjs';
-import { loadInstructionModule } from './agent-instructions.mjs';
+import { createLogger } from '../../helpers/logger.mjs';
+import { ToolManager } from '../tool-manager.mjs';
+import { IVoiceProvider, VoiceProviderEvents, VoiceProviderOptions } from '../voice-provider.mjs';
+import { loadInstructionModule } from '../agent-instructions.mjs';
 
 /**
  * Event/option shapes now live in the provider-agnostic seam (`voice-provider.mts`).
@@ -50,10 +50,44 @@ type PendingToolCall = {
  * - Text input methods allow explicit output mode control
  */
 
+/** OpenAI Realtime voices the settings UI offers; 'ash' is the default/fallback. */
+const OPENAI_VOICES: { value: string; name: string }[] = [
+    { value: 'alloy', name: 'Alloy' },
+    { value: 'ash', name: 'Ash' },
+    { value: 'ballad', name: 'Ballad' },
+    { value: 'coral', name: 'Coral' },
+    { value: 'echo', name: 'Echo' },
+    { value: 'fable', name: 'Fable' },
+    { value: 'nova', name: 'Nova' },
+    { value: 'onyx', name: 'Onyx' },
+    { value: 'sage', name: 'Sage' },
+    { value: 'shimmer', name: 'Shimmer' },
+    { value: 'verse', name: 'Verse' },
+    { value: 'cedar', name: 'Cedar' },
+    { value: 'marin', name: 'Marin' },
+];
+const OPENAI_DEFAULT_VOICE = 'ash';
+const OPENAI_VOICE_VALUES = new Set(OPENAI_VOICES.map((v) => v.value));
+
+/**
+ * Normalize a stored voice to a valid OpenAI voice. The app keeps a single
+ * `selected_voice` setting shared across providers, so it may hold another
+ * provider's voice name after a provider switch — fall back rather than send an
+ * invalid voice the Realtime API would reject.
+ */
+function openaiVoiceName(voice: string | undefined | null): string {
+    return voice && OPENAI_VOICE_VALUES.has(voice) ? voice : OPENAI_DEFAULT_VOICE;
+}
+
 export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmitter<VoiceProviderEvents>) implements IVoiceProvider {
     // Seam contract: OpenAI Realtime expects 24 kHz PCM input; its key lives under 'openai_api_key'.
     readonly inputSampleRate = 24000;
     readonly apiKeySettingKey = 'openai_api_key';
+
+    /** Voices offered for this provider in the settings UI. */
+    static getAvailableVoices(): { value: string; name: string }[] {
+        return OPENAI_VOICES;
+    }
 
     private ws?: WebSocket;
     private homey: any;
@@ -105,7 +139,7 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
         this.options = {
             apiKey: opts.apiKey ?? '',
             url: opts.url ?? `wss://api.openai.com/v1/realtime?model=gpt-realtime-2025-08-28`,
-            voice: opts.voice ?? "ash",
+            voice: openaiVoiceName(opts.voice),
             languageCode: opts.languageCode ?? "en",
             languageName: opts.languageName ?? "English",
             additionalInstructions: opts.additionalInstructions ?? "",
@@ -432,7 +466,7 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
     }
 
     async updateVoice(newVoice: string): Promise<void> {
-        this.options.voice = newVoice;
+        this.options.voice = openaiVoiceName(newVoice);
     }
 
     async updateAdditionalInstructions(newAdditionalInstructions: string | null): Promise<void> {

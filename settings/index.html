@@ -121,19 +121,8 @@
 
     <div class="homey-form-group">
       <label class="homey-form-label" for="voice_select">Voice</label>
-      <select class="homey-form-input" id="voice_select">
-        <option value="alloy">Alloy</option>
-        <option value="ash">Ash</option>
-        <option value="ballad">Ballad</option>
-        <option value="coral">Coral</option>
-        <option value="echo">Echo</option>
-        <option value="sage">Sage</option>
-        <option value="shimmer">Shimmer</option>
-        <option value="verse">Verse</option>
-        <option value="cedar">Cedar</option>
-        <option value="marin">Marin</option>
-      </select>
-      <div class="help-text">The AI voice used for speech responses</div>
+      <select class="homey-form-input" id="voice_select"></select>
+      <div class="help-text">The AI voice used for speech responses (list depends on the selected provider)</div>
     </div>
 
     <div class="homey-form-group">
@@ -169,28 +158,47 @@
         if (apiKey) geminiApiKeyElement.value = apiKey;
       });
 
+      // Fill the voice dropdown with the voices the given provider offers.
+      // `selected` is preserved if it's valid for that provider, else the first
+      // voice is chosen (the backend validates/falls back per provider too).
+      function refreshVoices(provider, selected) {
+        Homey.api("GET", "/voices?provider=" + encodeURIComponent(provider), null, function (err, voices) {
+          if (err) return Homey.alert(err);
+          voiceSelectElement.innerHTML = "";
+          (voices || []).forEach(function (v) {
+            var opt = document.createElement("option");
+            opt.value = v.value;
+            opt.textContent = v.name;
+            voiceSelectElement.appendChild(opt);
+          });
+          if (selected) voiceSelectElement.value = selected;
+          if (!voiceSelectElement.value && voiceSelectElement.options.length) {
+            voiceSelectElement.selectedIndex = 0;
+          }
+        });
+      }
+
       Homey.get("voice_provider", function (err, provider) {
         if (err) return Homey.alert(err);
-        if (provider) {
-          providerSelectElement.value = provider;
-        } else {
-          providerSelectElement.value = "openai-realtime"; // default provider
-        }
+        providerSelectElement.value = provider || "openai-realtime";
+
+        // Load the saved voice, then populate the list for the active provider.
+        Homey.get("selected_voice", function (err, voice) {
+          if (err) return Homey.alert(err);
+          refreshVoices(providerSelectElement.value, voice);
+        });
+      });
+
+      // Switching provider swaps the available voices; keep the current pick if
+      // it's still valid for the newly selected provider.
+      providerSelectElement.addEventListener("change", function () {
+        refreshVoices(providerSelectElement.value, voiceSelectElement.value);
       });
 
       Homey.get("selected_language_code", function (err, language) {
         if (err) return Homey.alert(err);
         if (language) {
           languageSelectElement.value = language;
-        }
-      });
-
-      Homey.get("selected_voice", function (err, voice) {
-        if (err) return Homey.alert(err);
-        if (voice) {
-          voiceSelectElement.value = voice;
-        } else {
-          voiceSelectElement.value = "alloy"; // default voice
         }
       });
 

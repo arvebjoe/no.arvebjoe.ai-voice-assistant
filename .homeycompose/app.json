@@ -63,5 +63,11 @@
       "xiaozhi"
     ]
   },
-  "homeyCommunityTopicId": 142532
+  "homeyCommunityTopicId": 142532,
+  "api": {
+    "getVoices": {
+      "method": "GET",
+      "path": "/voices"
+    }
+  }
 }

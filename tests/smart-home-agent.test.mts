@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { OpenAIRealtimeAgent } from '../src/llm/openai-realtime-agent.mjs';
+import { OpenAIRealtimeAgent } from '../src/llm/providers/openai-realtime-agent.mjs';
 import { ToolManager } from '../src/llm/tool-manager.mjs';
 import { MockHomey } from './mocks/mock-homey.mjs';
 import { MockDeviceManager } from './mocks/mock-device-manager.mjs';
