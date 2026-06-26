@@ -13,14 +13,21 @@ Legend: `[ ]` open · `[~]` partially done · `[x]` done (kept for context so we
 
 ## 1. ESPHome device client (`src/voice_assistant/`)
 
-- [ ] **BUG (revisit): follow-up turn produces no audio on the PE.** Multi-turn flow: user speaks →
-  Homey asks a follow-up question → user replies → **silence**. The TTS `.flac` for the second turn
-  **is** generated and served — the LAN links play fine on a PC — but nothing comes out of the PE
-  speaker. So FLAC encoding + HTTP serving (`WebServer`) work; the suspect is the announce/playback
-  request to the device on the second turn. Investigate the announce path in
-  `src/homey/voice-assistant-device.mts` / `src/voice_assistant/esp-voice-assistant-client.mts`:
-  is a second `VoiceAssistantAnnounceRequest` (media URL) sent after the first response, and does the
-  device need re-arming/`startConversation` between turns? Related to the follow-up feature in §3.
+- [x] **BUG (FIXED 2026-06-26): follow-up turn produced no audio on the PE.** Root cause: in a
+  `startConversation` follow-up the reply was sent as a standalone `VoiceAssistantAnnounceRequest`,
+  which the PE acks (`AnnounceFinished`) but never fetches once it is in conversation mode → silence.
+  Fix: deliver the reply **in-band** on the pipeline's `TTS_END` carrying the FLAC URL (`tts_end(url)`),
+  and drive the single mic-reopen ourselves via a `peConversationActive` session flag in
+  `src/homey/voice-assistant-device.mts`. A secondary chain-blocker (the PE's mic-open noise burst on
+  auto-reopened turns tripping OpenAI's server VAD → ~0.5s dead window) was fixed with a per-turn floor
+  skip (`CONVERSATION_REOPEN_SKIP_MS`). **Single follow-up AND chained multi-question conversations both
+  confirmed on PE firmware 2026.6.2** (diagnosed using the new `[PE]` device-log stream, below). See §3
+  "Follow-up / keep conversation alive" and branch `fix/followup-turn-audio`.
+- [x] **Device-log streaming for diagnosis (2026-06-26)** — opt-in `SubscribeLogsRequest` (id 28) over
+  the native API streams the PE's own ESPHome logs back (`SubscribeLogsResponse`, id 29), printed inline
+  under `[PE]` alongside the `[ESP]`/app logs. Gated by `ESP_LOG_LEVEL` (env var) or the `logLevel` client
+  option; off by default, no serial/USB needed, works for the emulator and a real device. This is what
+  made the follow-up-audio diagnosis tractable.
 - [x] **BUG: devices not appearing in the pairing dialog on repeat attempts** — _fixed 2026-06-20._
   Root cause was a **reconnect leak in the discovery capability probe**, not firmware version (the
   original "v25.7 vs v26.4" framing was a red herring — both firmwares advertise `platform=ESP32` and
@@ -115,9 +122,11 @@ Remaining items from the audit (1–7, 10, 12 are already done — see the refer
   - Start flow by name: "start \<flow name\>".
   - Start flow by synonym: "I'm going to bed" → starts "night mode". Needs a way for the user to
     map synonyms → flow names.
-- [ ] **Follow-up / keep conversation alive** — answer a follow-up question without repeating the
-  wake word (set `VoiceAssistantAnnounceRequest.startConversation = true`). Needs a timeout if the
-  user has nothing to say.
+- [x] **Follow-up / keep conversation alive (done 2026-06-26)** — answer follow-up questions without
+  repeating the wake word (via `startConversation`). Single follow-up and chained multi-question
+  conversations both work; the reply is delivered in-band on `TTS_END` and the PE auto-reopens the mic
+  for each subsequent turn. The session ends on a silent turn (user has nothing to say) or after the
+  context TTL. See §1 (follow-up audio bug, fixed) and branch `fix/followup-turn-audio`.
 - [ ] **Change settings by voice** (lots of work, but cool) — expose allowed settings (`voice`,
   `language`, `optional_ai_instructions`) as tools. Flow: agent lists options → user picks → tool
   stores the change → agent finishes its run → apply the change (socket reconnects) → optionally
