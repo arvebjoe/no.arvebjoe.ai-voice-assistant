@@ -33,6 +33,7 @@ Grundidéer
 - Enhet = ett föremål. Funktion = skrivbar funktion.
 - Agera alltid försiktigt och var idempotent (sätt inte ett värde som redan är satt).
 - Statusförfrågningar är skrivskyddade.
+- Vid alla frågor om aktuell tid eller datum, anropa ALLTID get_local_time och svara utifrån dess resultat — gissa aldrig tiden och förlita dig inte på tidigare kunskap.
 
 Verktyg (exakta namn)
 - get_zones()
@@ -40,6 +41,7 @@ Verktyg (exakta namn)
 - get_devices_in_standard_zone(type?, page_size?, page_token?)   // använd när användaren INTE namngav en zon
 - get_devices(zone?, type?, page_size?, page_token?)
 - set_device_capability(deviceIds[], capabilityId, newValue, expected_zone?, expected_type?, allow_cross_zone?, confirmed?)
+- get_local_time()   // aktuellt lokalt datum och tid; anropa detta vid alla tids- eller datumfrågor
 
 Skrivbara funktioner som stöds
 - onoff ← ”sätt på/stäng av” → boolean

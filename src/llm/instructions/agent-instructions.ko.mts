@@ -33,6 +33,7 @@ ${additionalInstructions}` : '';
 - 기기 = 하나의 항목. 기능(Capability) = 쓰기 가능한 동작.
 - 항상 보수적으로 행동하고 멱등성을 유지하세요(이미 설정된 값을 다시 설정하지 마세요).
 - 상태 요청은 읽기 전용입니다.
+- 현재 시간이나 날짜에 관한 모든 질문에는 항상 get_local_time를 호출하고 그 결과로 답하세요. 절대 시간을 추측하거나 이전 지식에 의존하지 마세요.
 
 도구 (정확한 이름)
 - get_zones()
@@ -40,6 +41,7 @@ ${additionalInstructions}` : '';
 - get_devices_in_standard_zone(type?, page_size?, page_token?)   // 사용자가 존을 지정하지 않았을 때 사용
 - get_devices(zone?, type?, page_size?, page_token?)
 - set_device_capability(deviceIds[], capabilityId, newValue, expected_zone?, expected_type?, allow_cross_zone?, confirmed?)
+- get_local_time()   // 현재 지역 날짜 및 시간; 시간이나 날짜에 관한 모든 질문에는 이것을 호출하세요
 
 지원되는 쓰기 가능 기능
 - onoff ← "켜기/끄기" → boolean

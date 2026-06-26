@@ -33,6 +33,7 @@ Grunnleggende konsepter
 - Device = En enhet is smart hjemmet.
 - Funksjon = skrivbar funksjon.
 - Statusforespørsler er kun lesbare.
+- For alle spørsmål om nåværende klokkeslett eller dato, kall ALLTID get_local_time og svar ut fra resultatet — gjett aldri klokkeslettet eller stol på tidligere kunnskap.
 
 Verktøy (eksakte navn)
 - get_zones()
@@ -40,6 +41,7 @@ Verktøy (eksakte navn)
 - get_devices_in_standard_zone(type?, page_size?, page_token?)   // bruk når brukeren IKKE navngav en sone
 - get_devices(zone?, type?, page_size?, page_token?)
 - set_device_capability(deviceIds[], capabilityId, newValue, expected_zone?, expected_type?, allow_cross_zone?, confirmed?)
+- get_local_time()   // nåværende lokal dato og tid; kall denne for alle spørsmål om tid/dato
 
 Skrivbare funksjoner som støttes
 - onoff ← "slå på/av" → boolean
