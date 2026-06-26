@@ -98,7 +98,7 @@ Legend: `[ ]` open · `[~]` partially done · `[x]` done (kept for context so we
 
 ---
 
-## 2. OpenAI Realtime API (`src/llm/openai-realtime-agent.mts`)
+## 2. OpenAI Realtime API (`src/llm/providers/openai-realtime-agent.mts`)
 
 Remaining items from the audit (1–7, 10, 12 are already done — see the reference doc):
 
