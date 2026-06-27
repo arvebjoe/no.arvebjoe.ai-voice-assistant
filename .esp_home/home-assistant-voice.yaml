@@ -137,6 +137,13 @@ globals:
     type: int
     restore_value: no
     initial_value: '0'
+  # Shared rotation for the rainbow voice-phase effects (Voice Rainbow / Thinking Rainbow / Reply Rainbow).
+  # Kept global so the rainbow keeps its position across phase changes: Listening spins it, Thinking
+  # freezes it in place (only pulses brightness), Reply continues from the same spot but spins the other way.
+  - id: led_rainbow_rotation
+    type: uint8_t
+    restore_value: no
+    initial_value: '0'
   # Global initialization variable. Initialized to true and set to false once everything is connected. Only used to have a smooth "plugging" experience
   - id: init_in_progress
     type: bool
@@ -703,17 +710,55 @@ light:
           update_interval: 50ms
           lambda: |-
             // Fill all 12 LEDs with the full color wheel and rotate it.
-            static uint8_t rotation = 0;
+            // Uses the shared global rotation so Thinking/Reply can pick up where this leaves off.
             if (initial_run) {
-              rotation = 0;
+              id(led_rainbow_rotation) = 0;
             }
             for (uint8_t i = 0; i < 12; i++) {
-              uint8_t hue = (uint8_t)((i * 256 / 12) + rotation);
+              uint8_t hue = (uint8_t)((i * 256 / 12) + id(led_rainbow_rotation));
               ESPHSVColor hsv(hue, 255, 255);
               it[i] = hsv.to_rgb();
             }
             // Decrement to rotate the "other way"; 6 per 50ms = ~2.1s per full turn.
-            rotation = rotation - 6;
+            id(led_rainbow_rotation) = id(led_rainbow_rotation) - 6;
+      - addressable_lambda:
+          name: "Thinking Rainbow"
+          update_interval: 50ms
+          lambda: |-
+            // Freeze the rainbow where Listening left it (do NOT touch led_rainbow_rotation)
+            // and pulse the whole ring between 100% and 25% brightness and back.
+            static float pulse = 1.0f;
+            static bool pulse_down = true;
+            if (initial_run) {
+              pulse = 1.0f;
+              pulse_down = true;
+            }
+            for (uint8_t i = 0; i < 12; i++) {
+              uint8_t hue = (uint8_t)((i * 256 / 12) + id(led_rainbow_rotation));
+              ESPHSVColor hsv(hue, 255, (uint8_t)(255.0f * pulse));
+              it[i] = hsv.to_rgb();
+            }
+            // 0.05 step at 50ms => ~0.75s each way, ~1.5s full breath (1.0 -> 0.25 -> 1.0).
+            if (pulse_down) {
+              pulse -= 0.05f;
+              if (pulse <= 0.25f) { pulse = 0.25f; pulse_down = false; }
+            } else {
+              pulse += 0.05f;
+              if (pulse >= 1.0f) { pulse = 1.0f; pulse_down = true; }
+            }
+      - addressable_lambda:
+          name: "Reply Rainbow"
+          update_interval: 50ms
+          lambda: |-
+            // Same as Voice Rainbow but spins the opposite way. Continues from the shared
+            // rotation (no reset) so it picks up exactly where Thinking froze the ring.
+            for (uint8_t i = 0; i < 12; i++) {
+              uint8_t hue = (uint8_t)((i * 256 / 12) + id(led_rainbow_rotation));
+              ESPHSVColor hsv(hue, 255, 255);
+              it[i] = hsv.to_rgb();
+            }
+            // Increment (Voice Rainbow decrements) to rotate the other way; same 6 per frame.
+            id(led_rainbow_rotation) = id(led_rainbow_rotation) + 6;
       - addressable_lambda:
           name: "Cold Rainbow"
           update_interval: 50ms
@@ -1263,22 +1308,22 @@ script:
           effect: "Voice Rainbow"
 
   # Script executed when the voice assistant is thinking to a command
-  # The spin stops and the 2 LEDs that are currently on and blinking indicating the commend is being processed.
+  # The rainbow freezes in place and pulses (breathes) between full and 25% brightness.
   - id: control_leds_voice_assistant_thinking_phase
     then:
       - light.turn_on:
           brightness: !lambda return max( id(led_ring).current_values.get_brightness() , 0.2f );
           id: voice_assistant_leds
-          effect: "Cold Rainbow"
+          effect: "Thinking Rainbow"
 
-  # Script executed when the voice assistant is thinking to a command
-  # Fast anticlockwise spin of the LED ring.
+  # Script executed when the voice assistant is replying to a command
+  # The rainbow resumes spinning, but in the opposite direction to Listening.
   - id: control_leds_voice_assistant_replying_phase
     then:
       - light.turn_on:
           brightness: !lambda return max( id(led_ring).current_values.get_brightness() , 0.2f );
           id: voice_assistant_leds
-          effect: "Warm Rainbow"
+          effect: "Reply Rainbow"
 
   # Script executed when the voice assistant is in error
   # Fast Red Pulse

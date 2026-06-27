@@ -1,8 +1,8 @@
 # Voice PE config customizations
 
 These are the local changes applied on top of the **stock `home-assistant-voice.yaml`** downloaded
-from ESPHome / GitHub. When you download a fresh config (an update wipes these), re-apply the three
-changes below to get back to the customized behavior.
+from ESPHome / GitHub. When you download a fresh config (an update wipes these), re-apply the changes
+below to get back to the customized behavior.
 
 All line numbers are approximate — search for the anchor text instead.
 
@@ -70,11 +70,38 @@ micro_wake_word:
 
 ---
 
-## Change 2 — Custom LED ring effects
+## Change 2 — Shared rainbow rotation global
 
-In the **`light:`** section, under the `voice_assistant_leds` partition light's `effects:` list, add these
-**four** `addressable_lambda` effects. Insert them anywhere in the list — next to the existing
-`"Replying"` / `"Muted or Silent"` effects is fine.
+The three rainbow voice-phase effects (Listening / Thinking / Reply) share a single rotation value so
+the rainbow keeps its position across phase changes — Listening spins it, Thinking freezes it in place
+(only pulsing brightness), and Reply continues from the same spot but spins the other way. This only
+works if the rotation lives in a **global** instead of each effect's own `static` variable.
+
+In the **`globals:`** section, add this entry (next to `global_led_animation_index` is fine):
+
+```yaml
+  # Shared rotation for the rainbow voice-phase effects (Voice Rainbow / Thinking Rainbow / Reply Rainbow).
+  # Kept global so the rainbow keeps its position across phase changes: Listening spins it, Thinking
+  # freezes it in place (only pulses brightness), Reply continues from the same spot but spins the other way.
+  - id: led_rainbow_rotation
+    type: uint8_t
+    restore_value: no
+    initial_value: '0'
+```
+
+> `uint8_t` matters: it wraps 0→255 automatically, so `rotation - 6` and `rotation + 6` stay valid
+> without any modulo. The hue math (`i * 256 / 12 + rotation`) assumes this 0–255 range.
+
+---
+
+## Change 3 — Custom LED ring effects
+
+In the **`light:`** section, under the `voice_assistant_leds` partition light's `effects:` list, add the
+effects below. Insert them anywhere in the list — next to the existing `"Replying"` / `"Muted or Silent"`
+effects is fine.
+
+The three rainbow effects all read/write `id(led_rainbow_rotation)` (Change 2). `Voice Rainbow` and
+`Reply Rainbow` advance it in opposite directions; `Thinking Rainbow` deliberately leaves it untouched.
 
 ```yaml
       - addressable_lambda:
@@ -82,62 +109,61 @@ In the **`light:`** section, under the `voice_assistant_leds` partition light's 
           update_interval: 50ms
           lambda: |-
             // Fill all 12 LEDs with the full color wheel and rotate it.
-            static uint8_t rotation = 0;
+            // Uses the shared global rotation so Thinking/Reply can pick up where this leaves off.
             if (initial_run) {
-              rotation = 0;
+              id(led_rainbow_rotation) = 0;
             }
             for (uint8_t i = 0; i < 12; i++) {
-              uint8_t hue = (uint8_t)((i * 256 / 12) + rotation);
+              uint8_t hue = (uint8_t)((i * 256 / 12) + id(led_rainbow_rotation));
               ESPHSVColor hsv(hue, 255, 255);
               it[i] = hsv.to_rgb();
             }
-            // Increment = clockwise; 10 per 50ms = ~1.3s per full turn.
-            rotation = rotation + 10;
+            // Decrement to rotate the "other way"; 6 per 50ms = ~2.1s per full turn.
+            id(led_rainbow_rotation) = id(led_rainbow_rotation) - 6;
       - addressable_lambda:
-          name: "Cold Rainbow"
+          name: "Thinking Rainbow"
           update_interval: 50ms
           lambda: |-
-            // Cold rotating ring (green -> cyan -> blue -> purple).
-            // A triangle wave keeps the hue inside the cold band so there is no seam.
-            static uint16_t rotation = 0;
+            // Freeze the rainbow where Listening left it (do NOT touch led_rainbow_rotation)
+            // and pulse the whole ring between 100% and 25% brightness and back.
+            static float pulse = 1.0f;
+            static bool pulse_down = true;
             if (initial_run) {
-              rotation = 0;
+              pulse = 1.0f;
+              pulse_down = true;
             }
-            const float cold_min = 85.0f;   // green  (hue 85  = 120 deg)
-            const float cold_max = 205.0f;  // purple (hue 205 = 288 deg)
             for (uint8_t i = 0; i < 12; i++) {
-              float pos = (float)((i * 256 / 12 + rotation) % 256) / 256.0f;  // 0..1 around the ring
-              float t = pos < 0.5f ? (pos * 2.0f) : (2.0f - pos * 2.0f);       // 0..1..0 (stay cold)
-              uint8_t hue = (uint8_t)(cold_min + t * (cold_max - cold_min));
+              uint8_t hue = (uint8_t)((i * 256 / 12) + id(led_rainbow_rotation));
+              ESPHSVColor hsv(hue, 255, (uint8_t)(255.0f * pulse));
+              it[i] = hsv.to_rgb();
+            }
+            // 0.05 step at 50ms => ~0.75s each way, ~1.5s full breath (1.0 -> 0.25 -> 1.0).
+            if (pulse_down) {
+              pulse -= 0.05f;
+              if (pulse <= 0.25f) { pulse = 0.25f; pulse_down = false; }
+            } else {
+              pulse += 0.05f;
+              if (pulse >= 1.0f) { pulse = 1.0f; pulse_down = true; }
+            }
+      - addressable_lambda:
+          name: "Reply Rainbow"
+          update_interval: 50ms
+          lambda: |-
+            // Same as Voice Rainbow but spins the opposite way. Continues from the shared
+            // rotation (no reset) so it picks up exactly where Thinking froze the ring.
+            for (uint8_t i = 0; i < 12; i++) {
+              uint8_t hue = (uint8_t)((i * 256 / 12) + id(led_rainbow_rotation));
               ESPHSVColor hsv(hue, 255, 255);
               it[i] = hsv.to_rgb();
             }
-            // Decrement = counter-clockwise (opposite the full rainbow); 10 per frame.
-            rotation = (rotation + 256 - 10) % 256;
-      - addressable_lambda:
-          name: "Thinking White"
-          update_interval: 10ms
-          lambda: |-
-            // All LEDs pulse white (breathing) by ramping brightness up and down.
-            static uint8_t brightness_step = 0;
-            static bool brightness_decreasing = true;
-            static uint8_t brightness_step_number = 10;
-            if (initial_run) {
-              brightness_step = 0;
-              brightness_decreasing = true;
-            }
-            Color white_color(255, 255, 255);
-            for (uint8_t i = 0; i < 12; i++) {
-              it[i] = white_color * uint8_t(255/brightness_step_number*(brightness_step_number-brightness_step));
-            }
-            if (brightness_decreasing) {
-              brightness_step++;
-            } else {
-              brightness_step--;
-            }
-            if (brightness_step == 0 || brightness_step == brightness_step_number) {
-              brightness_decreasing = !brightness_decreasing;
-            }
+            // Increment (Voice Rainbow decrements) to rotate the other way; same 6 per frame.
+            id(led_rainbow_rotation) = id(led_rainbow_rotation) + 6;
+```
+
+`Waiting` still uses the existing **Warm Rainbow** effect (red → orange → yellow triangle band), so keep
+that one defined too:
+
+```yaml
       - addressable_lambda:
           name: "Warm Rainbow"
           update_interval: 50ms
@@ -157,29 +183,38 @@ In the **`light:`** section, under the `voice_assistant_leds` partition light's 
               ESPHSVColor hsv(hue, 255, 255);
               it[i] = hsv.to_rgb();
             }
-            // Decrement = counter-clockwise (opposite the full rainbow); 10 per frame.
-            rotation = (rotation + 256 - 10) % 256;
+            // Decrement to rotate the "other way"; 6 per frame matches the other rings.
+            rotation = (rotation + 256 - 6) % 256;
 ```
 
+> The older **Cold Rainbow** (green→purple band) and **Thinking White** (white breathing pulse) effects
+> are no longer wired to any phase. They can be dropped, or left in the YAML as inert extras for easy
+> reverting — they don't affect anything unless a phase script references them.
+
 ### Tuning knobs
-- **Rotation speed / direction:** the `rotation` update line in each rotating effect (step `10`). Voice Rainbow **increments** (clockwise); Cold Rainbow and Warm Rainbow **decrement** (counter-clockwise). Higher step = faster; swap increment↔decrement to flip a ring's direction. (Increment vs decrement maps to CW/CCW based on the ring's physical wiring — flip if it spins the wrong way on your unit.)
-- **Cold band:** `cold_min` / `cold_max` in "Cold Rainbow" set the hue range (85 = green, ~128 = cyan, ~170 = blue, ~205 = purple). Narrow it to taste.
-- **Warm band:** `warm_min` / `warm_max` in "Warm Rainbow" set the hue range (0 = red, ~21 = orange, ~45 = yellow). Widen `warm_max` toward green or narrow it to taste.
-- **Thinking White** (pulse) is still defined but unused (Thinking now uses Cold Rainbow). Keep it if you want to switch back; `brightness_step_number` controls its pulse speed.
+- **Rotation speed / direction:** the `id(led_rainbow_rotation) = ... ± 6` line in `Voice Rainbow` and
+  `Reply Rainbow` (step `6` per 50ms ≈ 2.1s/turn). Higher step = faster. Voice Rainbow **decrements**,
+  Reply Rainbow **increments** — swap the `+`/`-` to flip a ring's direction if it spins the wrong way
+  on your unit (CW/CCW depends on the physical wiring).
+- **Thinking pulse:** the `0.05f` step and the `0.25f` floor in `Thinking Rainbow` set the breathing
+  speed and how dim it dips (0.25 = 25%). Smaller step = slower breath; raise the floor for a subtler dip.
+  The pulse scales relative to the brightness the phase script sets, so it dips to 25% **of the lit level**.
+- **Warm band:** `warm_min` / `warm_max` in `Warm Rainbow` set the hue range (0 = red, ~21 = orange,
+  ~45 = yellow). Widen `warm_max` toward green or narrow it to taste.
 
 ---
 
-## Change 3 — Point the voice phases at the new effects
+## Change 4 — Point the voice phases at the effects
 
-In the **`script:`** section, change the `effect:` line inside four `control_leds_*` scripts.
+In the **`script:`** section, set the `effect:` line inside the four `control_leds_*` phase scripts.
 The stock config uses the effect names in the "Stock" column; change them to the "Custom" column.
 
-| Script id                                            | Stock effect            | → Custom effect       |
-|------------------------------------------------------|-------------------------|-----------------------|
-| `control_leds_voice_assistant_waiting_for_command_phase`   | `"Waiting for Command"` | `"Voice Rainbow"`     |
-| `control_leds_voice_assistant_listening_for_command_phase` | `"Listening For Command"` | `"Voice Rainbow"`   |
-| `control_leds_voice_assistant_thinking_phase`              | `"Thinking"`            | `"Cold Rainbow"`      |
-| `control_leds_voice_assistant_replying_phase`              | `"Replying"`            | `"Warm Rainbow"`      |
+| Script id                                                  | Stock effect              | → Custom effect      |
+|------------------------------------------------------------|---------------------------|----------------------|
+| `control_leds_voice_assistant_waiting_for_command_phase`   | `"Waiting for Command"`   | `"Warm Rainbow"`     |
+| `control_leds_voice_assistant_listening_for_command_phase` | `"Listening For Command"` | `"Voice Rainbow"`    |
+| `control_leds_voice_assistant_thinking_phase`              | `"Thinking"`              | `"Thinking Rainbow"` |
+| `control_leds_voice_assistant_replying_phase`              | `"Replying"`              | `"Reply Rainbow"`    |
 
 Each edit is just the one `effect:` line, e.g.:
 
@@ -189,17 +224,19 @@ Each edit is just the one `effect:` line, e.g.:
       - light.turn_on:
           brightness: !lambda return max( id(led_ring).current_values.get_brightness() , 0.2f );
           id: voice_assistant_leds
-          effect: "Cold Rainbow"      # was: "Thinking"
+          effect: "Thinking Rainbow"      # was: "Thinking"
 ```
 
 > The stock effects (`Waiting for Command`, `Listening For Command`, `Thinking`, `Replying`) can be
 > left defined in the `effects:` list — they just become unused, which makes reverting easy.
 
 ### Resulting behavior
-The full rainbow spins clockwise; the cold and warm rings spin counter-clockwise. All rings use step `10`.
-- **Waiting + Listening** → full rainbow, clockwise
-- **Thinking** (processing) → cold ring (green/cyan/blue/purple), counter-clockwise
-- **Replying** (speaking the answer) → warm ring (red/orange/yellow), counter-clockwise
+The shared rotation makes Listening → Thinking → Reply one continuous animation:
+- **Waiting** → warm ring (red/orange/yellow), counter-clockwise
+- **Listening** → full rainbow spinning (decrementing rotation)
+- **Thinking** (processing) → the **same** rainbow frozen in place, breathing between 100% and 25%
+- **Replying** (speaking the answer) → the rainbow resumes from where Thinking froze it, now spinning
+  the **opposite** direction
 
 Error / muted / timer states are left untouched (error = red pulse, etc.).
 
