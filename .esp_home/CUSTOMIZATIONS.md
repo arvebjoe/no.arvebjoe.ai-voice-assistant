@@ -68,6 +68,86 @@ micro_wake_word:
 > download to work (swap `main`→`master` in the URL if that's the default branch). The manifest's
 > `"model": "hey_homey.tflite"` is relative, so the two files must sit in the same folder.
 
+### Training the model (microwakeword.com)
+
+> ⚠️ **USE MULTIPLE TTS VOICES — a single-voice training set tanks recall.** The first `hey_homey`
+> attempt was trained on **Norwegian, which offers only one Piper voice**, and scored **5% recall**
+> (it woke ~1 in 20 times — unusable). A single voice gives the trainer no acoustic variety, so the
+> model overfits to that one speaker's timbre/prosody and fails to generalize to a real human voice.
+> **Voice diversity is the single biggest lever for wake-word recall.**
+>
+> Fix: train on **English (US), which has ~10 Piper voices**, and spell the wake word so the English
+> voices pronounce it the way you actually say it — e.g. **"Hey Homey"** (the Norwegian "Hei Homey"
+> is a near-homophone, so English voices match your real pronunciation while giving 10× the variety).
+
+**Recommended training settings** (microwakeword.com, benchmark-validated for ESP32-S3):
+
+| Setting                  | Value            | Notes |
+|--------------------------|------------------|-------|
+| Voice composition        | English (US), all voices | Multiple voices is the whole point — see warning above. |
+| Number of samples        | 40,000           | Recommended sweet spot. |
+| Augmentation rounds      | 2                | Adds room acoustics / background noise variation. |
+| Adversarial samples      | 0                | The tool itself notes adversarials **suppress recall** — leave off. |
+| Training steps           | 12,000           | Recommended. |
+| Negative Class Weight    | 10–20            | This is the "Penalty" column on the results screen. In theory: lower = more recall + more false accepts, higher = stricter (range 10 → 2000). **In practice the two runs below didn't follow that rule** (see note), so don't treat it as a precise dial — pick something in the 10–20 range and judge by results. |
+| Learning rate            | 0.001 (default)  | Leave. |
+
+If a Manual run still lands low, switch the training mode to **Optuna Optimization** to auto-search
+hyperparameters instead of guessing.
+
+### Observed runs (Hey Homey, English US)
+
+| Run    | Penalty | Steps  | FA/H | Recall (synthetic) |
+|--------|---------|--------|------|--------------------|
+| Jun 22 | 20      | 12,000 | 1.9  | 5.0%               |
+| Jun 27 | 10      | 12,000 | 0.4  | 2.6%               |
+
+> ⚠️ **Don't over-read these two runs.** Going from penalty 20 → 10 gave *fewer* false accepts (1.9 →
+> 0.4) **and** lower reported recall (5.0% → 2.6%) — the opposite of the "lower penalty = more recall +
+> more false accepts" theory on *both* axes. Two single runs can't establish a trend; this is almost
+> certainly run-to-run training variance, not the penalty doing something. If you care which penalty
+> is better, run each value a few times and compare, don't trust one run.
+
+### What "good" actually looks like — trust real voice, not the synthetic number
+
+The recall percentages the site reports (single digits, above) are measured against **synthetic TTS
+voices**, and they have been suspiciously low across every run — well below the ~80% you'd normally
+want from a wake word. Either the site's synthetic-recall metric is stricter / measured differently
+than plain "how often it wakes," or these models genuinely under-detect. **We don't fully understand
+the metric yet, so the source of truth is real-world behaviour:**
+
+1. **Use the "Test" button with your own voice** on the model before flashing — say "Hey Homey" 10–20
+   times and count how often it wakes. That hit rate matters more than the displayed recall number.
+2. Then **flash it and live with it for a day.** Does it wake when you want and stay quiet otherwise?
+3. Prefer a **low FA/H** (green on the results screen) — a wake word that fires randomly is more
+   annoying than one you occasionally have to repeat.
+
+Training is cheap (~200 credits per run), so iterate. If real-world use is poor, come back to this and
+revisit the metric / settings rather than chasing the synthetic recall figure.
+
+### Tuning sensitivity without retraining — `probability_cutoff`
+
+The `micro.probability_cutoff` value in `hey_homey.json` is the **per-model sensitivity knob**, and you
+can change it and re-flash **without any new training run**. It's the confidence score (0–1) the model
+must clear before it wakes:
+
+- **Higher (e.g. `0.98`)** = stricter → wakes less easily, almost never false-fires.
+- **Lower (e.g. `0.95` or below)** = more lenient → wakes more readily, more false wakes.
+
+This single setting explains most of the gap between the two runs above — the Jun 27 manifest ships
+`0.98` vs the Jun 22 manifest's `0.95`, so a big part of the "lower recall" is just the stricter
+threshold, not a worse model. **If Hey Homey is too deaf in real use, lower this toward 0.95 and below
+before assuming the model is bad.** (Current shipped value: **`0.98`**.)
+
+> ⚠️ **The device's "wake word sensitivity" selector does NOT affect Hey Homey.** That select's lambda
+> (in `home-assistant-voice.yaml`) only calls `set_probability_cutoff` on `okay_nabu`, `hey_jarvis`,
+> and `hey_mycroft`. For Hey Homey the manifest's `probability_cutoff` is the only sensitivity control —
+> to make the UI selector affect it too, you'd have to add `hey_homey` to that lambda.
+
+> **Remember:** the device downloads the model from `raw.githubusercontent.com/.../main/...` at compile
+> time, **not** from your local folder — so any manifest edit only takes effect after it's committed and
+> pushed to `main` and the device is re-flashed.
+
 ---
 
 ## Change 2 — Shared rainbow rotation global
@@ -239,6 +319,34 @@ The shared rotation makes Listening → Thinking → Reply one continuous animat
   the **opposite** direction
 
 Error / muted / timer states are left untouched (error = red pulse, etc.).
+
+---
+
+## Change 5 — Increase mic sensitivity for command capture (auto gain)
+
+The stock config disables all input gain on the command-capture path, so quiet or distant
+speech reaches STT at a low level and is transcribed poorly. In the **`voice_assistant:`** block,
+raise `auto_gain` from `0 dbfs` (off) to `15 dbfs`:
+
+```yaml
+voice_assistant:
+  ...
+  noise_suppression_level: 0
+  auto_gain: 15 dbfs        # was: 0 dbfs (off). AGC amplifies quiet speech toward target level.
+  volume_multiplier: 1
+```
+
+> This is the AGC (automatic gain control) knob — the real "make the mic more sensitive" setting
+> for captured speech, distinct from wake-word sensitivity (the `wake_word_sensitivity` select).
+
+### Tuning knobs (same block)
+- **`auto_gain`** — `0`–`31 dbfs`. Higher = more amplification of quiet/distant speech. Start at
+  `15 dbfs`; raise toward `31` only if still too quiet.
+- **`volume_multiplier`** — flat multiplier on mic samples (default `1`). Cruder than AGC and also
+  boosts noise. Avoid stacking a large multiplier on top of high `auto_gain` — they clip together
+  and *hurt* recognition.
+- **`noise_suppression_level`** — `0`–`4`. Raise to ~`2` only if the problem is background noise
+  rather than low volume; too high eats quiet speech.
 
 ---
 
