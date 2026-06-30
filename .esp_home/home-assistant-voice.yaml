@@ -1928,7 +1928,7 @@ voice_assistant:
   micro_wake_word: mww
   use_wake_word: false
   noise_suppression_level: 0
-  auto_gain: 15 dbfs
+  auto_gain: 0 dbfs        # AGC off (matches stock). 15 dbfs over-amplified close speech and clipped -> distortion -> poor STT. Raise toward 6-9 dbfs only if speech is too quiet.
   volume_multiplier: 1
   on_client_connected:
     - lambda: id(init_in_progress) = false;

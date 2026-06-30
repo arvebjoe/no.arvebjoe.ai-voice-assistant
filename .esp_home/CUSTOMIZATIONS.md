@@ -322,26 +322,33 @@ Error / muted / timer states are left untouched (error = red pulse, etc.).
 
 ---
 
-## Change 5 — Increase mic sensitivity for command capture (auto gain)
+## Change 5 — Mic gain for command capture (auto gain) — currently left at stock `0`
 
-The stock config disables all input gain on the command-capture path, so quiet or distant
-speech reaches STT at a low level and is transcribed poorly. In the **`voice_assistant:`** block,
-raise `auto_gain` from `0 dbfs` (off) to `15 dbfs`:
+> ⚠️ **Reverted to stock `0 dbfs`.** Raising `auto_gain` to `15 dbfs` (commit c6ee5a0) over-amplified
+> close/normal speech and **clipped it**, adding audible distortion to the recording sent to STT —
+> which *hurt* recognition more than low volume did. A/B against the prebuilt stock firmware (AGC off)
+> confirmed the stock path sounds cleaner. So this is now kept at the stock value; **do NOT re-raise it
+> to 15** when re-applying customizations. If quiet/distant speech is genuinely too low, nudge up
+> gradually (`6`→`9 dbfs`) and re-check the `input_buffer_debug` recording for clipping before going higher.
+
+The stock config disables input gain on the command-capture path (`auto_gain: 0 dbfs`). Leave it there:
 
 ```yaml
 voice_assistant:
   ...
   noise_suppression_level: 0
-  auto_gain: 15 dbfs        # was: 0 dbfs (off). AGC amplifies quiet speech toward target level.
+  auto_gain: 0 dbfs        # AGC off (stock). 15 dbfs clipped close speech -> distortion -> poor STT.
   volume_multiplier: 1
 ```
 
-> This is the AGC (automatic gain control) knob — the real "make the mic more sensitive" setting
-> for captured speech, distinct from wake-word sensitivity (the `wake_word_sensitivity` select).
+> This is the AGC (automatic gain control) knob — the "make the mic more sensitive" setting for
+> captured speech, distinct from wake-word sensitivity (the `wake_word_sensitivity` select). It is a
+> double-edged knob: too high clips loud/close speech. Prefer fixing low volume by mic placement first.
 
 ### Tuning knobs (same block)
-- **`auto_gain`** — `0`–`31 dbfs`. Higher = more amplification of quiet/distant speech. Start at
-  `15 dbfs`; raise toward `31` only if still too quiet.
+- **`auto_gain`** — `0`–`31 dbfs`. Higher = more amplification of quiet/distant speech, but also
+  clips loud/close speech. Kept at `0` (stock) after `15` was found to distort — if you must raise it,
+  go gradually (`6`→`9`) and verify no clipping in the debug recording; do not jump back to `15`.
 - **`volume_multiplier`** — flat multiplier on mic samples (default `1`). Cruder than AGC and also
   boosts noise. Avoid stacking a large multiplier on top of high `auto_gain` — they clip together
   and *hurt* recognition.
