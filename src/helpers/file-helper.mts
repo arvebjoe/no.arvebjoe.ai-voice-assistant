@@ -41,12 +41,21 @@ export async function saveAudioData(homey: any, audioData: AudioData): Promise<F
 
 }
 
+// How long (ms) a played audio file lingers before it's deleted. Defaults to
+// 30s; override with AUDIO_FILE_TTL_MS (e.g. the emulator sets it high so debug
+// recordings stick around long enough to inspect). Invalid/unset -> 30_000.
+const DEFAULT_AUDIO_FILE_TTL_MS = 30_000;
+function audioFileTtlMs(): number {
+    const raw = Number(process.env.AUDIO_FILE_TTL_MS);
+    return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_AUDIO_FILE_TTL_MS;
+}
+
 export async function scheduleAudioFileDeletion(homey: any, fileInfo: FileInfo) {
 
     homey.setTimeout(() => {
         log.info(`Deleting temporary file: ${fileInfo.filepath}`);
         fs.unlink(fileInfo.filepath).catch(err => log.error('Error deleting temporary file:', err));
-    }, 30_000);
+    }, audioFileTtlMs());
 }
 
 

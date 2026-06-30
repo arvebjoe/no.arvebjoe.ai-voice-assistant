@@ -11,7 +11,9 @@
   "env": {
     "HE_HOST_IP": "",
     "_ESP_LOG_LEVEL_levels": "NONE, ERROR, WARN, INFO, CONFIG, DEBUG, VERBOSE, VERY_VERBOSE (or 0-7); empty/unknown = NONE",
-    "ESP_LOG_LEVEL": ""
+    "ESP_LOG_LEVEL": "",
+    "_AUDIO_FILE_TTL_MS": "ms a played audio file lingers before deletion; default 30000. Raise to keep debug recordings around longer.",
+    "AUDIO_FILE_TTL_MS": ""
   },
   "geolocation": { "latitude": 59.9139, "longitude": 10.7522 },
   "timezone": "Europe/Oslo",

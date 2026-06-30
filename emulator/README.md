@@ -77,10 +77,11 @@ node --import tsx --import ./emulator/register.mjs ./emulator/main.mts
 | `HE_SETTINGS`| Path to an alternate settings file (defaults to `emulator/settings.json`). |
 | `HE_HOST_IP` | Override the host IP the app advertises in playback URLs. Set this when auto-detection picks the wrong interface (VPN/Docker/WSL/virtual adapter) and the PE can't fetch the FLAC URL. Use the dev machine's LAN IP reachable by the PE, e.g. `HE_HOST_IP=192.168.1.50 npm run emulator`. |
 | `ESP_LOG_LEVEL` | Verbosity of the ESPHome native-API client log (e.g. `DEBUG`). |
+| `AUDIO_FILE_TTL_MS` | How long (ms) a played audio file lingers before deletion. Defaults to `30000`; raise it (the emulator ships `999000`) so `input_buffer_debug` recordings stick around long enough to inspect. |
 
-`HE_HOST_IP` and `ESP_LOG_LEVEL` can instead be set under the `env` block in
-`settings.json` (see above) so you don't have to export them on every run; an
-env var set on the command line still takes precedence.
+`HE_HOST_IP`, `ESP_LOG_LEVEL`, and `AUDIO_FILE_TTL_MS` can instead be set under
+the `env` block in `settings.json` (see above) so you don't have to export them
+on every run; an env var set on the command line still takes precedence.
 
 ## Notes / limitations
 
