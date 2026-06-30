@@ -1928,7 +1928,7 @@ voice_assistant:
   micro_wake_word: mww
   use_wake_word: false
   noise_suppression_level: 0
-  auto_gain: 0 dbfs        # AGC off (matches stock). 15 dbfs over-amplified close speech and clipped -> distortion -> poor STT. Raise toward 6-9 dbfs only if speech is too quiet.
+  auto_gain: 6 dbfs        # Mild software AGC. 15 dbfs clipped close speech (distortion -> poor STT); 0 left the start quiet under the XMOS hardware AGC ramp. 6 is the compromise — lift level without clipping. Raise toward 9 only if still too quiet; do not return to 15.
   volume_multiplier: 1
   on_client_connected:
     - lambda: id(init_in_progress) = false;

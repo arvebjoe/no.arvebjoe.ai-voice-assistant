@@ -322,33 +322,37 @@ Error / muted / timer states are left untouched (error = red pulse, etc.).
 
 ---
 
-## Change 5 — Mic gain for command capture (auto gain) — currently left at stock `0`
+## Change 5 — Mic gain for command capture (auto gain) — currently `6 dbfs`
 
-> ⚠️ **Reverted to stock `0 dbfs`.** Raising `auto_gain` to `15 dbfs` (commit c6ee5a0) over-amplified
-> close/normal speech and **clipped it**, adding audible distortion to the recording sent to STT —
-> which *hurt* recognition more than low volume did. A/B against the prebuilt stock firmware (AGC off)
-> confirmed the stock path sounds cleaner. So this is now kept at the stock value; **do NOT re-raise it
-> to 15** when re-applying customizations. If quiet/distant speech is genuinely too low, nudge up
-> gradually (`6`→`9 dbfs`) and re-check the `input_buffer_debug` recording for clipping before going higher.
+> ⚠️ **Currently `6 dbfs` — a deliberate compromise. Do NOT return to `15`.** History:
+> - `15 dbfs` (commit c6ee5a0) over-amplified close/normal speech and **clipped it**, adding audible
+>   distortion to the STT recording — which hurt recognition more than low volume did.
+> - `0 dbfs` (stock, AGC off) sounded clean, but left the **start of each recording quiet**: the PE's
+>   **XMOS XU316 hardware AGC** (in the `ffva` XMOS firmware, separate from this software knob and not
+>   controllable from YAML) has an attack ramp that was previously masked by the software boost.
+> - `6 dbfs` lifts the overall level enough to soften that quiet start **without clipping**.
+>
+> If quiet/distant speech is still too low, nudge to `9 dbfs` and re-check the `input_buffer_debug`
+> recording for clipping first. Never jump back to `15`.
 
-The stock config disables input gain on the command-capture path (`auto_gain: 0 dbfs`). Leave it there:
+In the **`voice_assistant:`** block:
 
 ```yaml
 voice_assistant:
   ...
   noise_suppression_level: 0
-  auto_gain: 0 dbfs        # AGC off (stock). 15 dbfs clipped close speech -> distortion -> poor STT.
+  auto_gain: 6 dbfs        # compromise: lift level without clipping. NOT 15 (clipped), NOT 0 (quiet start under XMOS AGC ramp).
   volume_multiplier: 1
 ```
 
-> This is the AGC (automatic gain control) knob — the "make the mic more sensitive" setting for
-> captured speech, distinct from wake-word sensitivity (the `wake_word_sensitivity` select). It is a
-> double-edged knob: too high clips loud/close speech. Prefer fixing low volume by mic placement first.
+> This is the **software** AGC knob (runs on the ESP32) — distinct from the **XMOS hardware AGC** that
+> runs first and causes the start-of-recording volume ramp (baked into the XMOS firmware, no YAML knob).
+> Too high clips loud/close speech; prefer fixing genuinely low volume by mic placement first.
 
 ### Tuning knobs (same block)
 - **`auto_gain`** — `0`–`31 dbfs`. Higher = more amplification of quiet/distant speech, but also
-  clips loud/close speech. Kept at `0` (stock) after `15` was found to distort — if you must raise it,
-  go gradually (`6`→`9`) and verify no clipping in the debug recording; do not jump back to `15`.
+  clips loud/close speech. Currently `6` (compromise after `15` distorted and `0` left a quiet start) —
+  if you raise it, go gradually (`6`→`9`) and verify no clipping in the debug recording; never `15`.
 - **`volume_multiplier`** — flat multiplier on mic samples (default `1`). Cruder than AGC and also
   boosts noise. Avoid stacking a large multiplier on top of high `auto_gain` — they clip together
   and *hurt* recognition.
