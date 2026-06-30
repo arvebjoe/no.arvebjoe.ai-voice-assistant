@@ -5,7 +5,26 @@
         "label": {
             "en": "Initial audio skip"
         },
+        "hint": {
+            "en": "Audio trimmed from the start of a wake-word turn to swallow the wake-word sound."
+        },
         "value": 350,
+        "min": 0,
+        "max": 2000,
+        "units": {
+            "en": "ms"
+        }
+    },
+    {
+        "id": "followup_audio_skip",
+        "type": "number",
+        "label": {
+            "en": "Follow-up audio skip"
+        },
+        "hint": {
+            "en": "Audio trimmed from the start of a follow-up (conversation) turn. There is no wake-word sound here — keep this small, just enough to swallow the mic-open noise burst."
+        },
+        "value": 150,
         "min": 0,
         "max": 2000,
         "units": {

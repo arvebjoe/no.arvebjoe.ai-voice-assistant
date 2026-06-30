@@ -40,17 +40,23 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
   private isMutedValue: boolean = false;
   private logger = createLogger('Voice_Assistant_Device', false);
   private skippedBytes: number = 0;
+  // Wake-turn skip (bytes), from the `initial_audio_skip` device setting. Swallows the
+  // wake-word "ding" the PE plays into the mic at the start of a wake/say turn.
   private skipInitialBytes: number | null = null;
-  // Effective initial-skip for the CURRENT turn (bytes). Derived per turn in 'starting'
-  // from skipInitialBytes plus, on PE-auto-reopened conversation turns, a floor (see
-  // CONVERSATION_REOPEN_SKIP_MS). The chunk handler uses this, not skipInitialBytes.
+  // Follow-up-turn skip (bytes), from the `followup_audio_skip` device setting (default
+  // DEFAULT_FOLLOWUP_SKIP_MS). Used INSTEAD of skipInitialBytes on conversation-reopen
+  // turns — those have no ding, only the short mic-open noise/echo burst to swallow.
+  private followupSkipBytes: number | null = null;
+  // Effective skip for the CURRENT turn (bytes). Derived per turn in 'starting':
+  // skipInitialBytes on a plain wake/say turn, followupSkipBytes on a conversation
+  // reopen. The chunk handler uses this, not the two source values.
   private currentTurnSkipBytes: number = 0;
-  // Floor initial-skip for turns inside a start_conversation session. Those turns open
-  // the mic immediately after the PE's own speaker finished the reply, so the PE's
-  // mic-open noise/echo burst lands at t=0 and trips OpenAI's server VAD (speech_started
-  // -> speech_stopped ~silence_duration later) before the user can answer — the ~0.5s
-  // dead window. Skipping this much swallows the burst so the mic stays open for the user.
-  private readonly CONVERSATION_REOPEN_SKIP_MS: number = 500;
+  // Default follow-up skip when `followup_audio_skip` isn't set. Conversation-reopen turns
+  // open the mic right after the PE's own speaker finished the reply, so a mic-open
+  // noise/echo burst lands at t=0 and can trip OpenAI's server VAD (speech_started ->
+  // speech_stopped) before the user answers — the dead window. This small skip swallows
+  // just that burst (NOT a full ding-length cut, since a follow-up has no ding).
+  private readonly DEFAULT_FOLLOWUP_SKIP_MS: number = 150;
   abstract readonly needDelayedPlayback: boolean;
 
   // Captures raw mic input and serves it back as a playback URL for debugging.
@@ -133,6 +139,11 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     if (settings.initial_audio_skip) {
       this.skipInitialBytes = this.msToBytes(settings.initial_audio_skip, 16000, 1, 2);
     }
+
+    // Follow-up burst-skip: use the setting if present, else the small default. Unlike the
+    // wake skip this defaults to a non-zero value so the mic-open burst is always swallowed.
+    const followupSkipMs = (settings.followup_audio_skip ?? this.DEFAULT_FOLLOWUP_SKIP_MS) as number;
+    this.followupSkipBytes = this.msToBytes(followupSkipMs, 16000, 1, 2);
 
 
     this.providerOptions = {
@@ -253,14 +264,14 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       this.replyViaTtsUrl = this.peConversationActive;
       this.replyPcm = [];
 
-      // Pick this turn's effective initial-skip. Conversation turns (peConversationActive)
-      // always carry the PE's mic-open noise burst right after playback, so enforce a
-      // floor that swallows it; honor a larger global initial_audio_skip if configured.
-      // Plain wake/say turns keep just the global value so a fast first utterance isn't clipped.
-      const floorSkipBytes = this.peConversationActive
-        ? this.msToBytes(this.CONVERSATION_REOPEN_SKIP_MS, 16000, 1, 2)
-        : 0;
-      this.currentTurnSkipBytes = Math.max(this.skipInitialBytes ?? 0, floorSkipBytes);
+      // Pick this turn's effective skip. The two cases are distinct signals, not a floor:
+      //  - Plain wake/say turn: skip `initial_audio_skip` to swallow the wake-word ding.
+      //  - Conversation reopen (peConversationActive): there is NO ding, only the short
+      //    mic-open noise/echo burst, so skip the smaller `followup_audio_skip` instead —
+      //    never the full ding-length cut, which would clip the user's first word.
+      this.currentTurnSkipBytes = this.peConversationActive
+        ? (this.followupSkipBytes ?? 0)
+        : (this.skipInitialBytes ?? 0);
 
       this.logger.info("Voice session started");
       // Let's start getting device state over the API, this might take a while, but should be done when we actually need it
@@ -281,8 +292,8 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     this.esp.on('chunk', (data: Buffer) => {
 
       // Skip initial bytes to eliminate microphone noise at the start - This is a problem on the PE.
-      // Uses the per-turn effective skip (currentTurnSkipBytes), which is raised on
-      // conversation reopens — see CONVERSATION_REOPEN_SKIP_MS.
+      // Uses the per-turn effective skip (currentTurnSkipBytes): the wake-word ding skip on
+      // wake/say turns, the smaller follow-up burst skip on conversation reopens.
       if (this.currentTurnSkipBytes && this.skippedBytes < this.currentTurnSkipBytes) {
         const remainingToSkip = this.currentTurnSkipBytes - this.skippedBytes;
         const bytesToSkip = Math.min(data.length, remainingToSkip);
@@ -1064,6 +1075,9 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     if (settings.initial_audio_skip) {
       this.skipInitialBytes = this.msToBytes(settings.initial_audio_skip, 16000, 1, 2);
     }
+
+    const followupSkipMs = (settings.followup_audio_skip ?? this.DEFAULT_FOLLOWUP_SKIP_MS) as number;
+    this.followupSkipBytes = this.msToBytes(followupSkipMs, 16000, 1, 2);
 
   }
 

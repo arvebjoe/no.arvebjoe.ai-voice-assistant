@@ -19,8 +19,9 @@ Legend: `[ ]` open · `[~]` partially done · `[x]` done (kept for context so we
   Fix: deliver the reply **in-band** on the pipeline's `TTS_END` carrying the FLAC URL (`tts_end(url)`),
   and drive the single mic-reopen ourselves via a `peConversationActive` session flag in
   `src/homey/voice-assistant-device.mts`. A secondary chain-blocker (the PE's mic-open noise burst on
-  auto-reopened turns tripping OpenAI's server VAD → ~0.5s dead window) was fixed with a per-turn floor
-  skip (`CONVERSATION_REOPEN_SKIP_MS`). **Single follow-up AND chained multi-question conversations both
+  auto-reopened turns tripping OpenAI's server VAD → ~0.5s dead window) was fixed with a per-turn
+  follow-up skip (`followup_audio_skip` setting, default `DEFAULT_FOLLOWUP_SKIP_MS` = 150ms — decoupled
+  from the wake-turn `initial_audio_skip` so a follow-up's first word isn't clipped). **Single follow-up AND chained multi-question conversations both
   confirmed on PE firmware 2026.6.2** (diagnosed using the new `[PE]` device-log stream, below). See §3
   "Follow-up / keep conversation alive" and branch `fix/followup-turn-audio`.
 - [x] **Device-log streaming for diagnosis (2026-06-26)** — opt-in `SubscribeLogsRequest` (id 28) over
