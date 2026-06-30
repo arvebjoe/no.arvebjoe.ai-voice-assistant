@@ -5,7 +5,8 @@
     "selected_language_name": "English",
     "selected_voice": "alloy",
     "ai_instructions": "",
-    "openweather_api_key": ""
+    "openweather_api_key": "",
+    "input_buffer_debug": false
   },
   "env": {
     "HE_HOST_IP": "",

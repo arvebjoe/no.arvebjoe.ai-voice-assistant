@@ -53,6 +53,9 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
   private readonly CONVERSATION_REOPEN_SKIP_MS: number = 500;
   abstract readonly needDelayedPlayback: boolean;
 
+  // Captures raw mic input and serves it back as a playback URL for debugging.
+  // Off in production; enable via the `input_buffer_debug` global setting
+  // (handy under the emulator). Read from settings in onInit().
   private inputBufferDebug: boolean = false;
   private inputBuffer: Buffer[] = [];
   private inputPlaybackUrl?: FileInfo | null = null;
@@ -101,10 +104,11 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     this.setCapabilityValue('onoff', false);
     this.RegisterCapabilities();
     await this.ensureTimerCapabilities();
-
     const store = this.getStore() as DeviceStore;
     const settings = this.getSettings();
     this.macAddress = store.mac;
+
+    this.inputBufferDebug = settingsManager.getGlobal('input_buffer_debug') === true;
 
     // Subscribe to global settings changes to update agent on the fly
     this.settingsUnsubscribe = settingsManager.onGlobals((newSettings) => {

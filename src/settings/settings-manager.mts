@@ -119,7 +119,7 @@ export class SettingsManager {
     
     // Homey settings API does not expose list directly; define keys we care about explicitly.
     // Extend this list as needed.
-    const knownKeys = ['openai_api_key', 'gemini_api_key', 'openweather_api_key', 'selected_language_code', 'selected_language_name', 'selected_voice', 'ai_instructions', 'voice_provider'];
+    const knownKeys = ['openai_api_key', 'gemini_api_key', 'openweather_api_key', 'selected_language_code', 'selected_language_name', 'selected_voice', 'ai_instructions', 'voice_provider', 'input_buffer_debug'];
 
     for (const k of knownKeys) {
       this.globals[k] = this.homey.settings.get(k);

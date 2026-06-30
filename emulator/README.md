@@ -33,7 +33,7 @@ template is `settings.example.json`.
 
 | field          | meaning                                                            |
 |----------------|--------------------------------------------------------------------|
-| `global`       | App settings: `openai_api_key`, `selected_language_code`/`_name`, `selected_voice`, `ai_instructions`, `openweather_api_key`. Seeded into the fake `homey.settings`. |
+| `global`       | App settings: `openai_api_key`, `selected_language_code`/`_name`, `selected_voice`, `ai_instructions`, `openweather_api_key`, `input_buffer_debug` (capture raw mic input and serve it back as a playback URL — debug only, defaults off). Seeded into the fake `homey.settings`. |
 | `geolocation`  | Lat/long handed to GeoHelper (drives weather/time tools).          |
 | `timezone`     | IANA timezone string returned by the fake `homey.clock`.           |
 | `env`          | Emulator-only env vars (`HE_HOST_IP`, `ESP_LOG_LEVEL`) applied to `process.env` at load so you don't have to export them yourself. A real env var on the command line still wins. Leave a value empty/omit to ignore it. |
