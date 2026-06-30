@@ -3,8 +3,8 @@
 //   http://<lan-ip>/app/<id>/userdata/audio/<file>
 // (no port -> port 80) and writes files to the absolute path /userdata/audio
 // (resolved on this OS, e.g. C:\userdata\audio on Windows). We serve that same
-// folder. Binding :80 may need elevation on some systems — if it fails we warn
-// and carry on; only PE audio playback is affected, the rest works.
+// folder. Binding :80 may need elevation on some systems — if it can't bind
+// (port in use or permission denied) we log a clear error and quit.
 import http from 'node:http';
 import { createReadStream, existsSync, statSync } from 'node:fs';
 import { resolve, join } from 'node:path';
@@ -37,16 +37,21 @@ export function startAudioServer(): Promise<void> {
     });
 
     server.on('error', (err: any) => {
-      if (err?.code === 'EACCES' || err?.code === 'EADDRINUSE') {
-        log.warn(
-          `Could not bind port 80 (${err.code}). PE audio playback will not work — ` +
-          'run the emulator elevated (or free port 80). Tool calls, the text console, ' +
-          'and device state all still work.',
+      if (err?.code === 'EADDRINUSE') {
+        log.error(
+          'Port 80 is already in use — free it and restart the emulator. ' +
+          '(On Windows this is often IIS / the "W3SVC" service; stop it with ' +
+          '`net stop w3svc` or `iisreset /stop`.)',
+        );
+      } else if (err?.code === 'EACCES') {
+        log.error(
+          'Permission denied binding port 80 — run the emulator in an elevated ' +
+          'terminal (Administrator).',
         );
       } else {
         log.error('Audio server error', err);
       }
-      done();
+      process.exit(1);
     });
 
     server.listen(80, () => {
