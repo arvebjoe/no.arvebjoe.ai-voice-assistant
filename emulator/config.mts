@@ -40,6 +40,13 @@ export interface EmulatorConfig {
   pe: EmulatorPe;
   zones: EmulatorZone[];
   devices: EmulatorDevice[];
+  /**
+   * Emulator-only environment variables read by the app code, e.g.
+   * `HE_HOST_IP` (advertised playback host) and `ESP_LOG_LEVEL`. Applied to
+   * process.env at load so you don't have to export them yourself. A real
+   * environment variable always wins over the settings.json value.
+   */
+  env?: Record<string, string>;
 }
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -58,3 +65,16 @@ try {
 }
 
 export const config: EmulatorConfig = raw;
+
+// Push settings.json `env` values into process.env so the app code (which reads
+// process.env.HE_HOST_IP, process.env.ESP_LOG_LEVEL, ...) picks them up without
+// you having to export them by hand. An already-set real env var takes
+// precedence, so you can still override on the command line.
+if (config.env) {
+  for (const [key, value] of Object.entries(config.env)) {
+    if (key.startsWith('_')) continue; // `_`-prefixed keys are JSON comments, not env vars
+    if (value == null || value === '') continue;
+    if (process.env[key] != null && process.env[key] !== '') continue;
+    process.env[key] = String(value);
+  }
+}

@@ -36,6 +36,7 @@ template is `settings.example.json`.
 | `global`       | App settings: `openai_api_key`, `selected_language_code`/`_name`, `selected_voice`, `ai_instructions`, `openweather_api_key`. Seeded into the fake `homey.settings`. |
 | `geolocation`  | Lat/long handed to GeoHelper (drives weather/time tools).          |
 | `timezone`     | IANA timezone string returned by the fake `homey.clock`.           |
+| `env`          | Emulator-only env vars (`HE_HOST_IP`, `ESP_LOG_LEVEL`) applied to `process.env` at load so you don't have to export them yourself. A real env var on the command line still wins. Leave a value empty/omit to ignore it. |
 | `pe`           | The PE satellite: `name`, `mac`, `address`, `port`, `zone`, optional device `settings`. Auto-added to the device list so zone lookup resolves. |
 | `zones`        | Dummy zones (`id`, `name`, `parent`).                              |
 | `devices`      | Dummy devices (`id`, `name`, `zone`, `class`, `capabilities` map). |
@@ -75,6 +76,11 @@ node --import tsx --import ./emulator/register.mjs ./emulator/main.mts
 |--------------|---------------------------------------------------------------------|
 | `HE_SETTINGS`| Path to an alternate settings file (defaults to `emulator/settings.json`). |
 | `HE_HOST_IP` | Override the host IP the app advertises in playback URLs. Set this when auto-detection picks the wrong interface (VPN/Docker/WSL/virtual adapter) and the PE can't fetch the FLAC URL. Use the dev machine's LAN IP reachable by the PE, e.g. `HE_HOST_IP=192.168.1.50 npm run emulator`. |
+| `ESP_LOG_LEVEL` | Verbosity of the ESPHome native-API client log (e.g. `DEBUG`). |
+
+`HE_HOST_IP` and `ESP_LOG_LEVEL` can instead be set under the `env` block in
+`settings.json` (see above) so you don't have to export them on every run; an
+env var set on the command line still takes precedence.
 
 ## Notes / limitations
 
@@ -82,10 +88,10 @@ node --import tsx --import ./emulator/register.mjs ./emulator/main.mts
   for weather). Put a valid `openai_api_key` in `settings.json`.
 - **PE audio playback needs port 80.** The app builds playback URLs without a
   port (`http://<ip>/app/.../userdata/audio/<file>`), so HE serves the audio
-  folder on `:80`. If binding `:80` fails (`EACCES`/`EADDRINUSE`) HE logs a
-  warning and continues — only audio *playback on the PE* is affected; `ask`,
-  tool calls, and device state still work. On Windows/macOS you may need to run
-  the terminal elevated for `:80`.
+  folder on `:80`. If binding `:80` fails HE logs the reason and **quits**:
+  `EADDRINUSE` means another process holds the port (on Windows this is often
+  IIS — stop it with `net stop w3svc` or `iisreset /stop`); `EACCES` means you
+  need an elevated/Administrator terminal.
 - Audio files are written to the OS-resolved `/userdata/audio` (e.g.
   `C:\userdata\audio` on Windows), matching what the app's file-helper uses.
 - **Not supported:** Noise/encrypted ESPHome API (plaintext only, same as the

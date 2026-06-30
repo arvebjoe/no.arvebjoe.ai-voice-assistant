@@ -7,6 +7,11 @@
     "ai_instructions": "",
     "openweather_api_key": ""
   },
+  "env": {
+    "HE_HOST_IP": "",
+    "_ESP_LOG_LEVEL_levels": "NONE, ERROR, WARN, INFO, CONFIG, DEBUG, VERBOSE, VERY_VERBOSE (or 0-7); empty/unknown = NONE",
+    "ESP_LOG_LEVEL": ""
+  },
   "geolocation": { "latitude": 59.9139, "longitude": 10.7522 },
   "timezone": "Europe/Oslo",
   "pe": {
