@@ -24,6 +24,20 @@ Legend: `[ ]` open · `[~]` partially done · `[x]` done (kept for context so we
   from the wake-turn `initial_audio_skip` so a follow-up's first word isn't clipped). **Single follow-up AND chained multi-question conversations both
   confirmed on PE firmware 2026.6.2** (diagnosed using the new `[PE]` device-log stream, below). See §3
   "Follow-up / keep conversation alive" and branch `fix/followup-turn-audio`.
+- [~] **Conversation-flow hardening (2026-07-02, commits 77bd40c…94f94aa) — "real close", bugs remain.**
+  Session's fixes, all confirmed on the real PE unless noted: broadened pairing device-type sniff so
+  self-compiled firmware (no "Nabu Casa"/"PE" identity strings) is listed again; always-on `[CONVO]`
+  conversation trace (wake→VAD→STT→tools→LLM→TTS→continue/stop) + new `tool.completed` provider event;
+  spurious-VAD-trip retry (PE auto-reopen catches TTS echo → empty transcript <2.5s → reopen instead of
+  ending session); suppress `response.done` for function_call responses (tool-turn replies were routed
+  to the announce path mid-conversation and silently dropped); `continue_conversation` sent as INTENT_END
+  event data so the PE closes after non-question replies (the firmware flag is sticky — verified in
+  esphome voice_assistant.cpp); playback-aware `lastTurnEndedAt` (+pcmBytes/48 ms) so long in-band replies
+  don't eat the 10s context TTL and wipe the LLM context mid-conversation (**this last fix not yet
+  re-tested — re-run the 3-question quiz**). Open warts: multi-segment announce race (short first segment's
+  ack before segment 2 exists → premature turn-complete, currently self-heals by luck); keepOpen-with-no-audio
+  edge (peConversationActive=true but PE may not reopen when there's no TTS URL); user reports further
+  unspecified bugs — get a fresh `[CONVO]` trace. Details: memory `followup-turn-no-audio-rootcause.md`.
 - [x] **Device-log streaming for diagnosis (2026-06-26)** — opt-in `SubscribeLogsRequest` (id 28) over
   the native API streams the PE's own ESPHome logs back (`SubscribeLogsResponse`, id 29), printed inline
   under `[PE]` alongside the `[ESP]`/app logs. Gated by `ESP_LOG_LEVEL` (env var) or the `logLevel` client
