@@ -91,6 +91,18 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
   // the start of any say — so it cannot leak across unrelated turns the way the old
   // conversationActive flag did.
   private peConversationActive: boolean = false;
+  // When the current turn's mic opened (epoch ms). Used to spot spurious follow-up
+  // turns: the PE auto-reopens its mic right at the end of its own TTS playback, so
+  // the tail/echo of the reply can leak in and trip server VAD (speech start+stop)
+  // before the user has said anything — the turn then "hears nothing" within ~1-2s.
+  private turnStartedAt: number = 0;
+  // Spurious empty-turn retries used in the current conversation. Bounded so a noisy
+  // room (VAD tripping on background noise forever) can't hold the session open.
+  private emptyTurnRetries: number = 0;
+  private readonly MAX_EMPTY_TURN_RETRIES: number = 2;
+  // An empty transcript arriving within this window of mic-open is treated as a
+  // spurious echo-trip (retry the mic), not as the user declining to answer.
+  private readonly SPURIOUS_TURN_MS: number = 2_500;
   // True for the follow-up run only: route its reply via the TTS_END URL instead of
   // the announce queue (the PE drops standalone announces mid-conversation).
   // Accumulates the reply PCM to ship as one file.
@@ -264,6 +276,11 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       this.skippedBytes = 0;
 
       this.isSteamingMic = true;
+      this.turnStartedAt = Date.now();
+      // A fresh (non-follow-up) turn starts a new spurious-retry budget.
+      if (!this.peConversationActive) {
+        this.emptyTurnRetries = 0;
+      }
 
       // While the PE is in a start_conversation session, every turn (the follow-up our
       // reopen opened AND every turn the PE auto-reopens after an in-band reply) must
@@ -405,6 +422,29 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       transcript = (transcript ?? '').trim();
 
       if (transcript == '' || transcript.toLowerCase() === "undertekster av ai-media") {
+
+        // Spurious follow-up turn: the PE reopens its mic at the very end of its own
+        // TTS playback, so the reply's tail/echo can trip server VAD before the user
+        // has spoken — the turn comes back empty within a second or two, and ending
+        // the session here would steal the user's answer window. Close this run and
+        // reopen the mic so the user actually gets to answer. Bounded by
+        // MAX_EMPTY_TURN_RETRIES; a genuine no-answer (silence until background noise
+        // trips VAD later than SPURIOUS_TURN_MS) still ends the session below.
+        const turnMs = Date.now() - this.turnStartedAt;
+        if (this.peConversationActive && turnMs < this.SPURIOUS_TURN_MS && this.emptyTurnRetries < this.MAX_EMPTY_TURN_RETRIES) {
+          this.emptyTurnRetries++;
+          this.convo.info(`Heard nothing only ${(turnMs / 1000).toFixed(1)}s after mic open — spurious VAD trip (TTS echo), reopening mic (retry ${this.emptyTurnRetries}/${this.MAX_EMPTY_TURN_RETRIES})`, 'STT');
+          this.replyViaTtsUrl = false;
+          this.esp.stt_end('');
+          this.esp.run_end();
+          this.setCapabilityValue('onoff', false);
+          this.lastTurnEndedAt = Date.now();
+          this.homey.setTimeout(() => {
+            this.esp.send_voice_assistant_request();
+          }, 1);
+          return;
+        }
+
         this.convo.info('Heard nothing — ending conversation', 'STT');
         // Yeah, this is a strange one. If the STT engine doesn't hear anything useful, it will return this text. I don't know why.
         // No answer => the user has left the conversation: end the PE's start_conversation
@@ -421,6 +461,8 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       }
 
       this.convo.info(`Heard: "${transcript}"`, 'STT');
+      // A real answer restores the full spurious-retry budget for later turns.
+      this.emptyTurnRetries = 0;
       this.esp.stt_end(transcript);
       this.esp.intent_start();
     });

@@ -703,9 +703,23 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
                 break;
 
             //case "response.completed":
-            case "response.done":
+            case "response.done": {
+                // A response that ended in a function_call is NOT the end of the turn:
+                // maybeExecuteTool feeds the tool result back and issues createResponse(),
+                // so a continuation response with the spoken answer is coming. Emitting
+                // response.done here made the device flush/close its reply pipeline
+                // mid-turn (bare tts_end + run_end), which on an in-band conversation
+                // turn re-routed the real reply to the announce path — and the PE drops
+                // announces mid-conversation, so tool-call answers played as silence.
+                // Only the final (non-tool) response ends the turn.
+                const output = msg.response?.output;
+                if (Array.isArray(output) && output.some((item: any) => item?.type === "function_call")) {
+                    this.logger.info("response.done for a tool-call response — awaiting continuation", 'TOOL');
+                    break;
+                }
                 this.emit("response.done");
                 break;
+            }
 
             case "error":
             case "response.error":
