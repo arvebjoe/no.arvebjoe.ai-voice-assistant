@@ -658,8 +658,24 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
     this.vaEvent(VA_EVENT.VOICE_ASSISTANT_INTENT_PROGRESS, { text }, 'INTENT_PROGRESS');
   }
 
-  intent_end(text: string): void {
-    this.vaEvent(VA_EVENT.VOICE_ASSISTANT_INTENT_END, { text }, 'INTENT_END');
+  // INTENT_END is the ONLY event the firmware parses `continue_conversation` from:
+  // '1' keeps the device's conversation mode alive (it reopens the mic once this
+  // reply finishes playing), '0' sends it to IDLE — closing the conversation.
+  // Without it the flag keeps its previous value (it is sticky: a
+  // startConversation:true announce sets it, and it stays true until overwritten),
+  // which made the PE reopen the mic after EVERY in-band reply, goodbye included.
+  // Omit the param (undefined) to leave the device's flag untouched. Payload uses
+  // the repeated `data` {name,value} field — a spread property like the old {text}
+  // is dropped by protobufjs as an unknown field and never transmits.
+  intent_end(text: string, continueConversation?: boolean): void {
+    const data: { name: string; value: string }[] = [];
+    if (text) {
+      data.push({ name: 'text', value: text });
+    }
+    if (continueConversation !== undefined) {
+      data.push({ name: 'continue_conversation', value: continueConversation ? '1' : '0' });
+    }
+    this.vaEvent(VA_EVENT.VOICE_ASSISTANT_INTENT_END, data.length > 0 ? { data } : {}, 'INTENT_END');
   }
 
   tts_start(): void {

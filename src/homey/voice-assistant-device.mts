@@ -480,14 +480,11 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
       // Continue run: the PE won't fetch a standalone announce mid-conversation,
       // so don't stream per-chunk announces. Accumulate the PCM and ship the whole
-      // reply as one file on TTS_END (see the segmenter 'done' handler). Still emit
-      // the intent_end -> tts_start transition so the PE shows the "replying" state.
+      // reply as one file on TTS_END (see the segmenter 'done' handler). The
+      // intent_end -> tts_start transition is deferred to 'done' too: INTENT_END is
+      // where the firmware reads continue_conversation, and the "?" decision isn't
+      // final until the whole reply has streamed.
       if (this.replyViaTtsUrl) {
-        if (this.hasIntent) {
-          this.esp.intent_end('');
-          this.hasIntent = false;
-          this.esp.tts_start();
-        }
         this.replyPcm.push(chunk);
         return;
       }
@@ -632,9 +629,30 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
         const pcm = this.replyPcm;
         this.replyPcm = [];
 
+        // The "?" heuristic is final here (response.done ran before the flush that
+        // fired this 'done'). Tell the PE explicitly whether to reopen the mic after
+        // playing this reply: INTENT_END continue_conversation '1' -> START_MICROPHONE,
+        // '0' -> IDLE. The firmware's flag is sticky, so without this it stays true
+        // from the original startConversation announce and the PE reopens after every
+        // reply — a goodbye ("...bare si fra.") would keep the conversation open forever.
+        const keepOpen = this.continueConversation;
+        this.continueConversation = false;
+        this.esp.intent_end('', keepOpen);
+        this.hasIntent = false;
+        this.esp.tts_start();
+
         let fileUrl: string | null = null;
+        let playbackMs = 0;
         if (pcm.length > 0) {
-          const flac = await pcmToFlacBuffer(Buffer.concat(pcm), {
+          const pcmBuf = Buffer.concat(pcm);
+          // PCM16 mono 24 kHz = 48 bytes/ms. The PE only reopens the mic (or goes
+          // idle) AFTER playing this reply, so the turn effectively ends at
+          // end-of-playback — stamp lastTurnEndedAt accordingly below. Stamping at
+          // send time made a long reply eat the whole CONTEXT_TTL_MS: the reopen
+          // then looked stale, the context got wiped mid-conversation, and the
+          // user's answer landed in a blank session.
+          playbackMs = Math.round(pcmBuf.length / 48);
+          const flac = await pcmToFlacBuffer(pcmBuf, {
             sampleRate: 24_000,
             channels: 1,
             bitsPerSample: 16,
@@ -644,7 +662,9 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
         }
 
         if (fileUrl) {
-          this.convo.info('Speaking reply (in-band, conversation open) — PE will reopen the mic after playback', 'TTS');
+          this.convo.info(keepOpen
+            ? 'Speaking reply (in-band) — reply is a question, PE reopens the mic after playback'
+            : 'Speaking reply (in-band) — final reply, conversation closes after playback', 'TTS');
           this.logger.info(`Continue reply via TTS_END URL: ${fileUrl}`);
           this.esp.tts_end(fileUrl);
         } else {
@@ -652,9 +672,13 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
           this.esp.tts_end();
         }
         this.esp.run_end();
-        this.continueConversation = false;
+        // Session tracking must mirror what we just told the PE: if the reply wasn't
+        // a question the PE goes IDLE after playback, so the next turn is a fresh
+        // wake on the announce path.
+        this.peConversationActive = keepOpen;
         this.setCapabilityValue('onoff', false);
-        this.lastTurnEndedAt = Date.now();
+        // End-of-playback, not send time — see the playbackMs comment above.
+        this.lastTurnEndedAt = Date.now() + playbackMs;
       }
     });
 
