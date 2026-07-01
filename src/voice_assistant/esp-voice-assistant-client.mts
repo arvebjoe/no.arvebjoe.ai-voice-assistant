@@ -79,11 +79,11 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
   // any further reconnect scheduling, even from a late socket error/close event.
   private closed: boolean = false;
   private deviceType: string | null;
-  private logger = createLogger('ESP', false);
+  private logger = createLogger('ESP', true);
   // The device's OWN ESPHome firmware logs, streamed over the native API
   // (SubscribeLogsRequest) and printed under [PE] so the device-side view of the
   // voice flow interleaves with our [ESP] client logs and the app's flow logs.
-  private deviceLogger = createLogger('PE', false);
+  private deviceLogger = createLogger('PE', true);
   // Resolved LogLevel for the device-log subscription (0 = NONE = disabled).
   private readonly logLevel: number;
   private shouldAnnounceFinished: boolean = true;

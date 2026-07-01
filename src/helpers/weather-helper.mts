@@ -1,5 +1,5 @@
-import { createLogger } from './logger.mjs';
-import { GeoHelper } from './geo-helper.mjs';
+import {createLogger} from './logger.mjs';
+import {GeoHelper} from './geo-helper.mjs';
 
 export interface WeatherCondition {
     code: number;           // WMO weather code
@@ -68,7 +68,7 @@ export interface IlluminationData {
 
 export class WeatherHelper {
     private geoHelper: GeoHelper;
-    private logger = createLogger('WeatherHelper', false);
+    private logger = createLogger('WeatherHelper', true);
     private isInitialized = false;
     private baseUrl = 'https://api.open-meteo.com/v1';
 
@@ -122,6 +122,10 @@ export class WeatherHelper {
 
         this.isInitialized = true;
         this.logger.info('WeatherHelper initialized with Open-Meteo API');
+
+        const weather = await this.getCurrentWeather();
+        this.logger.info('Current weather:', 'Debug', weather);
+
     }
 
     /**
@@ -331,7 +335,7 @@ export class WeatherHelper {
      */
     async getWeatherForTime(targetTime: Date): Promise<ForecastItem | null> {
         const forecast = await this.getForecast();
-        
+
         // Find the closest forecast item to the target time
         let closest: ForecastItem | null = null;
         let minTimeDiff = Number.MAX_SAFE_INTEGER;
@@ -359,10 +363,10 @@ export class WeatherHelper {
         const forecast = await this.getWeatherForTime(targetTime);
 
         if (!forecast) {
-            return { willRain: false, probability: 0, description: 'No forecast data available' };
+            return {willRain: false, probability: 0, description: 'No forecast data available'};
         }
 
-        const hasRain = forecast.conditions.some(condition => 
+        const hasRain = forecast.conditions.some(condition =>
             this.isRainWeatherCode(condition.code)
         );
 
@@ -383,9 +387,9 @@ export class WeatherHelper {
         try {
             const weather = await this.getCurrentWeather();
             const location = this.geoHelper.getLocationInfoString();
-            
+
             return `Current weather at ${location}: ${weather.temperature}°C, ${weather.conditions[0]?.description}. ` +
-                   `Feels like ${weather.feelsLike}°C. Humidity: ${weather.humidity}%, Wind: ${weather.windSpeed} km/h.`;
+                `Feels like ${weather.feelsLike}°C. Humidity: ${weather.humidity}%, Wind: ${weather.windSpeed} km/h.`;
         } catch (error) {
             this.logger.error('Failed to get weather summary:', error);
             return 'Weather information is currently unavailable.';
@@ -423,7 +427,7 @@ export class WeatherHelper {
     private parseCurrentWeatherResponse(data: any): WeatherData {
         const current = data.current || {};
         const weatherCode = current.weather_code || 0;
-        
+
         return {
             temperature: Math.round((current.temperature_2m || 0) * 10) / 10,
             feelsLike: Math.round((current.apparent_temperature || current.temperature_2m || 0) * 10) / 10,
@@ -457,10 +461,10 @@ export class WeatherHelper {
     private parseForecastResponse(data: any): ForecastData {
         const hourly = data.hourly || {};
         const timeArray = hourly.time || [];
-        
+
         const forecasts = timeArray.map((time: string, index: number) => {
             const weatherCode = hourly.weather_code?.[index] || 0;
-            
+
             return {
                 timestamp: new Date(time),
                 temperature: Math.round((hourly.temperature_2m?.[index] || 0) * 10) / 10,
@@ -497,24 +501,24 @@ export class WeatherHelper {
     private parseIlluminationResponse(data: any): IlluminationData {
         const current = data.current || {};
         const daily = data.daily || {};
-        
+
         const isDay = current.is_day === 1;
         const solarRadiation = current.shortwave_radiation || 0;
         const directRadiation = current.direct_radiation || 0;
         const diffuseRadiation = current.diffuse_radiation || 0;
         const uvIndex = current.uv_index || 0;
-        
+
         // Calculate sun elevation based on radiation
         let sunElevation = 0;
         if (directRadiation > 0) {
             // Rough approximation: max direct radiation ~1000 W/m² at 90° elevation
             sunElevation = Math.asin(Math.min(directRadiation / 1000, 1)) * (180 / Math.PI);
         }
-        
+
         // Determine illumination level
         let illuminationLevel: 'dark' | 'twilight' | 'dim' | 'bright' | 'very_bright';
         let description: string;
-        
+
         if (!isDay && solarRadiation < 1) {
             illuminationLevel = 'dark';
             description = 'It is dark outside with no solar radiation.';
@@ -537,7 +541,7 @@ export class WeatherHelper {
         const todayStr = now.toISOString().split('T')[0];
         const sunriseTime = daily.sunrise?.[0] ? new Date(daily.sunrise[0]) : null;
         const sunsetTime = daily.sunset?.[0] ? new Date(daily.sunset[0]) : null;
-        
+
         let isDaylight = isDay;
         if (sunriseTime && sunsetTime) {
             isDaylight = now >= sunriseTime && now <= sunsetTime;

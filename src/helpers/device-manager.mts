@@ -12,7 +12,7 @@ export class DeviceManager implements IDeviceManager {
     private zoneList: string[];
     private zones: ZonesCollection | null;
     private deviceTypes: string[];
-    private logger = createLogger('DeviceManager', false);
+    private logger = createLogger('DeviceManager', true);
     private voiceAssistantDevices: Map<string, DeviceZoneChangedCallback> = new Map();
 
 

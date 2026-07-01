@@ -2,7 +2,7 @@ import { createLogger } from './logger.mjs';
 
 export class GeoHelper {
     private homey: any;
-    private logger = createLogger('GeoHelper', false);
+    private logger = createLogger('GeoHelper', true);
     private _latitude: number | null = null;
     private _longitude: number | null = null;
     private _timezone: string | null = null;

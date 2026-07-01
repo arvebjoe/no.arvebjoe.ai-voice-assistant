@@ -5,7 +5,7 @@ import { ToolManager } from './tool-manager.mjs';
 import { settingsManager } from '../settings/settings-manager.mjs';
 import { createLogger } from '../helpers/logger.mjs';
 
-const logger = createLogger('VoiceProviderFactory');
+const logger = createLogger('VoiceProviderFactory', true);
 
 /** Default provider id used when nothing is configured. */
 export const DEFAULT_VOICE_PROVIDER = 'openai-realtime';

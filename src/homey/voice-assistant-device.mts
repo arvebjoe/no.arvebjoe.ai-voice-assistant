@@ -38,7 +38,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
   private macAddress: string = '';
 
   private isMutedValue: boolean = false;
-  private logger = createLogger('Voice_Assistant_Device', false);
+  private logger = createLogger('Voice_Assistant_Device', true);
   private skippedBytes: number = 0;
   // Wake-turn skip (bytes), from the `initial_audio_skip` device setting. Swallows the
   // wake-word "ding" the PE plays into the mic at the start of a wake/say turn.

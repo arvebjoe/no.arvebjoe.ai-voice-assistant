@@ -70,7 +70,7 @@ export class TimerManager extends (EventEmitter as new () => TypedEmitter<TimerM
   private esp: EspVoiceAssistantClient;
   private timer: ActiveTimer | null = null;
   private seq = 0;
-  private logger = createLogger('TimerManager', false);
+  private logger = createLogger('TimerManager', true);
 
   // Periodic drift-correction (see startResync). The device ticks its own copy
   // of seconds_left for the LED ring and can drift over a long countdown; we

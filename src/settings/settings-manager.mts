@@ -25,7 +25,7 @@ export class SettingsManager {
   //private devices: Map<string, DeviceSettings> = new Map();
   private globalSubs: Set<Subscriber<GlobalSettings>> = new Set();
   //private deviceSubs: Map<string, Set<Subscriber<DeviceSettings>>> = new Map();
-  private logger = createLogger('Settings_Manager');
+  private logger = createLogger('Settings_Manager', true);
 
   private constructor() {
   }
