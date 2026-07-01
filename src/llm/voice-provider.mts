@@ -61,6 +61,9 @@ export type VoiceProviderEvents = {
     "tool.arguments.done": (d: { callId: string; name?: string; args: any }) => void;
     "tool.called": (d: { callId: string; name: string; args: any }) => void;
     "tool.call.started": (d: { callId: string; name?: string; itemId?: string }) => void;
+    // Fired after the tool handler ran, with what was fed back to the model
+    // (an { error } object when the handler threw).
+    "tool.completed": (d: { callId: string; name: string; result: any }) => void;
 
     "rate_limits.updated": (msg: any) => void;
 };

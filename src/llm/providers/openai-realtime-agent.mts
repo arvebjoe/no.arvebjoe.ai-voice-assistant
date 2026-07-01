@@ -767,6 +767,7 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
 
         try {
             const output = await this.handleTool(callId, rec.name, args);
+            this.emit("tool.completed", { callId, name: rec.name, result: output });
 
             // Inject the function result into the conversation:
             this.sendFunctionResult(callId, output, rec.itemId);
@@ -777,6 +778,7 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
             });
 
         } catch (err: any) {
+            this.emit("tool.completed", { callId, name: rec.name, result: { error: String(err?.message ?? err) } });
             // Even on error, feed a structured output back so the model can handle it gracefully:
             this.sendFunctionResult(callId, { error: String(err?.message ?? err) }, rec.itemId);
             this.createResponse({

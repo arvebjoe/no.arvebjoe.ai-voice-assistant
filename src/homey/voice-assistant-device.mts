@@ -39,6 +39,11 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
   private isMutedValue: boolean = false;
   private logger = createLogger('Voice_Assistant_Device', true);
+  // Concise per-turn conversation trace: wake -> VAD -> STT -> tools -> LLM reply ->
+  // playback path -> continue/stop. Deliberately ALWAYS enabled (the detailed logger
+  // above stays disabled) — keep it to one line per stage so a whole conversation
+  // stays readable in the `homey app run` stream.
+  private convo = createLogger('CONVO');
   private skippedBytes: number = 0;
   // Wake-turn skip (bytes), from the `initial_audio_skip` device setting. Swallows the
   // wake-word "ding" the PE plays into the mic at the start of a wake/say turn.
@@ -226,6 +231,9 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
         // The agent doesn't have an active web socket. Either the API Key is missing or the internet connection failed.
         // Play a pre-recorded message to inform the user.
         const hasKey = this.provider.hasApiKey();
+        this.convo.warn(hasKey
+          ? 'Wake ignored — agent not connected, playing error sound'
+          : 'Wake ignored — API key missing, playing error sound');
         const url = hasKey ? SOUND_URLS.agent_not_connected : SOUND_URLS.missing_api_key;
         this.esp.run_start();
         this.esp.pipeline_error('agent-not-connected', hasKey ? 'Voice agent is not connected.' : 'API key is missing.');
@@ -242,6 +250,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       const idleMs = Date.now() - this.lastTurnEndedAt;
       if (this.lastTurnEndedAt > 0 && idleMs > this.CONTEXT_TTL_MS) {
         this.logger.info(`Idle ${Math.round(idleMs / 1000)}s since last turn — starting fresh conversation`);
+        this.convo.info(`Idle ${Math.round(idleMs / 1000)}s — context cleared, starting fresh conversation`, 'MIC');
         this.provider.resetConversation();
         // Long gap => any prior start_conversation session is over; next reply goes
         // via the announce path, and the PE is no longer in conversation mode.
@@ -272,6 +281,10 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       this.currentTurnSkipBytes = this.peConversationActive
         ? (this.followupSkipBytes ?? 0)
         : (this.skipInitialBytes ?? 0);
+
+      this.convo.info(this.peConversationActive
+        ? 'Turn started (follow-up — conversation open), listening…'
+        : 'Turn started (wake word / button / flow), listening…', 'MIC');
 
       this.logger.info("Voice session started");
       // Let's start getting device state over the API, this might take a while, but should be done when we actually need it
@@ -351,6 +364,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
     // The agent has detected that the user has stopped speaking.
     this.provider.on('silence', async (source: string) => {
+      this.convo.info(`User stopped speaking (${source} VAD) — mic closed`, 'MIC');
       this.logger.info(`Silence detected by agent (${source}), closing microphone.`);
       this.hasIntent = true;
       this.isSteamingMic = false;
@@ -391,6 +405,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       transcript = (transcript ?? '').trim();
 
       if (transcript == '' || transcript.toLowerCase() === "undertekster av ai-media") {
+        this.convo.info('Heard nothing — ending conversation', 'STT');
         // Yeah, this is a strange one. If the STT engine doesn't hear anything useful, it will return this text. I don't know why.
         // No answer => the user has left the conversation: end the PE's start_conversation
         // session so it stops auto-reopening and the next turn starts fresh on the
@@ -405,6 +420,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
         return;
       }
 
+      this.convo.info(`Heard: "${transcript}"`, 'STT');
       this.esp.stt_end(transcript);
       this.esp.intent_start();
     });
@@ -467,6 +483,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       }
 
       this.isPlaying = true;
+      this.convo.info('Speaking reply (announce)', 'TTS');
       this.logger.info(`Playing FIRST announcement from URL: ${fileInfo.url}`);
       this.playUrlByFileInfo(fileInfo, false);
 
@@ -494,6 +511,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
         this.lastTurnEndedAt = Date.now();
 
         if (this.continueConversation) {
+          this.convo.info('Reply ended with a question — reopening mic for a follow-up', 'END');
           this.continueConversation = false;
           // The reply ended in a question: open the conversation. Reopen the mic once
           // ourselves (startConversation:true puts the PE into conversation mode) and
@@ -506,6 +524,8 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
             this.esp.send_voice_assistant_request();
           }, 1);
 
+        } else {
+          this.convo.info('Turn complete — conversation closed', 'END');
         }
         return;
       }
@@ -531,14 +551,21 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
     // The agent want's to use a tool. We need to make sure we have all the data from the API now.    
     this.provider.on('tool.called', async (d: { callId: string; name: string; args: any }) => {
+      this.convo.info(`${d.name} ${this.compact(d.args)}`, 'TOOL');
       this.logger.info(`${d.name}`, 'TOOL_CALLED', d.args);
       await this.devicePromise;
+    });
+
+    // What the tool handler actually returned (fed back to the model).
+    this.provider.on('tool.completed', (d: { callId: string; name: string; result: any }) => {
+      this.convo.info(`${d.name} → ${this.compact(d.result)}`, 'TOOL');
     });
 
     // The agent has finished processing the response. Tell the segmenter there is no more data coming.
     this.provider.on('response.done', () => {
       const reply = this.replyText.trim();
       if (reply) {
+        this.convo.info(`Reply: "${reply}"`, 'LLM');
         this.logger.info(`LLM reply: ${reply}`, "LLM");
       }
       this.replyText = '';
@@ -575,9 +602,11 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
         }
 
         if (fileUrl) {
+          this.convo.info('Speaking reply (in-band, conversation open) — PE will reopen the mic after playback', 'TTS');
           this.logger.info(`Continue reply via TTS_END URL: ${fileUrl}`);
           this.esp.tts_end(fileUrl);
         } else {
+          this.convo.info('Turn ended with no reply audio', 'END');
           this.esp.tts_end();
         }
         this.esp.run_end();
@@ -591,6 +620,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     this.provider.on('error', (error: Error) => {
       this.logger.error("Realtime agent error:", error);
       if (this.isSteamingMic || this.isPlaying) {
+        this.convo.warn(`Turn aborted — agent error: ${error.message || 'unknown error'}`, 'END');
         this.esp.pipeline_error('agent-error', error.message || 'An error occurred in the voice agent.');
         this.esp.run_end();
         this.isSteamingMic = false;
@@ -799,6 +829,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
 
   async speakText(text: string): Promise<void> {
+    this.convo.info(`Flow speak-text: "${text}"`, 'TTS');
     this.logger.info(`Speaking text: ${text}`);
     if (this.provider && this.provider.textToSpeech) {
 
@@ -819,6 +850,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
   }
 
   async askAgentOutputToSpeaker(question: string): Promise<void> {
+    this.convo.info(`Flow question (audio out): "${question}"`, 'ASK');
     this.logger.info(`Asking agent to output to speaker: ${question}`);
 
     // A say always starts a fresh turn on the announce path: clear any stale session
@@ -839,6 +871,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
 
   async askAgentOutputToText(question: string): Promise<string> {
+    this.convo.info(`Flow question (text out): "${question}"`, 'ASK');
     this.logger.info(`Asking agent to output as text: ${question}`);
 
     if (this.provider && this.provider.sendTextForTextResponse) {
@@ -1043,6 +1076,21 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
    */
   private msToBytes(ms: number, sampleRate: number = 16000, channels: number = 1, bytesPerSample: number = 2): number {
     return Math.floor((ms / 1000) * sampleRate * channels * bytesPerSample);
+  }
+
+  /**
+   * One-line JSON for the conversation trace. Long payloads (device lists, tool
+   * results) are truncated so a single tool call can't flood the log.
+   */
+  private compact(value: any, max: number = 250): string {
+    let s: string;
+    try {
+      s = typeof value === 'string' ? value : JSON.stringify(value);
+    } catch {
+      s = String(value);
+    }
+    s = s ?? '';
+    return s.length > max ? `${s.slice(0, max)}… (${s.length} chars)` : s;
   }
 
 
