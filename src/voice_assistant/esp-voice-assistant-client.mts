@@ -329,7 +329,15 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
 
       if (this.discoveryMode && !this.deviceType && frame.message) {
         const rawMessage = JSON.stringify(frame.message).toLocaleLowerCase();
-        if (rawMessage.includes('nabu casa') || rawMessage.includes('home assistant voice pe')) {
+        // Factory PE firmware reports "Nabu Casa" / "Home Assistant Voice PE".
+        // Self-compiled firmware from the stock home-assistant-voice.yaml has no
+        // project block and identifies only via its device name
+        // ("home-assistant-voice-xxxxxx") / friendly name ("Home Assistant Voice"),
+        // so match the hyphenated and PE-less forms too.
+        if (rawMessage.includes('nabu casa')
+          || rawMessage.includes('nabucasa')
+          || rawMessage.includes('home assistant voice')
+          || rawMessage.includes('home-assistant-voice')) {
           this.deviceType = 'pe';
           this.discoveryMode = false;
         } else if (rawMessage.includes('xiaozhi')) {
