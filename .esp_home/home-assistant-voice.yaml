@@ -826,6 +826,38 @@ light:
             // Decrement to rotate the "other way"; 6 per frame matches the other rings.
             rotation = (rotation + 256 - 6) % 256;
       - addressable_lambda:
+          name: "Debug Waiting"
+          update_interval: 250ms
+          lambda: |-
+            // DEBUG effect: solid amber = mic open, no speech detected yet (waiting phase).
+            for (uint8_t i = 0; i < 12; i++) {
+              it[i] = Color(255, 160, 0);
+            }
+      - addressable_lambda:
+          name: "Debug Listening"
+          update_interval: 250ms
+          lambda: |-
+            // DEBUG effect: solid green = on-device VAD hears speech (listening phase).
+            for (uint8_t i = 0; i < 12; i++) {
+              it[i] = Color(0, 255, 0);
+            }
+      - addressable_lambda:
+          name: "Debug Thinking"
+          update_interval: 250ms
+          lambda: |-
+            // DEBUG effect: solid blue = thinking (intent/LLM in progress).
+            for (uint8_t i = 0; i < 12; i++) {
+              it[i] = Color(0, 0, 255);
+            }
+      - addressable_lambda:
+          name: "Debug Replying"
+          update_interval: 250ms
+          lambda: |-
+            // DEBUG effect: solid red = replying (TTS playback).
+            for (uint8_t i = 0; i < 12; i++) {
+              it[i] = Color(255, 0, 0);
+            }
+      - addressable_lambda:
           name: "Muted or Silent"
           update_interval: 16ms
           lambda: |-
@@ -1290,40 +1322,40 @@ script:
             light.turn_on: led_ring
 
   # Script executed when the voice assistant is waiting for a command (After the wake word)
-  # Slow clockwise spin of the LED ring.
+  # DEBUG: solid amber while the phase is being diagnosed. Normal effect: "Warm Rainbow".
   - id: control_leds_voice_assistant_waiting_for_command_phase
     then:
       - light.turn_on:
           brightness: !lambda return max( id(led_ring).current_values.get_brightness() , 0.2f );
           id: voice_assistant_leds
-          effect: "Warm Rainbow"
+          effect: "Debug Waiting"
 
   # Script executed when the voice assistant is listening to a command
-  # Fast clockwise spin of the LED ring.
+  # DEBUG: solid green while the phase is being diagnosed. Normal effect: "Voice Rainbow".
   - id: control_leds_voice_assistant_listening_for_command_phase
     then:
       - light.turn_on:
           brightness: !lambda return max( id(led_ring).current_values.get_brightness() , 0.2f );
           id: voice_assistant_leds
-          effect: "Voice Rainbow"
+          effect: "Debug Listening"
 
   # Script executed when the voice assistant is thinking to a command
-  # The rainbow freezes in place and pulses (breathes) between full and 25% brightness.
+  # DEBUG: solid blue while the phase is being diagnosed. Normal effect: "Thinking Rainbow".
   - id: control_leds_voice_assistant_thinking_phase
     then:
       - light.turn_on:
           brightness: !lambda return max( id(led_ring).current_values.get_brightness() , 0.2f );
           id: voice_assistant_leds
-          effect: "Thinking Rainbow"
+          effect: "Debug Thinking"
 
   # Script executed when the voice assistant is replying to a command
-  # The rainbow resumes spinning, but in the opposite direction to Listening.
+  # DEBUG: solid red while the phase is being diagnosed. Normal effect: "Reply Rainbow".
   - id: control_leds_voice_assistant_replying_phase
     then:
       - light.turn_on:
           brightness: !lambda return max( id(led_ring).current_values.get_brightness() , 0.2f );
           id: voice_assistant_leds
-          effect: "Reply Rainbow"
+          effect: "Debug Replying"
 
   # Script executed when the voice assistant is in error
   # Fast Red Pulse

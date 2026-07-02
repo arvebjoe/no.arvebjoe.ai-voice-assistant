@@ -320,6 +320,29 @@ The shared rotation makes Listening → Thinking → Reply one continuous animat
 
 Error / muted / timer states are left untouched (error = red pulse, etc.).
 
+### TEMPORARY: debug phase colors (active as of 2026-07-02)
+
+While diagnosing the conversation flow, the four phase scripts are pointed at four **solid-color
+debug effects** instead of the rainbows, so phase transitions are unambiguous at a glance:
+
+| Phase script                                               | Debug effect        | Color            |
+|------------------------------------------------------------|---------------------|------------------|
+| `control_leds_voice_assistant_waiting_for_command_phase`   | `"Debug Waiting"`   | solid **amber**  |
+| `control_leds_voice_assistant_listening_for_command_phase` | `"Debug Listening"` | solid **green**  |
+| `control_leds_voice_assistant_thinking_phase`              | `"Debug Thinking"`  | solid **blue**   |
+| `control_leds_voice_assistant_replying_phase`              | `"Debug Replying"`  | solid **red**    |
+
+Amber = mic open but no speech detected yet (`on_listening`), green = the PE's on-device VAD hears
+speech (`on_stt_vad_start`), blue = intent/LLM working (`on_stt_vad_end`), red = TTS playback.
+Amber→green *before the user speaks* on a follow-up turn = the TTS echo tripped the local VAD.
+The `Debug *` effects are plain `addressable_lambda` solid fills defined right after `Warm Rainbow`
+in the `effects:` list. Note: solid red is *steady*; the Error effect is a fast red *pulse*, so
+they remain distinguishable.
+
+**To revert to the rainbow look:** set the four `effect:` lines back to the "Custom" column of the
+Change 4 table (`Warm Rainbow` / `Voice Rainbow` / `Thinking Rainbow` / `Reply Rainbow`). The
+`Debug *` effects can stay defined — they're inert when unreferenced.
+
 ---
 
 ## Change 5 — Mic gain for command capture (auto gain) — currently `6 dbfs`
