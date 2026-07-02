@@ -630,13 +630,6 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
 
             case "conversation.item.input_audio_transcription.completed": {
                 this.emit("transcript.done", msg.transcript);
-                // The user's utterance is already in the conversation as the committed
-                // audio item, with the transcript now attached. Since server VAD is
-                // configured with create_response:false, this is where we ask the model
-                // to reply. Do NOT re-create the item: `conversation.item.done` for the
-                // audio item fires before this event (so the old transcript_id gate never
-                // matched), and reusing item_id is rejected with item_create_duplicate_item_id.
-                //
                 // Skip when the STT heard nothing: an empty transcript (or the noise
                 // string the engine returns for silence) would otherwise make the model
                 // respond to nothing. Mirrors the empty-transcript guard in the device.
@@ -644,6 +637,19 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
                 if (transcript === "" || transcript.toLowerCase() === "undertekster av ai-media") {
                     break;
                 }
+                // Anchor the reply on the TRANSCRIPT, not the audio. The realtime model's
+                // own hearing of Norwegian is markedly worse than the sidecar STT
+                // (gpt-4o-transcribe): "Fortell meg en vits" transcribed perfectly while
+                // the model answered the audio with the local time. So: replace the
+                // committed audio item with a user text item carrying the transcript,
+                // then ask for the reply. The delete also stops the model re-hearing old
+                // audio on later turns. Near-zero latency cost — we already waited for
+                // transcription.completed before creating the response. Do NOT reuse the
+                // audio item's id for the text item (item_create_duplicate_item_id).
+                if (msg.item_id) {
+                    this.send({ type: "conversation.item.delete", item_id: msg.item_id });
+                }
+                this.sendUserText(transcript);
                 this.createResponse();
                 break;
             }
@@ -856,10 +862,16 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
                             type: "audio/pcm",
                             rate: 24000
                         },
+                        // Sidecar STT: the realtime model answers the audio directly; this
+                        // transcript drives the CONVO log, the empty-transcript gate and the
+                        // response.create timing. gpt-4o-transcribe is OpenAI's most accurate
+                        // STT and clearly better than the whisper family on Norwegian.
+                        // NOTE: `delay` is only supported with gpt-realtime-whisper — do not
+                        // add it back here. A `prompt` with domain vocabulary (device/zone
+                        // names) is the next accuracy lever if needed.
                         transcription: {
-                            model: "gpt-realtime-whisper",
+                            model: "gpt-4o-transcribe",
                             language: this.options.languageCode,
-                            delay: "low",  // "minimal" | "low" | "medium" | "high" | "xhigh"
                         },
                         noise_reduction: {
                             type: "far_field"  // "near_field" for close-mic, "far_field" for room/speakerphone setups

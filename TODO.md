@@ -132,10 +132,18 @@ Remaining items from the audit (1–7, 10, 12 are already done — see the refer
   for the cost/quality tradeoff. _(Medium)_
 - [ ] **#11 Act on `rate_limits.updated`** — log low-token warnings / surface a Homey notification
   when quota runs low. _(Low, optional)_
-- [ ] **Improve STT accuracy (esp. Norwegian)** — command transcription is unreliable, particularly
-  in Norwegian. Tune the transcription model + VAD settings: try `gpt-realtime-whisper`'s `delay`
-  (`"medium"`/`"high"` for accuracy over latency), `noise_reduction` mode (`near_`/`far_field` for
-  the room), and VAD thresholds. _(Medium — ongoing pain point)_
+- [~] **Improve STT accuracy (esp. Norwegian)** — command transcription is unreliable, particularly
+  in Norwegian. _(Medium — ongoing pain point)_
+  - [x] Switched the sidecar transcription model `gpt-realtime-whisper` → **`gpt-4o-transcribe`**
+    (2026-07-02; `delay` removed — only supported by gpt-realtime-whisper). Untested on real speech.
+  - [x] **Text-anchored replies (2026-07-02, untested):** proven necessary same day — "Fortell meg
+    en vits" transcribed perfectly but the model answered the *audio* with the local time. The agent
+    now replaces the committed audio item with the transcript (`conversation.item.delete` +
+    `sendUserText` + `createResponse`), so the model answers what `gpt-4o-transcribe` heard.
+    Near-zero latency cost since we already waited for `transcription.completed`.
+  - [ ] Transcription `prompt` with actual device/zone names from DeviceManager (needs plumbing:
+    session.update once the device list is known).
+  - [ ] VAD threshold / `silence_duration_ms` / `noise_reduction` tuning if needed.
 
 ---
 
