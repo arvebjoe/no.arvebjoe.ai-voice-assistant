@@ -38,6 +38,14 @@ Legend: `[ ]` open · `[~]` partially done · `[x]` done (kept for context so we
   ack before segment 2 exists → premature turn-complete, currently self-heals by luck); keepOpen-with-no-audio
   edge (peConversationActive=true but PE may not reopen when there's no TTS URL); user reports further
   unspecified bugs — get a fresh `[CONVO]` trace. Details: memory `followup-turn-no-audio-rootcause.md`.
+  - [~] **LED-phase fidelity (2026-07-02 afternoon, untested on PE):** debug solid-color LED effects added
+    to the PE config (amber=mic open, green=speech heard, blue=thinking, red=replying — see
+    `.esp_home/CUSTOMIZATIONS.md`). They exposed that in-band replies never reached the PE's *replying*
+    phase: the firmware discards a TTS_START without a `text` data entry, and only announces went red
+    (the firmware's announcement handler fires tts_start_trigger_ itself). Fixed: `tts_start(text?)`
+    carries the reply text; `stt_vad_start` now sent on the new provider `speech` event (server VAD
+    speech_started) instead of at mic open, so waiting vs. listening is real. Expected artifact: brief
+    red flash on each mic-reopen (the reopen is an announce). Verify on the PE with the debug colors.
 - [x] **Device-log streaming for diagnosis (2026-06-26)** — opt-in `SubscribeLogsRequest` (id 28) over
   the native API streams the PE's own ESPHome logs back (`SubscribeLogsResponse`, id 29), printed inline
   under `[PE]` alongside the `[ESP]`/app logs. Gated by `ESP_LOG_LEVEL` (env var) or the `logLevel` client

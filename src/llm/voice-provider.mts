@@ -25,6 +25,11 @@ export type VoiceProviderEvents = {
     close: (code: number, reason: string) => void;
     event: (message: any) => void;
     silence: (source: string) => void;
+    // Server VAD detected the user STARTING to speak. Best-effort: not every
+    // provider has this signal (Gemini Live doesn't), so consumers must treat
+    // it as optional. The device forwards it to the PE as STT_VAD_START so the
+    // LED ring can distinguish "mic open, waiting" from "hearing speech".
+    speech: (source: string) => void;
     error: (err: Error) => void;
 
     // Reconnection events

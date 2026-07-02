@@ -564,6 +564,11 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
                 break;
 
             /* ---------- Input audio / VAD ---------- */
+            case "input_audio_buffer.speech_started":
+                // Server VAD detected the user starting to speak.
+                this.emit("speech", "server");
+                break;
+
             case "input_audio_buffer.speech_stopped":
                 // Server VAD indicated end-of-utterance; useful to stop mic.
                 this.emit("silence", "server");

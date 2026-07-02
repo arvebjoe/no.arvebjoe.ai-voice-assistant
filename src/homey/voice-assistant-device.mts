@@ -111,6 +111,10 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
   // Accumulates the assistant's streamed reply (audio transcript or text) for the
   // current turn so the full reply can be logged on response.done.
   private replyText: string = '';
+  // The finished reply text, captured on response.done before replyText is cleared.
+  // The in-band TTS_START needs it: the firmware discards a TTS_START without a
+  // `text` data entry, and then never enters its "replying" phase (LED ring).
+  private lastReplyText: string = '';
   private readonly CONTEXT_TTL_MS: number = 10_000;
 
   // 1 Hz interval that pushes the active countdown onto the tile capabilities;
@@ -311,7 +315,9 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       this.esp.run_start();
       this.esp.wake_word_end();
       this.esp.stt_start();
-      this.esp.stt_vad_start();
+      // NOTE: no stt_vad_start here — it is sent when server VAD actually hears
+      // speech (see the provider 'speech' handler), so the PE's waiting phase
+      // (mic open, nothing heard yet) stays distinct from its listening phase.
       this.esp.begin_mic_capture();
     });
 
@@ -378,6 +384,17 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     });
 
 
+
+    // Server VAD heard the user START speaking. Forward it to the PE so the LED
+    // ring flips waiting->listening. This is also a diagnostic marker: a 'speech'
+    // right after a follow-up mic-open, before the user talks, is the TTS echo
+    // tripping server VAD (the spurious-turn case). Best-effort — not every
+    // provider emits it (see VoiceProviderEvents).
+    this.provider.on('speech', (source: string) => {
+      if (!this.isSteamingMic) return;
+      this.convo.info(`User started speaking (${source} VAD)`, 'MIC');
+      this.esp.stt_vad_start();
+    });
 
     // The agent has detected that the user has stopped speaking.
     this.provider.on('silence', async (source: string) => {
@@ -511,7 +528,10 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       if (this.hasIntent) {
         this.esp.intent_end('');
         this.hasIntent = false;
-        this.esp.tts_start();
+        // Streamed-so-far text (the reply may still be streaming at first chunk).
+        // On the announce path the announcement fires tts_start_trigger_ itself,
+        // so this only moves the PE's "replying" phase a touch earlier.
+        this.esp.tts_start(this.replyText.trim());
       }
 
       const fileInfo = await this.webServer.buildStream(audioData);
@@ -607,6 +627,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
         this.convo.info(`Reply: "${reply}"`, 'LLM');
         this.logger.info(`LLM reply: ${reply}`, "LLM");
       }
+      this.lastReplyText = reply;
       this.replyText = '';
 
       this.logger.info("Conversation completed");
@@ -639,7 +660,10 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
         this.continueConversation = false;
         this.esp.intent_end('', keepOpen);
         this.hasIntent = false;
-        this.esp.tts_start();
+        // Must carry the reply text: the firmware discards a text-less TTS_START,
+        // and in-band replies have no announcement to fire tts_start_trigger_ for
+        // us — without this the PE never shows its "replying" phase.
+        this.esp.tts_start(this.lastReplyText);
 
         let fileUrl: string | null = null;
         let playbackMs = 0;

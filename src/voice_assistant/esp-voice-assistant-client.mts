@@ -678,8 +678,15 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
     this.vaEvent(VA_EVENT.VOICE_ASSISTANT_INTENT_END, data.length > 0 ? { data } : {}, 'INTENT_END');
   }
 
-  tts_start(): void {
-    this.vaEvent(VA_EVENT.VOICE_ASSISTANT_TTS_START, {}, 'TTS_START');
+  // The firmware DISCARDS a TTS_START without a `text` data entry ("No text in
+  // TTS_START event" warning) — the on_tts_start trigger never fires, so the
+  // device never enters its "replying" phase (LED ring stays in thinking).
+  // Announce-path playback still showed the replying phase only because the
+  // firmware's announcement handler fires tts_start_trigger_ by itself; in-band
+  // (TTS_END url) replies have no announcement, so they NEED this text.
+  tts_start(text?: string): void {
+    const extra = text ? { data: [{ name: 'text', value: text }] } : {};
+    this.vaEvent(VA_EVENT.VOICE_ASSISTANT_TTS_START, extra, 'TTS_START');
   }
 
   // Optionally carries the reply audio URL. In the start_conversation follow-up
