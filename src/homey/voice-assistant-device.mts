@@ -420,13 +420,12 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     this.provider.on('transcript.delta', (delta: string) => {
       this.replyText += delta ?? '';
 
-      // Check if the delta contains a question, and if so, set continueConversation to true
-      // Dirt simple, but works more reliably than having the AI call a tool.
-      const text = (delta ?? '').trim();
-      if (/[?？]\s*$/.test(text)) {
-        this.continueConversation = true;
-      }
+      // NOTE: the is-this-a-question decision (continueConversation) is made on the
+      // COMPLETE reply in response.done, not per-delta. A per-delta check latched on
+      // any mid-reply "?" — a joke's setup line ("Hvorfor kan ikke sykler stå
+      // oppreist?") opened a follow-up even though the reply ended in a punchline.
 
+      const text = (delta ?? '').trim();
       // Send INTENT_PROGRESS to the PE so it can start streaming TTS earlier
       if (text) {
         this.esp.intent_progress(text);
@@ -528,10 +527,14 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       if (this.hasIntent) {
         this.esp.intent_end('');
         this.hasIntent = false;
-        // Streamed-so-far text (the reply may still be streaming at first chunk).
-        // On the announce path the announcement fires tts_start_trigger_ itself,
-        // so this only moves the PE's "replying" phase a touch earlier.
-        this.esp.tts_start(this.replyText.trim());
+        // Deliberately NO text here: on the announce path the firmware's own
+        // announcement handler fires tts_start_trigger_ (replying phase, stop-word
+        // script) at playback start. Sending a text-carrying TTS_START as well made
+        // those fire a second time ~1s early, and is the prime suspect for the PE
+        // getting stuck "running" after a turn (wake word then silently hits the
+        // voice_assistant.stop branch instead of starting a run). A text-less
+        // TTS_START is discarded by the firmware — kept for protocol shape only.
+        this.esp.tts_start();
       }
 
       const fileInfo = await this.webServer.buildStream(audioData);
@@ -629,6 +632,15 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       }
       this.lastReplyText = reply;
       this.replyText = '';
+
+      // The reply is a question to the user only if it ENDS with one (ignoring
+      // trailing quotes/brackets/markdown). Dirt simple, but works more reliably
+      // than having the AI call a tool. Assign (don't OR) so each response
+      // overwrites the last — a stale flag can't leak into the next turn.
+      if (reply) {
+        const trimmed = reply.replace(/[\s"'«»()\[\]*_~`.]+$/u, '');
+        this.continueConversation = /[?？]$/.test(trimmed);
+      }
 
       this.logger.info("Conversation completed");
       this.segmenter.flush(); // If there is anything left in the segmenter, flush it. This will force it to play on the speaker.
