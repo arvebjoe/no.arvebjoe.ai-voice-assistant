@@ -134,6 +134,22 @@ describe('VoiceAssistantDevice (harness)', () => {
             const plays = h.esp.calls.filter(c => c.method === 'playAudioFromUrl');
             expect(plays.map(p => p.args[0])).toEqual(['http://x/1', 'http://x/2']);
         });
+
+        it('M9 — extends the announce file TTL by the segment playback length', async () => {
+            const h = await createHarness();
+            const timeoutSpy = vi.spyOn(h.homey, 'setTimeout');
+            const seg = (h.device as any).segmenter;
+
+            // 4800 bytes of PCM16 mono 24 kHz = 100 ms of audio. The deletion
+            // timer must be base TTL (30 000 ms) + 100 ms, not the bare TTL.
+            seg.emit('chunk', Buffer.alloc(4800));
+            await h.settle(10);
+
+            const ttlCalls = timeoutSpy.mock.calls.filter(c => (c[1] as number) >= 30_000);
+            expect(ttlCalls).toHaveLength(1);
+            expect(ttlCalls[0][1]).toBe(30_100);
+            timeoutSpy.mockRestore();
+        });
     });
 
     describe('M4 — runtime voice_provider switch', () => {

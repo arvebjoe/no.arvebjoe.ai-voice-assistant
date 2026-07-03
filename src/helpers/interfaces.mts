@@ -9,6 +9,12 @@ export declare interface FileInfo {
     filename: string;
     filepath: string;
     url: string;
+    /**
+     * Expected playback duration (ms). When set, file deletion is scheduled
+     * TTL + this, so a clip longer than the base TTL isn't unlinked while the
+     * device is still streaming it.
+     */
+    playbackMs?: number;
 }
 
 export declare interface StreamInfo {

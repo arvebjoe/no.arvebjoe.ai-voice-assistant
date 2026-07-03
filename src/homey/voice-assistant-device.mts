@@ -70,8 +70,9 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
   abstract readonly needDelayedPlayback: boolean;
 
   // Captures raw mic input and serves it back as a playback URL for debugging.
-  // Off in production; enable via the `input_buffer_debug` global setting
-  // (handy under the emulator). Read from settings in onInit().
+  // Emulator-only: the `input_buffer_debug` setting is honored solely when the
+  // process carries the HE_EMULATOR marker, so on a real Homey the flag can
+  // never expose recorded microphone audio on the unauthenticated LAN URL.
   private inputBufferDebug: boolean = false;
   private inputBuffer: Buffer[] = [];
   private inputPlaybackUrl?: FileInfo | null = null;
@@ -149,7 +150,8 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     const settings = this.getSettings();
     this.macAddress = store.mac;
 
-    this.inputBufferDebug = settingsManager.getGlobal('input_buffer_debug') === true;
+    this.inputBufferDebug = process.env.HE_EMULATOR === '1'
+      && settingsManager.getGlobal('input_buffer_debug') === true;
 
     // Subscribe to global settings changes to update agent on the fly
     this.settingsUnsubscribe = settingsManager.onGlobals((newSettings) => {
@@ -1027,7 +1029,9 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
   private playUrlByFileInfo(fileInfo: FileInfo, startConversation: boolean) {
     this.esp.playAudioFromUrl(fileInfo.url, startConversation);
-    scheduleAudioFileDeletion(this.homey, fileInfo);
+    // Extend the TTL by the clip's playback length (when known) so a segment
+    // longer than the base TTL isn't deleted while the PE is still streaming it.
+    scheduleAudioFileDeletion(this.homey, fileInfo, fileInfo.playbackMs ?? 0);
   }
 
   /**
@@ -1069,6 +1073,9 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     }
 
     const fileInfo = await this.webServer.buildStream(audioData);
+    // PCM16 mono 24 kHz = 48 bytes/ms; lets playUrlByFileInfo extend the file's
+    // deletion TTL to cover the whole clip (M9).
+    fileInfo.playbackMs = Math.round(chunk.length / 48);
 
     if (this.isPlaying) {
       this.announceUrls.push(fileInfo);

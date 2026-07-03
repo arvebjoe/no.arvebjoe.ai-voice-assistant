@@ -3,6 +3,8 @@
 _Full-project review: correctness/bugs, organization, testability, and a security audit._
 _Method: six parallel deep-dives (ESP pipeline, Homey device/driver layer, LLM provider layer, helpers/settings, security, test coverage). Every finding verified against source._
 
+**Status at a glance: see the [Findings checklist](#findings-checklist) below the session logs — one checkbox per finding, ticked only when the fix is verified in code.**
+
 ---
 
 ## What changed during the review (tests)
@@ -344,6 +346,86 @@ clean; full suite green (226 passing, 15 skipped).
 
 Build clean; full suite green (222 passing, 15 skipped — the count dropped by the four deleted
 WAV tests).
+
+## Fixes applied (session 15 — pre-merge audit gaps: S5, S6, M9)
+
+A full findings-vs-fixes audit before merging surfaced three items missed earlier (S5/S6 sat in a
+security section that wasn't in the doc during the fix sessions; M9 had only been half-fixed):
+
+- **S5 `input_buffer_debug` gated to the emulator** — the emulator's config loader now stamps
+  `HE_EMULATOR=1`, and the device honors the `input_buffer_debug` setting only when that marker is
+  present. On a real Homey the flag can no longer expose recorded mic audio on the unauthenticated
+  LAN URL, no matter how the setting gets set.
+- **S6 language-code whitelist** — extracted `sanitizeInstructionLanguageCode()` (only
+  `/^[a-z]{2}$/`, else `'en'`) and applied it before the dynamic-import interpolation in
+  `loadInstructionModule`. The rest of S6 (cleartext key `<textarea>`, ESP string-sniff identity)
+  remains accepted/deferred.
+- **M9 announce-path TTL** — `FileInfo` gained `playbackMs`; `playReplyChunkAnnounce` stamps each
+  segment's duration (48 bytes/ms) and `playUrlByFileInfo` passes it to
+  `scheduleAudioFileDeletion`, so announce segments longer than the 30 s base TTL are no longer
+  deleted mid-playback. (The in-band path already did this since session 4.)
+
+Tests: sanitizer whitelist + loader fallback (vitest can't resolve the template import's .mjs→.mts
+mapping, so the positive per-language load was verified against the compiled `.homeybuild` output
+directly — Norwegian loads, traversal lands on English), and a harness test asserting the announce
+deletion timer is base TTL + segment length. Build clean; full suite green (228 passing, 15
+skipped).
+
+Still explicitly open after this session: **S1 (redacted in the doc — needs Arve to confirm whether
+it was the ESP RX-buffer DoS fixed in session 1)**, the S6 cleartext-key textarea (product choice),
+and the three structural refactors under Organization & testability.
+
+---
+
+## Findings checklist
+
+Ticked = fix verified against the code on `code-review-1` (not just claimed in a session log).
+
+- [x] **C1** wake-death turn-state reset (session 2; harness tests session 6)
+- [x] **C2** OpenAI reconnect campaign (session 2; fake-ws test session 7)
+- [x] **H-a** RX buffer/frame-length caps (session 1)
+- [x] **H-b** guarded protobuf decode (session 1)
+- [x] **H-c** truncated-varint throw (session 1)
+- [x] **H-d** rxBuf cleared on reconnect (session 1)
+- [x] **H-e** ws.close(1006) crash (session 1)
+- [x] **H-f** socket-close during tool execution (session 9)
+- [x] **H-g** sendAudioChunk no-throw contract (session 9)
+- [x] **H-h** zone changes reach tools / restart storm (session 3)
+- [x] **H-i** FLAC encoder leak (session 1)
+- [x] **H-j** weather init non-fatal (session 1)
+- [x] **H-k** pairing probe hijack (session 3)
+- [x] **H-l** reply audio ordering (session 4; harness tests session 6)
+- [x] **M1** short replies dropped on flush (session 12)
+- [x] **M2** in-band reply file leak (session 4)
+- [x] **M3** onSettings stale values (session 5)
+- [x] **M4** runtime provider switch (session 5)
+- [x] **M5** forecast cache days coverage (session 11)
+- [x] **M6** timestamps via unixtime (session 11)
+- [x] **M7** settings pub/sub error isolation (session 10)
+- [x] **M8** Gemini response.done on tool turns (session 10)
+- [x] **M9** audio TTL covers playback length — in-band (session 4) + announce path (session 15)
+- [x] **M10** health check seeds lastMessageReceivedTime (session 1)
+- [x] **Low:** hallucination sentinel centralized (session 14)
+- [x] **Low:** debug leftovers (commented log, empty `started`, stale TODO) (sessions 1, 14)
+- [x] **Low:** dead code (polyfills, custom-instructions, pcmToWavBuffer, GeoHelper methods, unused OpenAI methods, never-emitted seam events) (sessions 1, 14)
+- [x] **Low:** disabled-logger warn/error visibility (session 14)
+- [x] **Low:** timer 32-bit setTimeout overflow guard (session 1)
+- [x] **Low:** FLAC 8-bit path removed (session 14)
+- [x] **Low:** resampler odd-byte carry (session 14)
+- [x] **Low:** webserver stale IP re-resolved per file (session 14) — naming ("isn't a server") deliberately left
+- [ ] **S1** — redacted in this doc; cannot verify. Likely the ESP RX DoS (fixed session 1) but needs Arve's confirmation
+- [x] **S2** tool gates enforced in code (session 13) — residual: `confirmed`/`allow_cross_zone` stay model-attested
+- [x] **S3** unlock single-target only (session 13)
+- [x] **S4** Logger.error secret masking (session 1)
+- [x] **S5** input_buffer_debug emulator-only (session 15)
+- [x] **S6** language-code import whitelist (session 15)
+- [ ] **S6 (rest)** API keys in cleartext `<textarea>` — product choice, deferred
+- [ ] **S6 (rest)** ESP peer identity via string-sniffing — accepted for now
+- [ ] **Org 1** TurnStateMachine + AudioOutputPipeline extraction — future refactor
+- [ ] **Org 2** shared ReconnectPolicy / tool-execution / InstructionState — future refactor
+- [ ] **Org 3** DeviceManager role-split (MAC→callback) — partially mitigated by H-h fix; full split is future refactor
+- [ ] **Org:** typed accessor for `(this.homey as any).app.*` reaches — future refactor
+- [x] **Org:** @vitest/coverage-v8 dependency (session 14)
 
 ---
 
