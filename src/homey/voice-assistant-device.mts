@@ -669,7 +669,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       this.isSteamingMic = false;
       this.esp.closeMic();
       this.reSampler?.reset();
-      this.esp.stt_vad_end(''); // TODO: Which we had some text to pass back here. Will look into this.
+      this.esp.stt_vad_end('');
       // Save input buffer to file, used for debugging to hear what was captured
       if (this.inputBufferDebug) {
         await this.saveInputBuffer();
