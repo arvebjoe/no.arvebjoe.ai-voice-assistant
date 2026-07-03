@@ -1,5 +1,5 @@
 // Using require for HomeyAPI as it might not have TypeScript typings
-import { Device, Zone, ZonesCollection, PaginatedDevices, SetDeviceCapabilityResult, DeviceZoneChangedCallback, ZoneChanged } from './interfaces.mjs';
+import { Device, Zone, ZonesCollection, PaginatedDevices, SetDeviceCapabilityResult, ZoneChanged } from './interfaces.mjs';
 import { createLogger } from './logger.mjs';
 import { IDeviceManager } from './interfaces.mjs';
 import { ApiHelper } from './api-helper.mjs';
@@ -13,7 +13,13 @@ export class DeviceManager implements IDeviceManager {
     private zones: ZonesCollection | null;
     private deviceTypes: string[];
     private logger = createLogger('DeviceManager', true);
-    private voiceAssistantDevices: Map<string, DeviceZoneChangedCallback> = new Map();
+    // Zone-change subscriptions keyed by the satellite's MAC (its `data.id`) —
+    // NOT by a captured Device object: fetchData() rebuilds `this.devices` with
+    // fresh objects, so a stored reference goes stale on any re-fetch (the root
+    // of H-h). The MAC is the only stable identity; the catalog entry is
+    // resolved fresh per event. `currentZone` is the last zone we notified for,
+    // which is what makes the dedup survive the device.update storm.
+    private zoneSubscriptions: Map<string, { currentZone: string; callback: (changed: ZoneChanged) => void }> = new Map();
 
 
     constructor(homey: any, apiHelper: ApiHelper) {
@@ -35,38 +41,63 @@ export class DeviceManager implements IDeviceManager {
                 return;
             }
 
-            // Check if we find the zone. Might be a new zone :-o
-            const currentZone = this.zones[updated.zone];
+            // Resolve the subscription via the stable MAC — from the event itself
+            // when it carries `data.id`, else via the catalog. Never from an
+            // object captured at registration time.
+            const mac: string | null = updated?.data?.id
+                ?? this.devices.find(d => d.id === updated?.id)?.dataId
+                ?? null;
+            if (!mac) {
+                return;
+            }
+            const sub = this.zoneSubscriptions.get(mac);
+            if (!sub) {
+                return;
+            }
 
+            const currentZone = this.zones[updated.zone];
             if (!currentZone) {
                 this.logger.warn(`Zone ${updated.zone} not found`);
                 return;
             }
 
-            // Get the registered entry by device ID (guid)
-            const entry = this.voiceAssistantDevices.get(updated.id);
-            if (!entry) {
+            // device.update fires on ANY device change (e.g. the app's own onoff
+            // capability writes every session) — only a real move counts (H-h).
+            if (sub.currentZone === currentZone.name) {
                 return;
             }
 
-            const voiceAssistantDevice = entry.device;
-            const oldZoneName = voiceAssistantDevice.zone;
-            const newZoneName = currentZone.name;
+            const oldZoneName = sub.currentZone;
+            // Update the tracked zone BEFORE firing so the follow-up update storm
+            // can't see a stale zone and re-fire the callback.
+            sub.currentZone = currentZone.name;
 
-            if (oldZoneName !== newZoneName) {
-                this.logger.info(`Device ${voiceAssistantDevice.name} moved from zone ${oldZoneName} to ${newZoneName}`);
-                // Update our tracked zone BEFORE/after firing so subsequent
-                // device.update events (which fire on ANY device change, e.g. the
-                // app's own onoff capability writes every session) don't see a
-                // stale zone and re-fire the callback — that repeated fire was
-                // restarting the provider mid-turn indefinitely.
-                voiceAssistantDevice.zone = newZoneName;
-                entry.callback({
-                    device: voiceAssistantDevice,
-                    oldZone: oldZoneName,
-                    newZone: newZoneName
-                });
+            // Resolve the catalog entry fresh (it may be a rebuilt object) and
+            // keep it in sync so device queries report the new zone too. `zones`
+            // (the hierarchy) must follow as well — zone-filtered queries match
+            // on it, and it previously kept matching the OLD room after a move.
+            const device = this.devices.find(d => d.dataId === mac);
+            if (device) {
+                device.zone = currentZone.name;
+                device.zones = this._getZoneHierarchy(updated.zone);
             }
+
+            this.logger.info(`Device ${device?.name ?? mac} moved from zone ${oldZoneName} to ${currentZone.name}`);
+            sub.callback({
+                // Fallback stub for a device not (yet) in the catalog — consumers
+                // only read identity fields off this.
+                device: device ?? {
+                    id: updated?.id ?? '',
+                    name: updated?.name ?? mac,
+                    zone: currentZone.name,
+                    zones: [currentZone.name],
+                    type: '',
+                    capabilities: [],
+                    dataId: mac,
+                },
+                oldZone: oldZoneName,
+                newZone: currentZone.name
+            });
 
         });
     }
@@ -74,32 +105,23 @@ export class DeviceManager implements IDeviceManager {
     registerDevice(mac: string, callback: (changed: ZoneChanged) => void): string {
 
         const device = this.devices.find(d => d.dataId === mac);
+        const zone = device?.zone ?? "<Unknown Zone>";
 
-        if (device) {
-
-            const entry: DeviceZoneChangedCallback = {
-                device: device,
-                callback: callback
-            }
-
-            this.voiceAssistantDevices.set(device.id, entry);
-
-            return device.zone;
-
-        } else {
-            this.logger.warn(`Device with MAC ${mac} not found, cannot register for zone changes`);
-            return "<Unknown Zone>";
+        if (!device) {
+            // Not in the catalog (yet) — e.g. the voice device initialized before
+            // fetchData completed, or it was paired since the last fetch. Still
+            // subscribe by MAC: the first device.update resolves the real zone
+            // and notifies. (Previously this silently never subscribed.)
+            this.logger.warn(`Device with MAC ${mac} not in the catalog yet — zone resolves on its first update`);
         }
+
+        this.zoneSubscriptions.set(mac, { currentZone: zone, callback });
+        return zone;
     }
 
     unRegisterDevice(mac: string): void {
-
-        const device = this.devices.find(d => d.dataId === mac);
-
-        if (device) {
-            this.voiceAssistantDevices.delete(device.id);
-        } else {
-            this.logger.warn(`Device with MAC ${mac} not found, cannot unregister for zone changes`);
+        if (!this.zoneSubscriptions.delete(mac)) {
+            this.logger.warn(`No zone subscription for MAC ${mac} to unregister`);
         }
     }
 

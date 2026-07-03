@@ -414,6 +414,30 @@ Build clean; full suite green (228 passing, 15 skipped).
 
 Build clean; full suite green (235 passing, 15 skipped).
 
+## Fixes applied (session 18 — Org 3: DeviceManager subscription model)
+
+_(Hardware note: pairing and live conversation were tested on the real PE before this session —
+sniff change, M1 short replies, C1 recovery all confirmed good.)_
+
+- **Subscriptions keyed by MAC, device resolved fresh per event** — exactly the reviewer's
+  prescription. `registerDevice` no longer captures a `Device` object into the map (those objects
+  are corpses after any `fetchData()` rebuild); it stores MAC → `{currentZone, callback}`. The
+  `device.update` handler resolves the MAC from the event's `data.id` (catalog-lookup fallback for
+  events without it), dedups on the subscription's own `currentZone` (H-h storm fix preserved),
+  and resolves the catalog entry fresh only to sync + include it in the callback (stub if absent).
+- **Two latent bugs fixed by the model change:** (1) registering before `fetchData` completed
+  (boot-order race / paired-since-last-fetch) used to *silently never subscribe* — now it
+  subscribes by MAC and the zone resolves on the device's first update; (2) the catalog sync only
+  updated `device.zone`, but zone-filtered queries match on the `zones` hierarchy array — a moved
+  device kept answering for its OLD room in `get_devices(zone=...)`. Both now covered.
+- `unRegisterDevice` is a plain map delete (no catalog lookup that could fail); the obsolete
+  `DeviceZoneChangedCallback` interface is gone.
+- Three new tests: subscription survives a `fetchData()` rebuild (+ zone-filtered queries follow
+  the move), register-before-catalog resolves on first update, event-MAC resolution for a device
+  the catalog doesn't know. The five existing zone-change tests pass unchanged.
+
+Build clean; full suite green (238 passing, 15 skipped).
+
 ---
 
 ## Findings checklist
@@ -462,7 +486,7 @@ Ticked = fix verified against the code on `code-review-1` (not just claimed in a
 - [x] **S6 (rest)** ESP identity sniff narrowed to HelloResponse/DeviceInfoResponse (session 16) — substring match itself stays: it's the only identity a plaintext API offers; verify pairing on hardware
 - [ ] **Org 1** TurnStateMachine + AudioOutputPipeline extraction — future refactor
 - [ ] **Org 2** shared ReconnectPolicy / tool-execution / InstructionState — future refactor
-- [ ] **Org 3** DeviceManager role-split (MAC→callback) — partially mitigated by H-h fix; full split is future refactor
+- [x] **Org 3** DeviceManager MAC→callback subscriptions, device resolved fresh per event (session 18) — fixed the register-before-fetch silent no-subscribe and the stale `zones`-hierarchy query bug along the way
 - [x] **Org:** typed accessor for `(this.homey as any).app.*` reaches — `AppServices` + `getAppServices()` (session 17)
 - [x] **Org:** @vitest/coverage-v8 dependency (session 14)
 

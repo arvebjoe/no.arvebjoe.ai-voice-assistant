@@ -98,4 +98,57 @@ describe('DeviceManager zone-change callback', () => {
 
         expect(cb).not.toHaveBeenCalled();
     });
+
+    /* ---------- Org 3: MAC-keyed subscriptions, device resolved fresh ---------- */
+
+    it('Org3 — the subscription survives a fetchData() rebuild of the catalog', async () => {
+        const cb = vi.fn();
+        dm.registerDevice('AA:BB:CC', cb);
+
+        // Re-fetch: every Device object in the catalog is rebuilt. A subscription
+        // holding a captured object reference would now be pointing at a corpse.
+        await dm.fetchData();
+
+        api.captured()!({ id: 'dev1', zone: 'zoneBedroom' });
+        expect(cb).toHaveBeenCalledTimes(1);
+        expect(cb.mock.calls[0][0]).toMatchObject({ oldZone: 'Office', newZone: 'Bedroom' });
+
+        // And the rebuilt catalog entry was synced, so queries report the new zone.
+        const office = dm.getSmartHomeDevices('Office');
+        const bedroom = dm.getSmartHomeDevices('Bedroom');
+        expect(office.devices).toHaveLength(0);
+        expect(bedroom.devices.map(d => d.id)).toContain('dev1');
+    });
+
+    it('Org3 — registering before the catalog is loaded still subscribes (zone resolves on first update)', async () => {
+        // Fresh manager: init but NO fetchData yet — the boot-order race.
+        const freshApi = makeFakeApi();
+        const freshDm = new DeviceManager(new MockHomey() as any, freshApi as any);
+        await freshDm.init();
+
+        const cb = vi.fn();
+        const initialZone = freshDm.registerDevice('AA:BB:CC', cb);
+        expect(initialZone).toBe('<Unknown Zone>'); // catalog empty at registration
+
+        // Catalog arrives, then the device reports in. Previously registerDevice
+        // silently never subscribed, so this device could never see zone changes.
+        await freshDm.fetchData();
+        freshApi.captured()!({ id: 'dev1', zone: 'zoneOffice', data: { id: 'AA:BB:CC' } });
+
+        expect(cb).toHaveBeenCalledTimes(1);
+        expect(cb.mock.calls[0][0]).toMatchObject({ oldZone: '<Unknown Zone>', newZone: 'Office' });
+    });
+
+    it('Org3 — resolves the subscription from the event MAC even when the device is not in the catalog', () => {
+        const cb = vi.fn();
+        dm.registerDevice('AA:BB:CC', cb);
+
+        // Event carries data.id but a device id the catalog does not know (e.g.
+        // re-added to Homey with a new id since the last fetch).
+        api.captured()!({ id: 'brand-new-id', name: 'Voice PE', zone: 'zoneBedroom', data: { id: 'AA:BB:CC' } });
+
+        expect(cb).toHaveBeenCalledTimes(1);
+        expect(cb.mock.calls[0][0]).toMatchObject({ oldZone: 'Office', newZone: 'Bedroom' });
+        expect(cb.mock.calls[0][0].device.name).toBe('Voice PE');
+    });
 });

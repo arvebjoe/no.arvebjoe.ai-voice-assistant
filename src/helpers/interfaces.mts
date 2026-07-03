@@ -63,14 +63,6 @@ export declare interface ZoneChanged {
 }
 
 
-export declare interface DeviceZoneChangedCallback {
-    device: Device;
-    callback: (changed: ZoneChanged) => void;
-}
-
-
-
-
 export declare interface Zone {
     id: string;
     name: string;
