@@ -68,6 +68,12 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
   private subscribeVoiceAssistantCount: number;
   private voiceAssistantConfigurationCount: number;
   private discoveryMode: boolean;
+  // Immutable: was this client created purely to probe a device during pairing?
+  // Unlike `discoveryMode` (which is flipped to false once the device type is
+  // sniffed), this stays true for the connection's whole life, so we know never
+  // to grab the device's voice-assistant subscription (which would steal it from
+  // the real, in-use connection of an already-paired satellite).
+  private readonly isDiscoveryProbe: boolean;
   // Whether the device advertised the TIMERS voice-assistant feature flag
   // (DeviceInfoResponse.voice_assistant_feature_flags & 8). Used to gate the
   // timer feature; the PE sets it.
@@ -106,6 +112,7 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
     this.host = host;
     this.apiPort = apiPort;
     this.discoveryMode = discoveryMode;
+    this.isDiscoveryProbe = discoveryMode;
     // Opt-in via the option or the ESP_LOG_LEVEL env var (e.g. ESP_LOG_LEVEL=DEBUG).
     this.logLevel = resolveLogLevel(logLevel ?? process.env.ESP_LOG_LEVEL);
     // Discovery probes are one-shot; never reconnect them.
@@ -482,16 +489,23 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
 
     else if (name === 'ListEntitiesDoneResponse') {
 
-      const subscribe = {
-        subscribe: true,
-        flags: 1    // 1 = API (TCP)
-      };
+      // A discovery probe must NOT subscribe: ESPHome tracks a single voice-assistant
+      // API subscriber, so subscribing here would re-bind an already-paired device's
+      // voice pipeline to this short-lived probe connection and break the real one
+      // until it reconnects. Identification only needs DeviceInfo + VA config (below),
+      // which drive the counts the pairing capability check reads.
+      if (!this.isDiscoveryProbe) {
+        const subscribe = {
+          subscribe: true,
+          flags: 1    // 1 = API (TCP)
+        };
 
-      this.send('SubscribeVoiceAssistantRequest', subscribe);
+        this.send('SubscribeVoiceAssistantRequest', subscribe);
 
-      // Subscribe to all entity state updates (standard ESPHome flow)
-      // This delivers MediaPlayerStateResponse, SwitchStateResponse, NumberStateResponse, etc.
-      this.send('SubscribeStatesRequest', {});
+        // Subscribe to all entity state updates (standard ESPHome flow)
+        // This delivers MediaPlayerStateResponse, SwitchStateResponse, NumberStateResponse, etc.
+        this.send('SubscribeStatesRequest', {});
+      }
 
       this.homey.setTimeout(() => {
         if (this.connected) {

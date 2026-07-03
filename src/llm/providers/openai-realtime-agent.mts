@@ -494,6 +494,9 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
 
     async updateZone(newDeviceZone: string): Promise<void> {
         this.options.deviceZone = newDeviceZone;
+        // The tools query "the standard zone" (this device's zone) — keep the tool
+        // manager in sync so get_devices_in_standard_zone targets the new room.
+        this.toolManager.setStandardZone(newDeviceZone);
         await this.loadInstructionModule();
     }
 

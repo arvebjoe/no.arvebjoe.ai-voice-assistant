@@ -55,6 +55,12 @@ export class DeviceManager implements IDeviceManager {
 
             if (oldZoneName !== newZoneName) {
                 this.logger.info(`Device ${voiceAssistantDevice.name} moved from zone ${oldZoneName} to ${newZoneName}`);
+                // Update our tracked zone BEFORE/after firing so subsequent
+                // device.update events (which fire on ANY device change, e.g. the
+                // app's own onoff capability writes every session) don't see a
+                // stale zone and re-fire the callback — that repeated fire was
+                // restarting the provider mid-turn indefinitely.
+                voiceAssistantDevice.zone = newZoneName;
                 entry.callback({
                     device: voiceAssistantDevice,
                     oldZone: oldZoneName,

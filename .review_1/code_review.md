@@ -71,6 +71,23 @@ timer-duration overflow (timer-manager).
 
 Build (`tsc`) clean; full suite green (174 passing, 8 integration skipped).
 
+## Fixes applied (session 3 — H-h & H-k)
+
+- **H-h zone changes / restart storm** — two parts. (1) `DeviceManager` now updates its tracked zone
+  after firing the zone-change callback, so the flood of `device.update` events (which fire on any
+  device change, including the app's own onoff writes) no longer re-fires the callback and restarts the
+  provider mid-turn indefinitely. (2) Zone changes now actually reach the tools: added
+  `ToolManager.setStandardZone()`/`getStandardZone()` and both providers' `updateZone()` now call it, so
+  `get_devices_in_standard_zone` targets the device's new room instead of the room it booted in.
+- **H-k pairing probe hijack** — added an immutable `isDiscoveryProbe` flag (separate from the mutable
+  `discoveryMode` sniff latch); a probe connection no longer sends `SubscribeVoiceAssistantRequest` /
+  `SubscribeStatesRequest`, so pairing a new satellite can't steal an already-paired device's voice
+  subscription. Identification still works — the capability counts come from the ListEntities/DeviceInfo
+  phase, not the subscription.
+
+New tests: real `DeviceManager` zone-change handler (5 cases incl. the storm fix — first real coverage
+of that module) and `ToolManager` standard-zone. Build clean; full suite green (182 passing).
+
 ---
 
 ## Critical bugs

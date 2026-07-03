@@ -495,6 +495,8 @@ export class GeminiLiveProvider extends (EventEmitter as new () => TypedEmitter<
 
     async updateZone(newDeviceZone: string): Promise<void> {
         this.options.deviceZone = newDeviceZone;
+        // Keep the tool manager's standard zone in sync (see OpenAI provider).
+        this.toolManager.setStandardZone(newDeviceZone);
         await this.refreshInstructions();
     }
 

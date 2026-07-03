@@ -45,6 +45,21 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
         this.registerDefaultTools();
     }
 
+    /** The zone `get_devices_in_standard_zone` resolves against (the device's own zone). */
+    getStandardZone(): string {
+        return this.standardZone;
+    }
+
+    /**
+     * Update the standard zone after the device is moved to another Homey zone.
+     * Without this the tool keeps querying the zone the device was in at startup.
+     */
+    setStandardZone(zone: string): void {
+        if (!zone || zone === this.standardZone) return;
+        this.logger.info(`Standard zone updated: ${this.standardZone} -> ${zone}`);
+        this.standardZone = zone;
+    }
+
     registerTool(definition: ToolDefinition): void {
         this.logger.info(definition.name, "REGISTER TOOL");
         this.tools.set(definition.name, definition);
