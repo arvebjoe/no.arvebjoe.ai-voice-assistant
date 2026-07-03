@@ -105,6 +105,24 @@ New test: `file-helper-deletion` (TTL math incl. the extraMs extension and env o
 verified by build + reasoning (unit-testing it needs a full device harness, same as H-k). Build clean;
 full suite green (186 passing).
 
+## Fixes applied (session 5 — M3 & M4)
+
+- **M3 `onSettings` read stale values** — it recomputed the audio-skip byte counts from
+  `this.getSettings()`, which returns the OLD values inside `onSettings` (the SDK persists after it
+  resolves), so every save applied the *previous* save's numbers. Now reads from the `newSettings`
+  parameter, and treats `initial_audio_skip = 0` as a deliberate value (only null/undefined = unset).
+- **M4 runtime `voice_provider` switch ignored** — switching provider did nothing until an app restart.
+  Added `rebuildProvider()`: it tears down the old provider (destroy/close + removeAllListeners), builds
+  the newly-selected one (the factory resolves that provider's own API key), re-matches the resampler to
+  its input rate (OpenAI 24 kHz vs Gemini 16 kHz — `configureResampler()` now also *clears* the
+  resampler for a 16 kHz passthrough provider), re-wires the handlers, and connects.
+  `handleSettingsChange` detects the change and calls it. To make the handlers re-attachable, the ~15
+  provider event handlers were extracted verbatim from `onInit` into `wireProviderEvents()` (esp/segmenter
+  handlers stay inline — those emitters are created once). Verified all 15 handlers appear exactly once.
+
+M3/M4 are verified by build + full suite + handler-count check; unit-testing them needs a full
+`VoiceAssistantDevice` harness (same gap as H-k/H-l). Build clean; full suite green (186 passing).
+
 ---
 
 ## Critical bugs

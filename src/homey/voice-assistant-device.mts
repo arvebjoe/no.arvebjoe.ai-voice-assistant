@@ -5,7 +5,7 @@ import { TimerManager, TimerSummary } from '../voice_assistant/timer-manager.mjs
 import { DeviceManager } from '../helpers/device-manager.mjs';
 import { settingsManager } from '../settings/settings-manager.mjs';
 import { IVoiceProvider, VoiceProviderOptions } from '../llm/voice-provider.mjs';
-import { createVoiceProvider } from '../llm/voice-provider-factory.mjs';
+import { createVoiceProvider, DEFAULT_VOICE_PROVIDER } from '../llm/voice-provider-factory.mjs';
 import { pcmToFlacBuffer } from '../helpers/audio-encoders.mjs';
 import { PcmSegmenter } from '../helpers/pcm-segmenter.mjs';
 import { AudioData, FileInfo } from '../helpers/interfaces.mjs';
@@ -31,6 +31,10 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
   private provider!: IVoiceProvider;
   private segmenter!: PcmSegmenter;
   private reSampler?: Pcm16kTo24k;
+  // Which voice provider this.provider was built from (factory id). Compared in
+  // handleSettingsChange so switching the 'voice_provider' setting rebuilds the
+  // provider at runtime instead of silently keeping the old one until restart.
+  private currentProviderId: string = DEFAULT_VOICE_PROVIDER;
 
   private settingsUnsubscribe?: () => void;
   private providerOptions!: VoiceProviderOptions;
@@ -217,21 +221,18 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
     // Initialize the voice/LLM provider (via the factory, selected by the
     // 'voice_provider' setting) - it uses the tool manager for function calls.
-    this.provider = createVoiceProvider(this.homey, this.toolManager, this.providerOptions);
-
-    // Match the mic resampler to the provider's expected input rate. The PE mic is
-    // PCM16 mono 16 kHz; providers wanting 24 kHz (OpenAI) get an upsampler, while
-    // providers wanting 16 kHz (Gemini) take the raw stream (passthrough).
-    if (this.provider.inputSampleRate !== 16000) {
-      this.reSampler = new Pcm16kTo24k({
-        outRate: this.provider.inputSampleRate,
-        frameDurationMs: 20,
-        method: "cubic"
-      });
-    }
+    // Remember which id it was built from so handleSettingsChange can detect a
+    // runtime provider switch and rebuild (see rebuildProvider).
+    this.currentProviderId = settingsManager.getGlobal('voice_provider', DEFAULT_VOICE_PROVIDER);
+    this.provider = createVoiceProvider(this.homey, this.toolManager, this.providerOptions, this.currentProviderId);
+    this.configureResampler();
 
     // Initialize PCM segmenter for audio processing - This will split long audio streams into manageable chunks -> Makes response quicker
     this.segmenter = new PcmSegmenter();
+
+    // Attach all provider event handlers. Kept in its own method so a runtime
+    // provider switch can re-wire the replacement instance.
+    this.wireProviderEvents();
 
 
     //
@@ -376,127 +377,8 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     });
 
 
-    // Handle missing API key
-    this.provider.on("missing_api_key", async () => {
-
-      await this.homey.notifications.createNotification({
-        excerpt: 'AI Assistant: Please set **api key** in app settings.'
-      });
-
-    });
-
-
-    this.provider.on("open", () => {
-      this.logger.info('Agent connection opened');
-      this.isAgentHealthy = true;
-      this.updateAvailable();
-    });
-
-
-
-    // Server VAD heard the user START speaking. Forward it to the PE so the LED
-    // ring flips waiting->listening. This is also a diagnostic marker: a 'speech'
-    // right after a follow-up mic-open, before the user talks, is the TTS echo
-    // tripping server VAD (the spurious-turn case). Best-effort — not every
-    // provider emits it (see VoiceProviderEvents).
-    this.provider.on('speech', (source: string) => {
-      if (!this.isSteamingMic) return;
-      this.convo.info(`User started speaking (${source} VAD)`, 'MIC');
-      this.esp.stt_vad_start();
-    });
-
-    // The agent has detected that the user has stopped speaking.
-    this.provider.on('silence', async (source: string) => {
-      this.convo.info(`User stopped speaking (${source} VAD) — mic closed`, 'MIC');
-      this.logger.info(`Silence detected by agent (${source}), closing microphone.`);
-      this.hasIntent = true;
-      this.isSteamingMic = false;
-      this.esp.closeMic();
-      this.reSampler?.reset();
-      this.esp.stt_vad_end(''); // TODO: Which we had some text to pass back here. Will look into this.                  
-      // Save input buffer to file, used for debugging to hear what was captured
-      if (this.inputBufferDebug) {
-        await this.saveInputBuffer();
-      }
-
-    });
-
-    // The agent is sending audio data back. We can't play each chunk individually, so we need to buffer them.
-    this.provider.on('audio.delta', (audioBuffer: Buffer) => {
-      this.segmenter.feed(audioBuffer);
-    });
-
-    this.provider.on('transcript.delta', (delta: string) => {
-      this.replyText += delta ?? '';
-
-      // NOTE: the is-this-a-question decision (continueConversation) is made on the
-      // COMPLETE reply in response.done, not per-delta. A per-delta check latched on
-      // any mid-reply "?" — a joke's setup line ("Hvorfor kan ikke sykler stå
-      // oppreist?") opened a follow-up even though the reply ended in a punchline.
-
-      const text = (delta ?? '').trim();
-      // Send INTENT_PROGRESS to the PE so it can start streaming TTS earlier
-      if (text) {
-        this.esp.intent_progress(text);
-      }
-    });
-
-    this.provider.on('transcript.done', (transcript: any) => {
-      this.logger.info('Final transcript: '+ transcript, "transcript");
-
-      transcript = (transcript ?? '').trim();
-
-      if (transcript == '' || transcript.toLowerCase() === "undertekster av ai-media") {
-
-        // Spurious follow-up turn: the PE reopens its mic at the very end of its own
-        // TTS playback, so the reply's tail/echo can trip server VAD before the user
-        // has spoken — the turn comes back empty within a second or two, and ending
-        // the session here would steal the user's answer window. Close this run and
-        // reopen the mic so the user actually gets to answer. Bounded by
-        // MAX_EMPTY_TURN_RETRIES; a genuine no-answer (silence until background noise
-        // trips VAD later than SPURIOUS_TURN_MS) still ends the session below.
-        const turnMs = Date.now() - this.turnStartedAt;
-        if (this.peConversationActive && turnMs < this.SPURIOUS_TURN_MS && this.emptyTurnRetries < this.MAX_EMPTY_TURN_RETRIES) {
-          this.emptyTurnRetries++;
-          this.convo.info(`Heard nothing only ${(turnMs / 1000).toFixed(1)}s after mic open — spurious VAD trip (TTS echo), reopening mic (retry ${this.emptyTurnRetries}/${this.MAX_EMPTY_TURN_RETRIES})`, 'STT');
-          this.replyViaTtsUrl = false;
-          this.esp.stt_end('');
-          this.esp.run_end();
-          this.setCapabilityValue('onoff', false);
-          this.lastTurnEndedAt = Date.now();
-          this.homey.setTimeout(() => {
-            this.esp.send_voice_assistant_request();
-          }, 1);
-          return;
-        }
-
-        this.convo.info('Heard nothing — ending conversation', 'STT');
-        // Yeah, this is a strange one. If the STT engine doesn't hear anything useful, it will return this text. I don't know why.
-        // No answer => the user has left the conversation: end the PE's start_conversation
-        // session so it stops auto-reopening and the next turn starts fresh on the
-        // announce path. Clear replyViaTtsUrl too so a stray segmenter 'done' can't emit
-        // a duplicate in-band tts_end/run_end on top of the run_end we send here.
-        this.peConversationActive = false;
-        this.replyViaTtsUrl = false;
-        this.esp.stt_end('');
-        this.esp.run_end();
-        this.setCapabilityValue('onoff', false);
-        this.lastTurnEndedAt = Date.now();
-        return;
-      }
-
-      this.convo.info(`Heard: "${transcript}"`, 'STT');
-      // A real answer restores the full spurious-retry budget for later turns.
-      this.emptyTurnRetries = 0;
-      this.esp.stt_end(transcript);
-      this.esp.intent_start();
-    });
-
-    // Text-mode replies stream as text deltas (e.g. the emulator's `ask`); accumulate
-    // them too so response.done can log the full reply regardless of output mode.
-    this.provider.on('text.delta', (delta: string) => {
-      this.replyText += delta ?? '';
-    });
+    // Provider event handlers live in wireProviderEvents() (called above) so a
+    // runtime provider switch can re-attach them to the replacement instance.
 
 
     // The segmenter has detected a small silent gap in what the agent said and has produced a new chunk of audio data for us to play.
@@ -589,42 +471,6 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     });
 
 
-    // The agent want's to use a tool. We need to make sure we have all the data from the API now.    
-    this.provider.on('tool.called', async (d: { callId: string; name: string; args: any }) => {
-      this.convo.info(`${d.name} ${this.compact(d.args)}`, 'TOOL');
-      this.logger.info(`${d.name}`, 'TOOL_CALLED', d.args);
-      await this.devicePromise;
-    });
-
-    // What the tool handler actually returned (fed back to the model).
-    this.provider.on('tool.completed', (d: { callId: string; name: string; result: any }) => {
-      this.convo.info(`${d.name} → ${this.compact(d.result)}`, 'TOOL');
-    });
-
-    // The agent has finished processing the response. Tell the segmenter there is no more data coming.
-    this.provider.on('response.done', () => {
-      const reply = this.replyText.trim();
-      if (reply) {
-        this.convo.info(`Reply: "${reply}"`, 'LLM');
-        this.logger.info(`LLM reply: ${reply}`, "LLM");
-      }
-      this.lastReplyText = reply;
-      this.replyText = '';
-
-      // The reply is a question to the user only if it ENDS with one (ignoring
-      // trailing quotes/brackets/markdown). Dirt simple, but works more reliably
-      // than having the AI call a tool. Assign (don't OR) so each response
-      // overwrites the last — a stale flag can't leak into the next turn.
-      if (reply) {
-        const trimmed = reply.replace(/[\s"'«»()\[\]*_~`.]+$/u, '');
-        this.continueConversation = /[?？]$/.test(trimmed);
-      }
-
-      this.logger.info("Conversation completed");
-      this.segmenter.flush(); // If there is anything left in the segmenter, flush it. This will force it to play on the speaker.
-
-    });
-
     // The segmenter has emitted all its chunks, so tell the esp to stop and clean all resources.
     this.segmenter.on('done', async () => {
       this.esp.closeMic();
@@ -702,21 +548,6 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     });
 
 
-    this.provider.on('error', (error: Error) => {
-      this.logger.error("Realtime agent error:", error);
-      this.abortCurrentTurn(`agent error: ${error.message || 'unknown error'}`);
-    });
-
-    // The agent websocket closed (idle timeout, network drop, or restart). This
-    // is the primary wake-death trigger: without aborting here, isSteamingMic
-    // stays true and every later wake is dropped as a "duplicate". The provider
-    // auto-reconnects; the in-flight turn cannot survive it, so end it cleanly.
-    this.provider.on('close', () => {
-      this.abortCurrentTurn('agent connection closed');
-    });
-
-
-
     // Listen for volume changes from the device
     this.esp.on('volume', (level: number) => {
       this.logger.info(`Received volume update: ${Math.round(level * 100)}%`);
@@ -732,20 +563,6 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       this.setCapabilityValue('volume_mute', isMuted).catch(err => {
         this.logger.error('Failed to update volume_mute capability', err);
       });
-    });
-
-    // This will toggle the device in homey available or not
-    this.provider.on('Healthy', () => {
-      this.logger.info('Agent connection healthy');
-      this.isAgentHealthy = true;
-      this.updateAvailable();
-    });
-
-    this.provider.on('Unhealthy', () => {
-      this.logger.info('Agent connection unhealthy');
-      this.isAgentHealthy = false;
-      this.abortCurrentTurn('agent connection lost');
-      this.updateAvailable();
     });
 
     this.esp.on('Healthy', async () => {
@@ -784,6 +601,255 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     await this.provider.start();
 
     this.logger.info('Initialized');
+  }
+
+
+  /**
+   * Match the mic resampler to the provider's expected input rate. The PE mic is
+   * PCM16 mono 16 kHz; providers wanting 24 kHz (OpenAI) get an upsampler, while
+   * providers wanting 16 kHz (Gemini) take the raw stream (passthrough). Called on
+   * init and again after a runtime provider switch (rates can differ).
+   */
+  private configureResampler(): void {
+    if (this.provider.inputSampleRate !== 16000) {
+      this.reSampler = new Pcm16kTo24k({
+        outRate: this.provider.inputSampleRate,
+        frameDurationMs: 20,
+        method: "cubic"
+      });
+    } else {
+      // Passthrough provider (e.g. Gemini at 16 kHz): no resampling. Clear any
+      // resampler left over from a previous provider so we don't upsample twice.
+      this.reSampler = undefined;
+    }
+  }
+
+  /**
+   * Attach all provider event handlers to this.provider. Kept separate from onInit
+   * so a runtime provider switch (rebuildProvider) can re-wire the replacement
+   * instance. The esp/segmenter handlers stay inline in onInit — those emitters are
+   * created once and never rebuilt.
+   */
+  private wireProviderEvents(): void {
+
+    // Handle missing API key
+    this.provider.on("missing_api_key", async () => {
+
+      await this.homey.notifications.createNotification({
+        excerpt: 'AI Assistant: Please set **api key** in app settings.'
+      });
+
+    });
+
+
+    this.provider.on("open", () => {
+      this.logger.info('Agent connection opened');
+      this.isAgentHealthy = true;
+      this.updateAvailable();
+    });
+
+
+
+    // Server VAD heard the user START speaking. Forward it to the PE so the LED
+    // ring flips waiting->listening. This is also a diagnostic marker: a 'speech'
+    // right after a follow-up mic-open, before the user talks, is the TTS echo
+    // tripping server VAD (the spurious-turn case). Best-effort — not every
+    // provider emits it (see VoiceProviderEvents).
+    this.provider.on('speech', (source: string) => {
+      if (!this.isSteamingMic) return;
+      this.convo.info(`User started speaking (${source} VAD)`, 'MIC');
+      this.esp.stt_vad_start();
+    });
+
+    // The agent has detected that the user has stopped speaking.
+    this.provider.on('silence', async (source: string) => {
+      this.convo.info(`User stopped speaking (${source} VAD) — mic closed`, 'MIC');
+      this.logger.info(`Silence detected by agent (${source}), closing microphone.`);
+      this.hasIntent = true;
+      this.isSteamingMic = false;
+      this.esp.closeMic();
+      this.reSampler?.reset();
+      this.esp.stt_vad_end(''); // TODO: Which we had some text to pass back here. Will look into this.
+      // Save input buffer to file, used for debugging to hear what was captured
+      if (this.inputBufferDebug) {
+        await this.saveInputBuffer();
+      }
+
+    });
+
+    // The agent is sending audio data back. We can't play each chunk individually, so we need to buffer them.
+    this.provider.on('audio.delta', (audioBuffer: Buffer) => {
+      this.segmenter.feed(audioBuffer);
+    });
+
+    this.provider.on('transcript.delta', (delta: string) => {
+      this.replyText += delta ?? '';
+
+      // NOTE: the is-this-a-question decision (continueConversation) is made on the
+      // COMPLETE reply in response.done, not per-delta. A per-delta check latched on
+      // any mid-reply "?" — a joke's setup line ("Hvorfor kan ikke sykler stå
+      // oppreist?") opened a follow-up even though the reply ended in a punchline.
+
+      const text = (delta ?? '').trim();
+      // Send INTENT_PROGRESS to the PE so it can start streaming TTS earlier
+      if (text) {
+        this.esp.intent_progress(text);
+      }
+    });
+
+    this.provider.on('transcript.done', (transcript: any) => {
+      this.logger.info('Final transcript: '+ transcript, "transcript");
+
+      transcript = (transcript ?? '').trim();
+
+      if (transcript == '' || transcript.toLowerCase() === "undertekster av ai-media") {
+
+        // Spurious follow-up turn: the PE reopens its mic at the very end of its own
+        // TTS playback, so the reply's tail/echo can trip server VAD before the user
+        // has spoken — the turn comes back empty within a second or two, and ending
+        // the session here would steal the user's answer window. Close this run and
+        // reopen the mic so the user actually gets to answer. Bounded by
+        // MAX_EMPTY_TURN_RETRIES; a genuine no-answer (silence until background noise
+        // trips VAD later than SPURIOUS_TURN_MS) still ends the session below.
+        const turnMs = Date.now() - this.turnStartedAt;
+        if (this.peConversationActive && turnMs < this.SPURIOUS_TURN_MS && this.emptyTurnRetries < this.MAX_EMPTY_TURN_RETRIES) {
+          this.emptyTurnRetries++;
+          this.convo.info(`Heard nothing only ${(turnMs / 1000).toFixed(1)}s after mic open — spurious VAD trip (TTS echo), reopening mic (retry ${this.emptyTurnRetries}/${this.MAX_EMPTY_TURN_RETRIES})`, 'STT');
+          this.replyViaTtsUrl = false;
+          this.esp.stt_end('');
+          this.esp.run_end();
+          this.setCapabilityValue('onoff', false);
+          this.lastTurnEndedAt = Date.now();
+          this.homey.setTimeout(() => {
+            this.esp.send_voice_assistant_request();
+          }, 1);
+          return;
+        }
+
+        this.convo.info('Heard nothing — ending conversation', 'STT');
+        // Yeah, this is a strange one. If the STT engine doesn't hear anything useful, it will return this text. I don't know why.
+        // No answer => the user has left the conversation: end the PE's start_conversation
+        // session so it stops auto-reopening and the next turn starts fresh on the
+        // announce path. Clear replyViaTtsUrl too so a stray segmenter 'done' can't emit
+        // a duplicate in-band tts_end/run_end on top of the run_end we send here.
+        this.peConversationActive = false;
+        this.replyViaTtsUrl = false;
+        this.esp.stt_end('');
+        this.esp.run_end();
+        this.setCapabilityValue('onoff', false);
+        this.lastTurnEndedAt = Date.now();
+        return;
+      }
+
+      this.convo.info(`Heard: "${transcript}"`, 'STT');
+      // A real answer restores the full spurious-retry budget for later turns.
+      this.emptyTurnRetries = 0;
+      this.esp.stt_end(transcript);
+      this.esp.intent_start();
+    });
+
+    // Text-mode replies stream as text deltas (e.g. the emulator's `ask`); accumulate
+    // them too so response.done can log the full reply regardless of output mode.
+    this.provider.on('text.delta', (delta: string) => {
+      this.replyText += delta ?? '';
+    });
+
+    // The agent want's to use a tool. We need to make sure we have all the data from the API now.
+    this.provider.on('tool.called', async (d: { callId: string; name: string; args: any }) => {
+      this.convo.info(`${d.name} ${this.compact(d.args)}`, 'TOOL');
+      this.logger.info(`${d.name}`, 'TOOL_CALLED', d.args);
+      await this.devicePromise;
+    });
+
+    // What the tool handler actually returned (fed back to the model).
+    this.provider.on('tool.completed', (d: { callId: string; name: string; result: any }) => {
+      this.convo.info(`${d.name} → ${this.compact(d.result)}`, 'TOOL');
+    });
+
+    // The agent has finished processing the response. Tell the segmenter there is no more data coming.
+    this.provider.on('response.done', () => {
+      const reply = this.replyText.trim();
+      if (reply) {
+        this.convo.info(`Reply: "${reply}"`, 'LLM');
+        this.logger.info(`LLM reply: ${reply}`, "LLM");
+      }
+      this.lastReplyText = reply;
+      this.replyText = '';
+
+      // The reply is a question to the user only if it ENDS with one (ignoring
+      // trailing quotes/brackets/markdown). Dirt simple, but works more reliably
+      // than having the AI call a tool. Assign (don't OR) so each response
+      // overwrites the last — a stale flag can't leak into the next turn.
+      if (reply) {
+        const trimmed = reply.replace(/[\s"'«»()\[\]*_~`.]+$/u, '');
+        this.continueConversation = /[?？]$/.test(trimmed);
+      }
+
+      this.logger.info("Conversation completed");
+      this.segmenter.flush(); // If there is anything left in the segmenter, flush it. This will force it to play on the speaker.
+
+    });
+
+    this.provider.on('error', (error: Error) => {
+      this.logger.error("Realtime agent error:", error);
+      this.abortCurrentTurn(`agent error: ${error.message || 'unknown error'}`);
+    });
+
+    // The agent websocket closed (idle timeout, network drop, or restart). This
+    // is the primary wake-death trigger: without aborting here, isSteamingMic
+    // stays true and every later wake is dropped as a "duplicate". The provider
+    // auto-reconnects; the in-flight turn cannot survive it, so end it cleanly.
+    this.provider.on('close', () => {
+      this.abortCurrentTurn('agent connection closed');
+    });
+
+    // This will toggle the device in homey available or not
+    this.provider.on('Healthy', () => {
+      this.logger.info('Agent connection healthy');
+      this.isAgentHealthy = true;
+      this.updateAvailable();
+    });
+
+    this.provider.on('Unhealthy', () => {
+      this.logger.info('Agent connection unhealthy');
+      this.isAgentHealthy = false;
+      this.abortCurrentTurn('agent connection lost');
+      this.updateAvailable();
+    });
+  }
+
+  /**
+   * Rebuild the voice provider after the 'voice_provider' setting changes at
+   * runtime. Tears down the old instance, constructs the newly-selected one with
+   * the current options, re-matches the resampler to its input rate, re-wires the
+   * handlers, and connects. Without this a provider switch was silently ignored
+   * until the app restarted.
+   */
+  private async rebuildProvider(newProviderId: string): Promise<void> {
+    this.logger.info(`Voice provider changed to '${newProviderId}', rebuilding...`);
+
+    // Tear down the old provider so its socket / timers / listeners don't linger.
+    try {
+      (this.provider as any).removeAllListeners?.();
+      if (typeof (this.provider as any).destroy === 'function') {
+        (this.provider as any).destroy();
+      } else {
+        this.provider.close();
+      }
+    } catch (e) {
+      this.logger.error('Error tearing down old provider', e);
+    }
+
+    // Any turn in flight belongs to the old provider — end it cleanly.
+    this.abortCurrentTurn('voice provider changed');
+
+    this.currentProviderId = newProviderId;
+    // createVoiceProvider resolves options.apiKey from the setting that belongs to
+    // the chosen provider, so switching also picks up that provider's own key.
+    this.provider = createVoiceProvider(this.homey, this.toolManager, this.providerOptions, newProviderId);
+    this.configureResampler();
+    this.wireProviderEvents();
+    await this.provider.start();
   }
 
 
@@ -844,6 +910,15 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
     try {
       let needRestart: boolean = false;
+
+      // Provider switched (OpenAI <-> Gemini): rebuild rather than silently keeping
+      // the old one until an app restart. rebuildProvider re-resolves the API key,
+      // resampler and handlers for the new provider, so the checks below then see a
+      // consistent state (no redundant restart).
+      const newProviderId = newSettings.voice_provider;
+      if (newProviderId && newProviderId !== this.currentProviderId) {
+        await this.rebuildProvider(newProviderId);
+      }
 
       // Check if the active provider's API key changed
       const newApiKey = newSettings[this.provider.apiKeySettingKey];
@@ -1299,15 +1374,21 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
   }): Promise<string | void> {
     this.logger.info("Settings where changed");
 
-    // Yeah, i'm a bit lazy
-    const settings = this.getSettings();
-    if (settings.initial_audio_skip) {
-      this.skipInitialBytes = this.msToBytes(settings.initial_audio_skip, 16000, 1, 2);
-    }
+    // Must read from newSettings: the SDK persists the new values only AFTER
+    // onSettings resolves, so this.getSettings() still returns the OLD values
+    // here — the previous code made every save apply the *previous* save's
+    // numbers, which is maddening when tuning the skip values.
+    const skipMs = newSettings.initial_audio_skip as number | undefined | null;
+    // 0 is a valid, deliberate value (no wake-ding skip) — only null/undefined
+    // means "not configured".
+    this.skipInitialBytes = (skipMs ?? null) !== null
+      ? this.msToBytes(skipMs as number, 16000, 1, 2)
+      : null;
 
-    const followupSkipMs = (settings.followup_audio_skip ?? this.DEFAULT_FOLLOWUP_SKIP_MS) as number;
+    const followupSkipMs = (newSettings.followup_audio_skip ?? this.DEFAULT_FOLLOWUP_SKIP_MS) as number;
     this.followupSkipBytes = this.msToBytes(followupSkipMs, 16000, 1, 2);
 
+    this.logger.info(`Audio skip updated: initial=${skipMs ?? 'unset'}ms, followup=${followupSkipMs}ms`);
   }
 
   /**
