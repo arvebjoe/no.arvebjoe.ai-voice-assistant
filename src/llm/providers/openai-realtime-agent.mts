@@ -172,6 +172,11 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
      */
     async start(): Promise<void> {
 
+        // A fresh start() re-enables auto-reconnect. Without this a previous
+        // close() (which sets isManuallyClosing) would leave every future drop
+        // un-reconnected. (Matches the Gemini provider.)
+        this.isManuallyClosing = false;
+
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
             return;
         }
@@ -198,6 +203,7 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
             });
 
             this.ws.on("open", () => {
+                const wasReconnect = this.reconnectAttempts > 0;
                 this.logger.info("WebSocket open");
                 this.reconnectAttempts = 0; // Reset reconnect attempts on successful connection
                 this.isReconnecting = false;
@@ -205,7 +211,8 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
 
                 this.startConnectionHealthCheck();
 
-                if (this.reconnectAttempts > 0) {
+                // Note: must be checked before reconnectAttempts is reset above.
+                if (wasReconnect) {
                     this.emit("reconnected");
                 }
             });
@@ -222,8 +229,13 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
                 this.stopConnectionHealthCheck();
                 this.emit("close", code, reason.toString());
 
-                // Only attempt reconnection if not manually closing
-                if (!this.isManuallyClosing && !this.isReconnecting) {
+                // Reconnect on any unexpected close. scheduleReconnect() guards
+                // against duplicates via reconnectTimeoutId, so a *failed* reconnect
+                // attempt's own close event correctly schedules the next attempt.
+                // (Previously the isReconnecting gate blocked this permanently after
+                // the first failure, because start() never rejects on async connect
+                // failure and so the timer's catch-and-retry never ran.)
+                if (!this.isManuallyClosing) {
                     this.scheduleReconnect();
                 }
             });

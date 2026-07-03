@@ -104,6 +104,27 @@ describe('OpenAI Realtime Agent', () => {
     });
   });
 
+  describe('Reconnection flags', () => {
+    // Regression test for C2: close() sets isManuallyClosing, which must be reset
+    // by a subsequent start() — otherwise auto-reconnect stays disabled forever.
+    it('start() re-enables auto-reconnect after a manual close()', async () => {
+      const a = new OpenAIRealtimeAgent(mockHomey, toolManager, {
+        apiKey: '', // empty key: start() returns before opening any real socket
+        voice: 'alloy',
+        languageCode: 'en',
+        languageName: 'English',
+        additionalInstructions: '',
+        deviceZone: testZone,
+      });
+
+      a.close();
+      expect((a as any).isManuallyClosing).toBe(true);
+
+      await a.start();
+      expect((a as any).isManuallyClosing).toBe(false);
+    });
+  });
+
   describe('Text Input/Output Mode', () => {
     it('should handle output mode changes when not connected', () => {
       // When WebSocket is not connected, setOutputMode should throw a specific error

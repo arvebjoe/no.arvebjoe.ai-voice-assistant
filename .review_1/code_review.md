@@ -55,6 +55,22 @@ were intentionally **not** touched.
 New tests added for the guards: oversized-payload/partial-varint (esp-messages) and the
 timer-duration overflow (timer-manager).
 
+## Fixes applied (session 2 — C1 & C2)
+
+- **C2 OpenAI auto-reconnect** — reconnection is now driven by the websocket `close` event (guarded by
+  `reconnectTimeoutId` against duplicates), so a *failed* reconnect attempt's own close schedules the
+  next one instead of the campaign dying after attempt 1. `start()` resets `isManuallyClosing` (fixes
+  M3: `close()`+`start()` no longer leaves reconnect disabled), and the dead `reconnected` emit (M1) is
+  fixed by capturing the attempt count before it's reset. Regression test added.
+- **C1 wake-death** — added `abortCurrentTurn()` that resets *all* turn state (isSteamingMic, isPlaying,
+  hasIntent, announceUrls, peConversationActive, replyViaTtsUrl, continueConversation, emptyTurnRetries,
+  replyPcm, resampler, segmenter, onoff). Wired to the provider `error`, **`close`** (the primary
+  wake-death trigger — the agent idle-timeout close previously had no listener), and both `Unhealthy`
+  handlers (agent + ESP). Added `PcmSegmenter.reset()` (discards buffered audio without emitting) and a
+  test. Recovery from a mid-turn disconnect is now automatic — no PE power-cycle needed.
+
+Build (`tsc`) clean; full suite green (174 passing, 8 integration skipped).
+
 ---
 
 ## Critical bugs

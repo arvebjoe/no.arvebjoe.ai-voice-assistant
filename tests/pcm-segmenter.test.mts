@@ -97,6 +97,26 @@ describe('PcmSegmenter', () => {
         expect(b.equals(a)).toBe(true);
     });
 
+    it('reset() discards buffered audio without emitting', async () => {
+        const seg = new PcmSegmenter();
+        const chunks = collectChunks(seg);
+        let done = false;
+        seg.on('done', () => { done = true; });
+
+        // Buffer more than MIN_CHUNK worth of speech, then abort via reset().
+        await seg.feed(pcm(25, 8000));
+        seg.reset();
+
+        // Nothing emitted by reset itself...
+        expect(chunks).toHaveLength(0);
+        expect(done).toBe(false);
+
+        // ...and the discarded audio does not leak into a subsequent flush.
+        seg.flush();
+        expect(chunks).toHaveLength(0);
+        expect(done).toBe(true);
+    });
+
     it('never emits on sub-frame feeds', async () => {
         const seg = new PcmSegmenter();
         const chunks = collectChunks(seg);

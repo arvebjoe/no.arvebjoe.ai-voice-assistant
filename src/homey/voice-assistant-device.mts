@@ -721,14 +721,15 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
     this.provider.on('error', (error: Error) => {
       this.logger.error("Realtime agent error:", error);
-      if (this.isSteamingMic || this.isPlaying) {
-        this.convo.warn(`Turn aborted — agent error: ${error.message || 'unknown error'}`, 'END');
-        this.esp.pipeline_error('agent-error', error.message || 'An error occurred in the voice agent.');
-        this.esp.run_end();
-        this.isSteamingMic = false;
-        this.isPlaying = false;
-        this.setCapabilityValue('onoff', false);
-      }
+      this.abortCurrentTurn(`agent error: ${error.message || 'unknown error'}`);
+    });
+
+    // The agent websocket closed (idle timeout, network drop, or restart). This
+    // is the primary wake-death trigger: without aborting here, isSteamingMic
+    // stays true and every later wake is dropped as a "duplicate". The provider
+    // auto-reconnects; the in-flight turn cannot survive it, so end it cleanly.
+    this.provider.on('close', () => {
+      this.abortCurrentTurn('agent connection closed');
     });
 
 
@@ -760,6 +761,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     this.provider.on('Unhealthy', () => {
       this.logger.info('Agent connection unhealthy');
       this.isAgentHealthy = false;
+      this.abortCurrentTurn('agent connection lost');
       this.updateAvailable();
     });
 
@@ -772,6 +774,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     this.esp.on('Unhealthy', () => {
       this.logger.info('ESP Voice Client unhealthy');
       this.isEspClientHealthy = false;
+      this.abortCurrentTurn('device connection lost');
       this.updateAvailable();
     });
 
@@ -801,6 +804,45 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
   }
 
 
+  /**
+   * Reset all conversation-turn state after a mid-turn failure or a transport
+   * drop (ESP link or agent websocket). Without this, a disconnect leaves flags
+   * like isSteamingMic / isPlaying stuck true, so every subsequent wake is
+   * swallowed by the duplicate-wake guard — the "wake-death" that previously
+   * required a PE power-cycle to recover. Idempotent and safe to call when idle.
+   */
+  private abortCurrentTurn(reason: string): void {
+    const wasActive = this.isSteamingMic || this.isPlaying || this.hasIntent || this.announceUrls.length > 0;
+
+    if (wasActive) {
+      this.convo.warn(`Turn aborted — ${reason}`, 'END');
+      // Best-effort: tell the device to leave its listening/playing state. These
+      // are no-ops if the ESP link is already down (writes are dropped when
+      // disconnected), so it's safe to attempt on any abort path.
+      try {
+        this.esp.pipeline_error('turn-aborted', reason);
+        this.esp.run_end();
+      } catch (e) {
+        this.logger.error('Failed to notify device of turn abort', e);
+      }
+    }
+
+    this.isSteamingMic = false;
+    this.isPlaying = false;
+    this.hasIntent = false;
+    this.replyViaTtsUrl = false;
+    this.continueConversation = false;
+    this.peConversationActive = false;
+    this.emptyTurnRetries = 0;
+    this.announceUrls = [];
+    this.replyPcm = [];
+    this.reSampler?.reset();
+    this.segmenter?.reset();
+
+    this.setCapabilityValue('onoff', false).catch(err => {
+      this.logger.error('Failed to reset onoff capability on turn abort', err);
+    });
+  }
 
 
   /**

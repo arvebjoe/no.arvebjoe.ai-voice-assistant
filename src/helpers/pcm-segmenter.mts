@@ -46,6 +46,19 @@ export class PcmSegmenter extends (EventEmitter as new () => TypedEmitter<Segmen
 
     }
 
+    /**
+     * Discard all buffered audio and reset to the initial state WITHOUT emitting.
+     * Used when a turn is aborted (transport drop) so leftover PCM from the dead
+     * turn can't leak into the next one. Unlike flush(), it emits nothing.
+     */
+    reset(): void {
+        this.remainder = Buffer.alloc(0);
+        this.current = [];
+        this.bytesInCurrent = 0;
+        this.silenceFrames = 0;
+        this.trailingBuffer = Buffer.alloc(0);
+    }
+
     flush(): void {
         if (this.bytesInCurrent > 0) {
             this.emit_segment(Buffer.concat(this.current));
