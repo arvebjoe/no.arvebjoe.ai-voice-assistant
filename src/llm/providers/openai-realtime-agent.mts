@@ -5,6 +5,7 @@ import { createLogger } from '../../helpers/logger.mjs';
 import { ToolManager } from '../tool-manager.mjs';
 import { IVoiceProvider, VoiceProviderEvents, VoiceProviderOptions } from '../voice-provider.mjs';
 import { loadInstructionModule } from '../agent-instructions.mjs';
+import { isBlankOrHallucinatedTranscript } from '../transcript-hallucinations.mjs';
 
 /**
  * Event/option shapes now live in the provider-agnostic seam (`voice-provider.mts`).
@@ -34,7 +35,6 @@ type PendingToolCall = {
  * Input/Output Combinations:
  * - Audio -> Audio: Use sendAudioChunk() (default behavior, output mode auto-set to "audio")
  * - Text -> Audio: Use sendTextForAudioResponse(text) or setOutputMode("audio") + sendUserText() + createResponse()
- * - Audio -> Text: Use setAudioToTextMode() then sendAudioChunk() (output mode set to "text")
  * - Text -> Text: Use sendTextForTextResponse(text) or setOutputMode("text") + sendUserText() + createResponse()
  * 
  * Direct TTS (minimal AI processing):
@@ -302,13 +302,6 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
     }
 
     /**
-     * Get the current output mode.
-     */
-    getOutputMode(): "audio" | "text" {
-        return this.outputMode;
-    }
-
-    /**
      * Send text input and get audio response (Text -> Audio).
      */
     sendTextForAudioResponse(text: string) {
@@ -366,15 +359,7 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
 
 
     /**
-     * Send audio chunk and expect text response (Audio -> Text).
-     * Call this method first to set text mode, then use sendAudioChunk() normally.
-     */
-    setAudioToTextMode() {
-        this.setOutputMode("text");
-    }
-
-    /**
-     * Direct text-to-speech endpoint call.      
+     * Direct text-to-speech endpoint call.
      * @param text - The text to convert to speech
      */
     async textToSpeech(text: string): Promise<Buffer> {
@@ -659,11 +644,11 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
 
             case "conversation.item.input_audio_transcription.completed": {
                 this.emit("transcript.done", msg.transcript);
-                // Skip when the STT heard nothing: an empty transcript (or the noise
-                // string the engine returns for silence) would otherwise make the model
+                // Skip when the STT heard nothing: an empty transcript (or a known
+                // silence-hallucination string) would otherwise make the model
                 // respond to nothing. Mirrors the empty-transcript guard in the device.
                 const transcript = (msg.transcript ?? "").trim();
-                if (transcript === "" || transcript.toLowerCase() === "undertekster av ai-media") {
+                if (isBlankOrHallucinatedTranscript(transcript)) {
                     break;
                 }
                 // Anchor the reply on the TRANSCRIPT, not the audio. The realtime model's
@@ -1105,20 +1090,6 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
         }
     }
 
-    /**
-     * Get current connection status and statistics
-     */
-    public getConnectionStatus() {
-        return {
-            connected: this.ws?.readyState === WebSocket.OPEN,
-            reconnectAttempts: this.reconnectAttempts,
-            isReconnecting: this.isReconnecting,
-            isManuallyClosing: this.isManuallyClosing,
-            lastPongTime: this.lastPongTime,
-            timeSinceLastPong: this.lastPongTime > 0 ? Date.now() - this.lastPongTime : -1,
-        };
-    }
-
     public isConnected(): boolean {
         return this.ws?.readyState === WebSocket.OPEN;
     }
@@ -1129,24 +1100,6 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
             return true;
         }
         return false;
-    }
-
-    /**
-     * Force a reconnection (useful for testing or manual recovery)
-     */
-    public async forceReconnect() {
-        if (this.isManuallyClosing) {
-            throw new Error("Cannot force reconnect while manually closing");
-        }
-
-        this.logger.info("Forcing reconnection");
-        this.reconnectAttempts = 0; // Reset attempts for forced reconnect
-
-        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-            this.ws.close(1000, "force-reconnect");
-        } else {
-            await this.start();
-        }
     }
 
     /**

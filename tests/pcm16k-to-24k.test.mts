@@ -88,10 +88,9 @@ describe('Pcm16kTo24k', () => {
         expect(splitOut.equals(wholeOut)).toBe(true);
     });
 
-    it('drops the trailing byte of an odd-length chunk (documented limitation)', () => {
-        // KNOWN BEHAVIOUR: an int16 split across chunk boundaries is not carried;
-        // the dangling byte is dropped, so odd-length feeds are NOT invariant.
-        // ESP protobuf framing keeps chunks sample-aligned today, so this is latent.
+    it('carries the trailing byte of an odd-length chunk (odd splits are invariant)', () => {
+        // An int16 split across chunk boundaries is carried into the next push,
+        // so odd-length feeds produce the same output as one whole-buffer feed.
         const input = pcmFromSamples(Array.from({ length: 400 }, (_, i) => (i * 111) % 5000));
 
         const whole = new Pcm16kTo24k();
@@ -108,7 +107,7 @@ describe('Pcm16kTo24k', () => {
         if (rem) collected.push(rem);
         const splitOut = Buffer.concat(collected);
 
-        expect(splitOut.equals(wholeOut)).toBe(false);
+        expect(splitOut.equals(wholeOut)).toBe(true);
     });
 
     it('clamps interpolated peaks to the int16 range', () => {

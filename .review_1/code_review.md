@@ -314,6 +314,37 @@ cross-zone filter/block/opt-in/named-zone cases, single-target unlock (multi-unl
 single unlock + bulk lock allowed), and first-ever coverage of the >10 `confirmed` gate. Build
 clean; full suite green (226 passing, 15 skipped).
 
+## Fixes applied (session 14 — low/cleanup list)
+
+- **Disabled-logger diagnostics** — `Logger.warn()` (and the no-Homey `error()` fallback) now write
+  unconditionally via a new `write()`; the `disabled` flag only silences info/log chatter. Warnings
+  from the quieted helpers (device-manager/weather/geo/webserver/file-helper) are visible again.
+- **Resampler odd-byte drop fixed** — a dangling byte of an int16 split across chunk boundaries is
+  carried into the next `push()` instead of dropped; the pinning test now asserts odd-split
+  invariance. `reset()` clears the carry.
+- **Hallucination sentinel centralized** — new `src/llm/transcript-hallucinations.mts` with the
+  shared `isBlankOrHallucinatedTranscript()`; both call sites (device `transcript.done` guard,
+  provider transcription-completed guard) use it. New languages' artifacts get added in one place.
+- **Debug leftovers** — removed the empty `esp.on('started')` handler (the commented-out log line
+  and stale TODO were already gone from earlier sessions).
+- **Dead code removed** — `pcmToWavBuffer` + `WavOptions` + the four WAV-header tests + the test
+  stub; OpenAI provider's unused `getOutputMode`/`setAudioToTextMode`/`forceReconnect`/
+  `getConnectionStatus` (class doc updated); never-emitted seam events `connected` and
+  `input_audio_buffer.committed` (the key-gated integration tests were *listening* for `connected`
+  — a wait that could never fire — now pointed at `open`); GeoHelper's five production-unused
+  methods (`getCoordinates`, `getLocationInfo`, `hasTimezone`, `refreshLocation`,
+  `refreshTimezone`).
+- **FLAC 8-bit path removed** — it scaled samples to 16-bit range while telling the encoder 8-bit;
+  now 16-bit-only with a clear rejection (matches the whole s16le pipeline).
+- **WebServer stale IP** — `buildStream()` re-resolves the LAN IP per served file instead of using
+  the address cached once at init, so a DHCP lease change no longer breaks all later audio URLs.
+  (The "isn't actually a server" naming was left alone — pure churn.)
+- **`npm run test:coverage` fixed** — added `@vitest/coverage-v8@3.2.6` devDependency; verified the
+  coverage run completes.
+
+Build clean; full suite green (222 passing, 15 skipped — the count dropped by the four deleted
+WAV tests).
+
 ---
 
 ## Critical bugs

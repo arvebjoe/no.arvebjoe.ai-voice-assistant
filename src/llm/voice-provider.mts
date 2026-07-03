@@ -20,7 +20,6 @@ import { TypedEmitter } from "tiny-typed-emitter";
  * A future 16 kHz local pipeline would require device-side resample/encode changes.
  */
 export type VoiceProviderEvents = {
-    connected: () => void;
     open: () => void;
     close: (code: number, reason: string) => void;
     event: (message: any) => void;
@@ -39,8 +38,6 @@ export type VoiceProviderEvents = {
     Healthy: () => void;
     Unhealthy: () => void;
     missing_api_key: () => void;
-
-    "input_audio_buffer.committed": () => void;
 
     "session.updated": (msg: any) => void;
 

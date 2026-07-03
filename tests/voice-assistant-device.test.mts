@@ -6,7 +6,6 @@ vi.mock('../src/voice_assistant/esp-voice-assistant-client.mjs', () => import('.
 vi.mock('../src/llm/voice-provider-factory.mjs', () => import('./mocks/mock-voice-provider.mjs'));
 vi.mock('../src/helpers/audio-encoders.mjs', () => ({
     pcmToFlacBuffer: async (b: any) => (Buffer.isBuffer(b) ? b : Buffer.from(b)),
-    pcmToWavBuffer: (b: any) => b,
 }));
 
 import { createHarness, Harness } from './mocks/device-harness.mjs';

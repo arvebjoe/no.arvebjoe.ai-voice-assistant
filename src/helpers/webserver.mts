@@ -23,6 +23,9 @@ export class WebServer {
 
     async buildStream(audioData: AudioData): Promise<FileInfo> {
         const fileInfo = await saveAudioData(this.homey, audioData);
+        // Re-resolve per file: the IP was previously cached once at init, so a
+        // DHCP lease change left every later URL pointing at the old address.
+        this.ip = this.getLanIP();
         fileInfo.url = `http://${this.ip}/app/${this.homey.manifest.id}/userdata/audio/${fileInfo.filename}`;
         return fileInfo;
     }

@@ -85,7 +85,7 @@ describe.skipIf(!hasValidApiKey)('Quick OpenAI Connection Test', () => {
 
       let connected = false;
 
-      agent.on('connected', () => {
+      agent.on('open', () => {
         console.log('✅ Successfully connected to OpenAI!');
         connected = true;
         clearTimeout(timeout);

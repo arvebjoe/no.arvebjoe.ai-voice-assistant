@@ -10,6 +10,7 @@ import { pcmToFlacBuffer } from '../helpers/audio-encoders.mjs';
 import { PcmSegmenter } from '../helpers/pcm-segmenter.mjs';
 import { AudioData, FileInfo } from '../helpers/interfaces.mjs';
 import { ToolManager } from '../llm/tool-manager.mjs';
+import { isBlankOrHallucinatedTranscript } from '../llm/transcript-hallucinations.mjs';
 import { DeviceStore } from '../helpers/interfaces.mjs';
 import { createLogger } from '../helpers/logger.mjs';
 import { SOUND_URLS } from '../helpers/sound-urls.mjs';
@@ -329,9 +330,6 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       // speech (see the provider 'speech' handler), so the PE's waiting phase
       // (mic open, nothing heard yet) stays distinct from its listening phase.
       this.esp.begin_mic_capture();
-    });
-
-    this.esp.on('started', async () => {
     });
 
     // There is some audio data available from the microphone
@@ -702,7 +700,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
       transcript = (transcript ?? '').trim();
 
-      if (transcript == '' || transcript.toLowerCase() === "undertekster av ai-media") {
+      if (isBlankOrHallucinatedTranscript(transcript)) {
 
         // Spurious follow-up turn: the PE reopens its mic at the very end of its own
         // TTS playback, so the reply's tail/echo can trip server VAD before the user

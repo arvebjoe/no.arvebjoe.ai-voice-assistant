@@ -92,7 +92,7 @@ describe.skipIf(!hasValidApiKey)('OpenAI Agent Behavior Analysis', () => {
         reject(error);
       });
 
-      agent.on('connected', () => {
+      agent.on('open', () => {
         console.log('✅ Connected to OpenAI');
         setTimeout(() => {
           agent.sendTextForTextResponse('Hello, can you hear me?');
@@ -156,7 +156,7 @@ describe.skipIf(!hasValidApiKey)('OpenAI Agent Behavior Analysis', () => {
         reject(error);
       });
 
-      agent.on('connected', () => {
+      agent.on('open', () => {
         console.log('✅ Connected to OpenAI for smart home test');
         setTimeout(() => {
           console.log('🗣️ Sending command: "Turn on the kitchen lights"');
@@ -225,7 +225,7 @@ describe.skipIf(!hasValidApiKey)('OpenAI Agent Behavior Analysis', () => {
         reject(error);
       });
 
-      agent.on('connected', () => {
+      agent.on('open', () => {
         console.log('✅ Connected to OpenAI for complex command test');
         setTimeout(() => {
           console.log('🗣️ Sending complex command: "Turn off all the lights in the office and set the temperature to 21 degrees"');
@@ -295,7 +295,7 @@ describe.skipIf(!hasValidApiKey)('OpenAI Agent Behavior Analysis', () => {
           resolve(); // Don't fail, just move on
         });
 
-        agent.on('connected', () => {
+        agent.on('open', () => {
           setTimeout(() => {
             agent.sendTextForTextResponse(testCase.instruction);
           }, 1000);

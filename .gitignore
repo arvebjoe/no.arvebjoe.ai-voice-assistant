@@ -1,6 +1,7 @@
 /env.json
 /node_modules/
 /.homeybuild/
+/coverage/
 *.bat
 /.idea/
 

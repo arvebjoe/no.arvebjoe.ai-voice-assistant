@@ -117,16 +117,6 @@ export class GeoHelper {
     }
 
     /**
-     * Get both coordinates as an object
-     */
-    getCoordinates(): { latitude: number | null; longitude: number | null } {
-        return {
-            latitude: this._latitude,
-            longitude: this._longitude
-        };
-    }
-
-    /**
      * Get coordinates as a formatted string
      */
     getCoordinatesString(): string {
@@ -144,56 +134,11 @@ export class GeoHelper {
     }
 
     /**
-     * Check if timezone data is available
-     */
-    hasTimezone(): boolean {
-        return this._timezone !== null;
-    }
-
-    /**
-     * Get location and timezone data together
-     */
-    getLocationInfo(): { 
-        latitude: number | null; 
-        longitude: number | null; 
-        timezone: string | null;
-        coordinatesString: string;
-    } {
-        return {
-            latitude: this._latitude,
-            longitude: this._longitude,
-            timezone: this._timezone,
-            coordinatesString: this.getCoordinatesString()
-        };
-    }
-
-    /**
      * Get a formatted string with location and timezone
      */
     getLocationInfoString(): string {
         const coords = this.getCoordinatesString();
         const tz = this._timezone || 'Unknown timezone';
         return `${coords} (${tz})`;
-    }
-
-    /**
-     * Force refresh the location and timezone (useful for manual updates)
-     */
-    async refreshLocation(): Promise<void> {
-        if (!this.isInitialized) {
-            throw new Error('GeoHelper not initialized. Call init() first.');
-        }
-        await this.updateLocation();
-        await this.updateTimezone();
-    }
-
-    /**
-     * Force refresh just the timezone
-     */
-    async refreshTimezone(): Promise<void> {
-        if (!this.isInitialized) {
-            throw new Error('GeoHelper not initialized. Call init() first.');
-        }
-        await this.updateTimezone();
     }
 }
