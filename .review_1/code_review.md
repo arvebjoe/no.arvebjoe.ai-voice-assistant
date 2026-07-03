@@ -229,6 +229,27 @@ New tests: two M8 cases in the Gemini fake-SDK harness (suppress-then-emit, and 
 no-tool-turn-turnComplete timeline) and an M7 bad-subscriber case in the pub/sub suite. Build
 clean; full suite green (211 passing, 15 skipped).
 
+## Fixes applied (session 11 — M5 & M6)
+
+- **M5 forecast cache ignores `days`** — three layers. (1) The cache entry now records how many
+  days it holds and only serves requests it covers (a cached 10-day forecast still answers a 7-day
+  request; a cached 7-day one no longer answers a 10-day question). (2) `getWeatherForTime` computes
+  the days it actually needs from the target (`max(7, ceil(hoursAhead/24)+1)`, clamped to
+  Open-Meteo's 16) instead of always fetching 7 — and now returns `null` when the closest item is
+  >2 h from the target (hourly data → real matches are ≤30 min), so a question past the fetched
+  window gets "no forecast data" instead of the nearest edge item; this flows through `willItRain`.
+  (3) The `get_weather_forecast` tool handler passes `ceil(hours/24)+1` days instead of the default.
+- **M6 timestamps parsed in the server tz** — requests now use `timeformat=unixtime`, so Open-Meteo
+  returns epoch seconds instead of offset-less local wall-clock strings (which `new Date()`
+  interpreted in the *server's* timezone). One `parseApiTime()` helper covers the hourly forecast
+  times and the illumination sunrise/sunset; also dropped a dead `todayStr` local there.
+
+Test mocks updated to epoch seconds (mirroring the real unixtime response — the old ISO+`Z` mocks
+were exactly why the tests couldn't see M6). New tests: cache days-coverage (refetch on 10-day
+request + reuse for shorter), `timeformat=unixtime` in the URL + timestamps decode to the exact UTC
+instant, and the day-10 out-of-range question returning `null` while requesting `forecast_days=11`.
+Build clean; full suite green (214 passing, 15 skipped).
+
 ---
 
 ## Critical bugs

@@ -74,7 +74,7 @@ export class WeatherHelper {
 
     // Cache to avoid excessive API calls
     private currentWeatherCache: { data: WeatherData; timestamp: number } | null = null;
-    private forecastCache: { data: ForecastData; timestamp: number } | null = null;
+    private forecastCache: { data: ForecastData; timestamp: number; days: number } | null = null;
     private illuminationCache: { data: IlluminationData; timestamp: number } | null = null;
     private cacheValidityMs = 10 * 60 * 1000; // 10 minutes
 
@@ -212,8 +212,13 @@ export class WeatherHelper {
             throw new Error('WeatherHelper not initialized. Call init() first.');
         }
 
-        // Check cache first
-        if (!forceRefresh && this.forecastCache && this.isCacheValid(this.forecastCache.timestamp)) {
+        // Open-Meteo serves 1..16 forecast days.
+        const requestDays = Math.min(Math.max(Math.ceil(days), 1), 16);
+
+        // Serve from cache only if it's fresh AND covers the requested horizon —
+        // a cached 7-day forecast must not answer a 10-day question (M5).
+        if (!forceRefresh && this.forecastCache && this.isCacheValid(this.forecastCache.timestamp)
+            && this.forecastCache.days >= requestDays) {
             this.logger.info('Returning cached forecast data');
             return this.forecastCache.data;
         }
@@ -231,7 +236,10 @@ export class WeatherHelper {
                 latitude: latitude.toString(),
                 longitude: longitude.toString(),
                 timezone,
-                forecast_days: Math.min(days, 16).toString(),
+                forecast_days: requestDays.toString(),
+                // Epoch seconds instead of offset-less local wall-clock strings,
+                // which new Date() would parse in the SERVER's timezone (M6).
+                timeformat: 'unixtime',
                 hourly: [
                     'temperature_2m',
                     'apparent_temperature',
@@ -261,7 +269,8 @@ export class WeatherHelper {
             // Update cache
             this.forecastCache = {
                 data: forecastData,
-                timestamp: Date.now()
+                timestamp: Date.now(),
+                days: requestDays
             };
 
             this.logger.info(`Forecast retrieved: ${forecastData.forecasts.length} items`);
@@ -307,7 +316,9 @@ export class WeatherHelper {
                     'diffuse_radiation',
                     'uv_index'
                 ].join(','),
-                daily: 'sunrise,sunset'
+                daily: 'sunrise,sunset',
+                // Epoch seconds — see getForecast (M6).
+                timeformat: 'unixtime'
             });
 
             const url = `${this.baseUrl}/forecast?${params}`;
@@ -340,7 +351,12 @@ export class WeatherHelper {
      * Get weather forecast for a specific time period
      */
     async getWeatherForTime(targetTime: Date): Promise<ForecastItem | null> {
-        const forecast = await this.getForecast();
+        // Fetch enough days to actually cover the target (M5) — this used to be a
+        // fixed 7 days, so a "day 10" question matched the last hour of day 7 as
+        // the "closest" item and answered with the wrong day's weather.
+        const hoursAhead = (targetTime.getTime() - Date.now()) / (60 * 60 * 1000);
+        const daysNeeded = Math.max(7, Math.ceil(hoursAhead / 24) + 1);
+        const forecast = await this.getForecast(false, daysNeeded);
 
         // Find the closest forecast item to the target time
         let closest: ForecastItem | null = null;
@@ -352,6 +368,15 @@ export class WeatherHelper {
                 minTimeDiff = timeDiff;
                 closest = item;
             }
+        }
+
+        // The data is hourly, so a genuine in-range match is at most ~30 minutes
+        // away. Anything beyond a couple of hours means the target lies outside
+        // the fetched window (e.g. past Open-Meteo's 16-day maximum) — say so
+        // instead of answering with the nearest edge item.
+        if (closest && minTimeDiff > 2 * 60 * 60 * 1000) {
+            this.logger.warn(`No forecast covering ${targetTime.toISOString()} (closest item is ${Math.round(minTimeDiff / 3600000)}h away)`);
+            return null;
         }
 
         if (closest) {
@@ -420,6 +445,16 @@ export class WeatherHelper {
     }
 
     /**
+     * Open-Meteo time value -> Date. Requests use timeformat=unixtime (epoch
+     * seconds, timezone-unambiguous — M6); ISO strings are still handled for
+     * robustness, but note an offset-less local string would be interpreted in
+     * the server's timezone, which is the bug unixtime avoids.
+     */
+    private parseApiTime(t: number | string): Date {
+        return typeof t === 'number' ? new Date(t * 1000) : new Date(t);
+    }
+
+    /**
      * Check if WMO weather code indicates rain
      */
     private isRainWeatherCode(code: number): boolean {
@@ -468,11 +503,11 @@ export class WeatherHelper {
         const hourly = data.hourly || {};
         const timeArray = hourly.time || [];
 
-        const forecasts = timeArray.map((time: string, index: number) => {
+        const forecasts = timeArray.map((time: number | string, index: number) => {
             const weatherCode = hourly.weather_code?.[index] || 0;
 
             return {
-                timestamp: new Date(time),
+                timestamp: this.parseApiTime(time),
                 temperature: Math.round((hourly.temperature_2m?.[index] || 0) * 10) / 10,
                 feelsLike: Math.round((hourly.apparent_temperature?.[index] || hourly.temperature_2m?.[index] || 0) * 10) / 10,
                 humidity: hourly.relative_humidity_2m?.[index] || 0,
@@ -544,9 +579,8 @@ export class WeatherHelper {
 
         // Handle sunrise/sunset times
         const now = new Date();
-        const todayStr = now.toISOString().split('T')[0];
-        const sunriseTime = daily.sunrise?.[0] ? new Date(daily.sunrise[0]) : null;
-        const sunsetTime = daily.sunset?.[0] ? new Date(daily.sunset[0]) : null;
+        const sunriseTime = daily.sunrise?.[0] ? this.parseApiTime(daily.sunrise[0]) : null;
+        const sunsetTime = daily.sunset?.[0] ? this.parseApiTime(daily.sunset[0]) : null;
 
         let isDaylight = isDay;
         if (sunriseTime && sunsetTime) {

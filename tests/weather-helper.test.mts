@@ -180,9 +180,10 @@ describe('WeatherHelper', () => {
             timezone: 'Europe/Oslo',
             elevation: 94.0,
             hourly: {
+                // timeformat=unixtime -> epoch seconds (M6)
                 time: [
-                    new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString(), // 3 hours from now
-                    new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString()  // 6 hours from now
+                    Math.floor(Date.now() / 1000) + 3 * 60 * 60, // 3 hours from now
+                    Math.floor(Date.now() / 1000) + 6 * 60 * 60  // 6 hours from now
                 ],
                 temperature_2m: [12.5, 14.0],
                 apparent_temperature: [11.8, 13.2],
@@ -219,13 +220,44 @@ describe('WeatherHelper', () => {
 
             // First call
             const forecast1 = await weatherHelper.getForecast();
-            
+
             // Second call should use cache
             const forecast2 = await weatherHelper.getForecast();
 
             expect(forecast1.forecasts).toHaveLength(2);
             expect(forecast2.forecasts).toHaveLength(2);
             expect(global.fetch).toHaveBeenCalledTimes(1);
+        });
+
+        it('M5 — a cached shorter forecast does not answer a longer request', async () => {
+            (global.fetch as any).mockResolvedValue({
+                ok: true,
+                json: () => Promise.resolve(mockForecastResponse)
+            });
+
+            await weatherHelper.getForecast();          // 7 days -> cached
+            await weatherHelper.getForecast(false, 10); // needs 10 -> must refetch
+            expect(global.fetch).toHaveBeenCalledTimes(2);
+            expect((global.fetch as any).mock.calls[1][0]).toContain('forecast_days=10');
+
+            // A shorter request IS covered by the cached 10-day forecast.
+            await weatherHelper.getForecast(false, 7);
+            expect(global.fetch).toHaveBeenCalledTimes(2);
+        });
+
+        it('M6 — requests unixtime and parses timestamps as UTC instants', async () => {
+            (global.fetch as any).mockResolvedValueOnce({
+                ok: true,
+                json: () => Promise.resolve(mockForecastResponse)
+            });
+
+            const forecast = await weatherHelper.getForecast();
+
+            // Offset-less local wall-clock strings would be parsed in the
+            // server's timezone; epoch seconds are unambiguous.
+            expect((global.fetch as any).mock.calls[0][0]).toContain('timeformat=unixtime');
+            expect(forecast.forecasts[0].timestamp.getTime())
+                .toBe((mockForecastResponse.hourly.time[0] as number) * 1000);
         });
     });
 
@@ -243,8 +275,9 @@ describe('WeatherHelper', () => {
                 uv_index: 4.5
             },
             daily: {
-                sunrise: ['2023-09-16T05:45:00+02:00'],
-                sunset: ['2023-09-16T19:30:00+02:00']
+                // timeformat=unixtime -> epoch seconds (M6)
+                sunrise: [Math.floor(new Date('2023-09-16T05:45:00+02:00').getTime() / 1000)],
+                sunset: [Math.floor(new Date('2023-09-16T19:30:00+02:00').getTime() / 1000)]
             }
         };
 
@@ -287,7 +320,7 @@ describe('WeatherHelper', () => {
             timezone: 'Europe/Oslo',
             elevation: 94.0,
             hourly: {
-                time: [new Date('2023-09-14T12:00:00Z').toISOString()],
+                time: [Math.floor(new Date('2023-09-14T12:00:00Z').getTime() / 1000)],
                 temperature_2m: [12.5],
                 apparent_temperature: [11.8],
                 relative_humidity_2m: [70],
@@ -334,6 +367,41 @@ describe('WeatherHelper', () => {
 
             expect(weather).toBeNull();
         });
+
+        it('M5 — fetches enough days to cover the target and rejects out-of-range matches', async () => {
+            // Only one item, 3 hours from now — nowhere near the day-10 target.
+            (global.fetch as any).mockResolvedValueOnce({
+                ok: true,
+                json: () => Promise.resolve({
+                    latitude: 59.9139,
+                    longitude: 10.7522,
+                    timezone: 'Europe/Oslo',
+                    elevation: 94.0,
+                    hourly: {
+                        time: [Math.floor(Date.now() / 1000) + 3 * 60 * 60],
+                        temperature_2m: [12.5],
+                        apparent_temperature: [11.8],
+                        relative_humidity_2m: [70],
+                        weather_code: [0],
+                        wind_speed_10m: [7.5],
+                        wind_gusts_10m: [12.0],
+                        cloud_cover: [10],
+                        precipitation_probability: [5],
+                        precipitation: [0],
+                        uv_index: [2.0],
+                        is_day: [1]
+                    }
+                })
+            });
+
+            const targetTime = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000); // 10 days out
+            const weather = await weatherHelper.getWeatherForTime(targetTime);
+
+            // The request asked for enough days (10 ahead + 1 headroom = 11)...
+            expect((global.fetch as any).mock.calls[0][0]).toContain('forecast_days=11');
+            // ...and the hour-3 item is NOT returned as the "day 10" answer.
+            expect(weather).toBeNull();
+        });
     });
 
     describe('Rain Prediction', () => {
@@ -347,7 +415,7 @@ describe('WeatherHelper', () => {
                 timezone: 'Europe/Oslo',
                 elevation: 94.0,
                 hourly: {
-                    time: [new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString()],
+                    time: [Math.floor(Date.now() / 1000) + 2 * 60 * 60],
                     temperature_2m: [12.5],
                     apparent_temperature: [11.8],
                     relative_humidity_2m: [80],
@@ -384,7 +452,7 @@ describe('WeatherHelper', () => {
                 timezone: 'Europe/Oslo',
                 elevation: 94.0,
                 hourly: {
-                    time: [new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString()],
+                    time: [Math.floor(Date.now() / 1000) + 2 * 60 * 60],
                     temperature_2m: [12.5],
                     apparent_temperature: [11.8],
                     relative_humidity_2m: [60],

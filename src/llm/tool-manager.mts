@@ -453,7 +453,9 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
             },
             handler: async ({ hours = 24 }) => {
                 try {
-                    const forecast = await this.weatherHelper.getForecast();
+                    // forecast_days counts from midnight today, so "hours from
+                    // now" needs one extra day of headroom (M5).
+                    const forecast = await this.weatherHelper.getForecast(false, Math.ceil(hours / 24) + 1);
                     const targetTime = new Date(Date.now() + hours * 60 * 60 * 1000);
                     
                     // Filter forecast items within the requested timeframe
