@@ -170,8 +170,24 @@ execution, JSON-parse safety). Build clean; full suite green (203 passing).
 Follow-up: the older key-gated integration tests (`openai-connection-test`, `openai-agent-behavior`,
 `smart-home-agent`) were converted from vacuous early-return passes to `describe.skipIf(!hasValidApiKey)`,
 so without a key they now report as **skipped** rather than falsely green (7 tests). Their logic is
-covered offline by the harness above; they remain as real-API smoke tests when a key is present. Full
-suite now: 196 passed, 15 skipped (was 203 passed / 8 skipped — same 211 total, just honest now).
+covered offline by the harness above; they remain as real-API smoke tests when a key is present.
+
+## Fixes applied (session 8 — Gemini provider harness)
+
+Built the fake-SDK counterpart for the Gemini Live provider (`@google/genai` uses a callback-based
+`ai.live.connect(...)` session rather than raw `ws`).
+
+- `tests/mocks/mock-genai.mts` — fake `GoogleGenAI` + `Modality`: `live.connect` records each session
+  and exposes drivers (`__open`/`__message`/`__error`/`__close`) plus `sendRealtimeInput` /
+  `sendClientContent` / `sendToolResponse` / `close` capture; `failNextConnect` to simulate a failed
+  connect.
+- `tests/gemini-live-provider.test.mts` — 9 tests via `vi.mock('@google/genai', …)`: missing-api-key,
+  open→`open`+`Healthy`, base64 audio-delta decode, output-transcription → `transcript.delta`,
+  `turnComplete` → `response.done`, tool execution → `sendToolResponse` (with the handler result),
+  odd/empty message doesn't crash, reconnect campaign continues after repeated drops, and no reconnect
+  after a manual `close()`.
+
+Build clean; full suite green (205 passed, 15 skipped, 220 total).
 
 ---
 
