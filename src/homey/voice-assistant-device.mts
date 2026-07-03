@@ -18,6 +18,7 @@ import { scheduleAudioFileDeletion } from '../helpers/file-helper.mjs';
 import { Pcm16kTo24k } from '../helpers/Pcm16kTo24k.mjs';
 import { GeoHelper } from '../helpers/geo-helper.mjs';
 import { WeatherHelper } from '../helpers/weather-helper.mjs';
+import { getAppServices } from '../helpers/app-services.mjs';
 
 
 export default abstract class VoiceAssistantDevice extends Homey.Device {
@@ -158,10 +159,11 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       this.handleSettingsChange(newSettings);
     });
 
-    this.webServer = (this.homey as any).app.webServer as InstanceType<typeof WebServer>;
-    this.deviceManager = (this.homey as any).app.deviceManager as InstanceType<typeof DeviceManager>;
-    this.geoHelper = (this.homey as any).app.geoHelper as InstanceType<typeof GeoHelper>; 
-    this.weatherHelper = (this.homey as any).app.weatherHelper as InstanceType<typeof WeatherHelper>; 
+    const services = getAppServices(this.homey);
+    this.webServer = services.webServer;
+    this.deviceManager = services.deviceManager;
+    this.geoHelper = services.geoHelper;
+    this.weatherHelper = services.weatherHelper;
 
 
 

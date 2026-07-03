@@ -393,6 +393,27 @@ and the three structural refactors under Organization & testability.
 
 Build clean; full suite green (228 passing, 15 skipped).
 
+## Fixes applied (session 17 — typed app-services accessor)
+
+- New `src/helpers/app-services.mts`: an `AppServices` interface (webServer, deviceManager,
+  geoHelper, weatherHelper) plus `getAppServices(homey)` — the one place the untyped `homey.app`
+  cast survives, behind a runtime guard that fails fast naming the missing services (device
+  initialized before the app finished onInit) instead of an undefined-property crash downstream.
+- `AiVoiceAssistantApp` now `implements AppServices` with those four fields public (they were
+  `private ... | undefined` — the old `as any` reach was punching through the class's own privacy,
+  not just the missing SDK typing), so the producer side of the contract is compiler-checked.
+- The four `(this.homey as any).app.* as InstanceType<...>` reaches in `voice-assistant-device.mts`
+  are replaced by one `getAppServices()` call.
+- New `app-services.test.mts` (3 tests): passthrough, missing-services named in the error, no app.
+- New `app-init.test.mts` (4 tests): boots the REAL `AiVoiceAssistantApp.onInit` (real GeoHelper/
+  WeatherHelper/WebServer/DeviceManager; only `homey`/`homey-api`/`homey-log`/`initAudioFolder`
+  faked) and asserts the producer side of the contract — `getAppServices()` accepts the booted
+  app, the dependency graph is wired (weather←geo, deviceManager←apiHelper, fetchData ran),
+  process error handlers registered (and removed after the test), `onUninit` stops the web
+  server. `MockHomey` gained silent `log`/`error` sinks for the Logger's `setHomey` routing.
+
+Build clean; full suite green (235 passing, 15 skipped).
+
 ---
 
 ## Findings checklist
@@ -442,7 +463,7 @@ Ticked = fix verified against the code on `code-review-1` (not just claimed in a
 - [ ] **Org 1** TurnStateMachine + AudioOutputPipeline extraction — future refactor
 - [ ] **Org 2** shared ReconnectPolicy / tool-execution / InstructionState — future refactor
 - [ ] **Org 3** DeviceManager role-split (MAC→callback) — partially mitigated by H-h fix; full split is future refactor
-- [ ] **Org:** typed accessor for `(this.homey as any).app.*` reaches — future refactor
+- [x] **Org:** typed accessor for `(this.homey as any).app.*` reaches — `AppServices` + `getAppServices()` (session 17)
 - [x] **Org:** @vitest/coverage-v8 dependency (session 14)
 
 ---
