@@ -1021,8 +1021,10 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
                     this.logger.info("Connection appears unhealthy - no pong received", 'HEALTH');
                     this.emit("Unhealthy");
 
-                    // Force reconnection
-                    this.ws.close(1006, "connection-health-check-failed");
+                    // Force reconnection. Code 1006 is reserved and makes ws throw,
+                    // so use an application-defined code (4000-4999) and never let a
+                    // close() throw escape this interval callback (it would crash the app).
+                    this.safeCloseSocket(4000, "connection-health-check-failed");
                 } else {
                     // Send ping to check connection
                     try {
@@ -1030,11 +1032,23 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
                         this.ws.ping();
                     } catch (error) {
                         this.logger.info("Failed to send ping:", 'HEALTH', error);
-                        this.ws.close(1006, "ping-failed");
+                        this.safeCloseSocket(4000, "ping-failed");
                     }
                 }
             }
         }, this.connectionHealthCheckInterval);
+    }
+
+    /**
+     * Close the socket without ever throwing out of the caller. Used from the
+     * health-check interval, where an uncaught throw would take down the app.
+     */
+    private safeCloseSocket(code: number, reason: string) {
+        try {
+            this.ws?.close(code, reason);
+        } catch (error) {
+            this.logger.info("Failed to close socket:", 'HEALTH', error);
+        }
     }
 
     /**

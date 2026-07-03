@@ -123,9 +123,15 @@ export class WeatherHelper {
         this.isInitialized = true;
         this.logger.info('WeatherHelper initialized with Open-Meteo API');
 
-        const weather = await this.getCurrentWeather();
-        this.logger.info('Current weather:', 'Debug', weather);
-
+        // Prime/log current weather as a diagnostic, but never let a network hiccup
+        // at boot abort app initialization — weather is a peripheral feature and
+        // app.mts awaits this before constructing the web server / device manager.
+        try {
+            const weather = await this.getCurrentWeather();
+            this.logger.info('Current weather:', 'Debug', weather);
+        } catch (e) {
+            this.logger.error('Initial weather fetch failed (continuing without it)', e);
+        }
     }
 
     /**

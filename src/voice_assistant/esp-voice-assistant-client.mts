@@ -63,6 +63,7 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
   private healthCheckTimer: NodeJS.Timeout | null;
   private readonly PING_TIMEOUT: number;
   private readonly HEALTH_CHECK_INTERVAL: number;
+  private readonly MAX_RX_BUFFER: number;
   private mediaPlayersCount: number;
   private subscribeVoiceAssistantCount: number;
   private voiceAssistantConfigurationCount: number;
@@ -121,6 +122,9 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
     this.healthCheckTimer = null;
     this.PING_TIMEOUT = 120_000;
     this.HEALTH_CHECK_INTERVAL = 55_000;
+    // Well above any legitimate ESPHome frame; a stream that exceeds this without
+    // yielding a decodable frame is treated as corrupt.
+    this.MAX_RX_BUFFER = 2 * 1_048_576; // 2 MiB
     this.mediaPlayersCount = 0;
     this.subscribeVoiceAssistantCount = 0;
     this.voiceAssistantConfigurationCount = 0;
@@ -146,6 +150,11 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
       try { this.tcp.destroy(); } catch { }
       this.tcp = null;
     }
+
+    // Discard any partial frame left over from a previous connection. A stale
+    // half-frame would otherwise be prepended to the new session's bytes and
+    // desync the parser so no frame ever decodes again.
+    this.rxBuf = Buffer.alloc(0);
 
     this.logger.info(`Connecting to ${this.host}:${this.apiPort}`);
     this.tcp = net.createConnection(this.apiPort, this.host, () => this.onConnect());
@@ -200,6 +209,10 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
   async onConnect(): Promise<void> {
     this.logger.info(`Connected to ${this.host}:${this.apiPort}`);
     this.reconnectAttempt = 0;
+    // Seed the health-check clock so a connection that TCP-connects but never
+    // sends a frame (hung/half-open peer) is still detected as timed-out. The
+    // check requires lastMessageReceivedTime > 0.
+    this.lastMessageReceivedTime = Date.now();
     this.startHealthCheck();
 
     this.send('HelloRequest',
@@ -320,8 +333,29 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
   async onTcpData(data: Buffer): Promise<void> {
     this.rxBuf = Buffer.concat([this.rxBuf, data]);
 
+    // Guard against a hostile/desynced peer buffering unboundedly: if we have
+    // accumulated far more than any legitimate frame without decoding one, the
+    // stream is corrupt — drop the connection and let reconnect resync.
+    if (this.rxBuf.length > this.MAX_RX_BUFFER) {
+      this.logger.warn('RX buffer exceeded limit, resetting connection', { bytes: this.rxBuf.length });
+      this.rxBuf = Buffer.alloc(0);
+      this.handleDisconnect();
+      return;
+    }
+
     while (true) {
-      const frame = decodeFrame(this.rxBuf);
+      let frame: ReturnType<typeof decodeFrame>;
+      try {
+        frame = decodeFrame(this.rxBuf);
+      } catch (err) {
+        // Malformed frame (bad protobuf body, oversized payload, …). Without this
+        // guard the throw would leave rxBuf un-advanced and every subsequent
+        // packet would re-throw on the same bytes, wedging the pipeline forever.
+        this.logger.error('Failed to decode frame, resetting connection', err);
+        this.rxBuf = Buffer.alloc(0);
+        this.handleDisconnect();
+        return;
+      }
 
       if (!frame) {
         break;

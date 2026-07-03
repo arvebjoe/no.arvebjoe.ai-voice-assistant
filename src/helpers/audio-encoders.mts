@@ -95,6 +95,10 @@ export async function pcmToFlacBuffer(pcmData: Buffer | Uint8Array,
     }
 
     return new Promise((resolve, reject) => {
+        // Declared outside the try so it can be released in `finally` — the
+        // libflacjs Encoder allocates a native (emscripten-heap) encoder plus a
+        // listener on the shared Flac singleton, both freed only by destroy().
+        let encoder: any = null;
         try {
             // Convert Buffer to appropriate format for libflacjs
             const buffer = Buffer.isBuffer(pcmData) ? pcmData : Buffer.from(pcmData.buffer, pcmData.byteOffset, pcmData.byteLength);
@@ -117,7 +121,7 @@ export async function pcmToFlacBuffer(pcmData: Buffer | Uint8Array,
             }
 
             // Create encoder with configuration - Encoder needs Flac instance as first parameter
-            const encoder = new Encoder(Flac, {
+            encoder = new Encoder(Flac, {
                 sampleRate: sampleRate,
                 channels: channels,
                 bitsPerSample: bitsPerSample,
@@ -159,6 +163,16 @@ export async function pcmToFlacBuffer(pcmData: Buffer | Uint8Array,
 
         } catch (error) {
             reject(error);
+        } finally {
+            // Always release the native encoder + its Flac-singleton listener,
+            // whether encoding succeeded or threw. Guarded so a partially
+            // constructed encoder (or a destroy() that itself throws) can't mask
+            // the original result/error.
+            try {
+                encoder?.destroy();
+            } catch {
+                // ignore teardown errors
+            }
         }
     });
 }

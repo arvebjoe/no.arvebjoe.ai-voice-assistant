@@ -9,25 +9,53 @@ describe('WeatherHelper', () => {
     let weatherHelper: WeatherHelper;
     let mockGeoHelper: MockGeoHelper;
 
+    // Minimal valid current-weather payload used to satisfy the debug fetch that
+    // WeatherHelper.init() now performs. Kept separate so per-test expectations
+    // (mockResolvedValueOnce / toHaveBeenCalledTimes) start from a clean slate.
+    const initWeatherResponse = {
+        latitude: 59.9139,
+        longitude: 10.7522,
+        timezone: 'Europe/Oslo',
+        elevation: 94.0,
+        current: {
+            temperature_2m: 10, apparent_temperature: 9, relative_humidity_2m: 50,
+            precipitation: 0, weather_code: 0, surface_pressure: 1013, cloud_cover: 0,
+            visibility: 10000, wind_speed_10m: 5, wind_direction_10m: 0,
+            wind_gusts_10m: 8, uv_index: 1, is_day: 1
+        }
+    };
+
     beforeEach(async () => {
         // Reset mocks
         vi.clearAllMocks();
-        
+
         // Clear fetch mock and restore it
         (global.fetch as any).mockClear();
         (global.fetch as any).mockReset();
-        
+
+        // init() performs a debug weather fetch, so prime a valid response first,
+        // otherwise fetch() resolves undefined and init() throws on `response.ok`.
+        (global.fetch as any).mockResolvedValue({
+            ok: true,
+            json: () => Promise.resolve(initWeatherResponse)
+        });
+
         // Setup mock geo helper with Oslo coordinates
         mockGeoHelper = new MockGeoHelper();
         await mockGeoHelper.init();
         mockGeoHelper.setMockLocation(59.9139, 10.7522); // Oslo
         mockGeoHelper.setMockTimezone('Europe/Oslo');
-        
+
         weatherHelper = new WeatherHelper(mockGeoHelper as any);
         await weatherHelper.init();
-        
+
         // Clear any cached data
         weatherHelper.clearCache();
+
+        // Clear the init-time call history so each test's toHaveBeenCalledTimes
+        // starts from zero, but keep the default resolved value as a safety net
+        // (a bare init()/getCurrentWeather with no per-test mock still succeeds).
+        (global.fetch as any).mockClear();
     });
 
     describe('Initialization', () => {

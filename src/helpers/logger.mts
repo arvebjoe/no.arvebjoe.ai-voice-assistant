@@ -122,7 +122,10 @@ class Logger {
             this.reportError(details instanceof Error ? details : new Error(String(details)), message);
 
             if (Logger.homey) {
-                Logger.homey.error(message, details);
+                // Mask secret-looking fields on the error path too — error payloads
+                // (option/config snapshots, request headers) are exactly what gets
+                // written to the Homey log. info() already masks via its own path.
+                Logger.homey.error(message, maskSecrets(details));
             } else {
                 this.info(message, 'ERROR', details);
             }
