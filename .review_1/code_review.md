@@ -123,6 +123,56 @@ full suite green (186 passing).
 M3/M4 are verified by build + full suite + handler-count check; unit-testing them needs a full
 `VoiceAssistantDevice` harness (same gap as H-k/H-l). Build clean; full suite green (186 passing).
 
+## Fixes applied (session 6 — device test harness)
+
+Built the `VoiceAssistantDevice` unit-test harness the earlier sessions kept deferring. It boots the
+**real** device (real `onInit`, real event handlers, real `PcmSegmenter`/`ToolManager`/`TimerManager`)
+with faked transport and app singletons, so conversation-flow logic is drivable with zero network.
+
+- `tests/mocks/mock-homey-sdk.mts` — self-contained fake `homey` package (Device/App/Driver base),
+  no config/settings.json reads (unlike the emulator shim), `this.homey` injected via constructor.
+- `tests/mocks/mock-esp-client.mts` — fake `EspVoiceAssistantClient`: records every protocol call and
+  lets a test emit device-facing events (`starting`, `chunk`, `silence`, `Unhealthy`, …).
+- `tests/mocks/mock-voice-provider.mts` — fake provider + `createVoiceProvider` with an instance
+  registry so a runtime rebuild is assertable.
+- `tests/mocks/device-harness.mts` — assembles the fakes + fake app singletons and runs `onInit`.
+- `tests/voice-assistant-device.test.mts` — 10 tests now covering the previously-untestable fixes:
+  **C1** (turn state resets on ESP drop / agent close / and a new wake is accepted afterwards; the
+  duplicate-wake guard still holds), **H-l** (segments play in emit order even when the first encodes
+  slower; the queued segment plays on `announce_finished`), **M3** (onSettings applies `newSettings`,
+  and `0` is a deliberate no-skip), **M4** (provider rebuilds on `voice_provider` change, old one torn
+  down; no rebuild when unchanged).
+
+Confirmed the harness catches regressions: reverting the H-l serialization makes its two tests fail
+(segment 2 plays before segment 1), and restoring it makes them pass. Remaining unit-test gap: **H-k**
+(pairing probe) lives in the ESP client's handshake, which needs a fake `net` socket rather than this
+device harness. Build clean; full suite green (196 passing).
+
+## Fixes applied (session 7 — fake-WebSocket provider harness)
+
+Built the provider-level counterpart to the device harness so the OpenAI Realtime provider's logic is
+testable offline — previously it needed a live key, so those integration tests passed *vacuously*.
+
+- `tests/mocks/mock-ws.mts` — fake `ws` WebSocket (records everything sent; drivers for
+  open/message/error/close; instance registry for reconnect assertions; optional strict close-code
+  validation like the real `ws`).
+- `tests/openai-realtime-provider.test.mts` — 7 tests via `vi.mock('ws', …)`: missing-api-key (no
+  socket), session.created → session.update → open, base64 audio-delta decode, **response.done
+  suppression on tool-call turns vs. emission on normal turns**, malformed-JSON message is ignored (no
+  crash), full **tool execution** (function_call → handler → function_call_output + response.create fed
+  back), and **C2** (the reconnect campaign keeps scheduling after repeated failed attempts).
+
+Confirmed teeth: reverting the C2 close-handler fix makes its test fail (`expected 2 to be 3` — the
+campaign dies after the first failed reconnect); restoring it passes. This retroactively covers the
+provider findings that were previously build+reasoning only (C2, response.done-suppression, tool
+execution, JSON-parse safety). Build clean; full suite green (203 passing).
+
+Follow-up: the older key-gated integration tests (`openai-connection-test`, `openai-agent-behavior`,
+`smart-home-agent`) were converted from vacuous early-return passes to `describe.skipIf(!hasValidApiKey)`,
+so without a key they now report as **skipped** rather than falsely green (7 tests). Their logic is
+covered offline by the harness above; they remain as real-API smoke tests when a key is present. Full
+suite now: 196 passed, 15 skipped (was 203 passed / 8 skipped — same 211 total, just honest now).
+
 ---
 
 ## Critical bugs

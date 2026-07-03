@@ -20,7 +20,11 @@ if (fs.existsSync(envPath)) {
   }
 }
 
-describe('OpenAI Agent Behavior Analysis', () => {
+// Real-API integration suite: skipped (reported as skipped, not vacuously passed)
+// unless a real OPENAI_API_KEY is present in env.json.
+const hasValidApiKey = typeof envConfig.OPENAI_API_KEY === 'string' && envConfig.OPENAI_API_KEY.length > 0;
+
+describe.skipIf(!hasValidApiKey)('OpenAI Agent Behavior Analysis', () => {
   let mockHomey: MockHomey;
   let mockDeviceManager: MockDeviceManager;
   let mockGeoHelper: MockGeoHelper;
@@ -62,11 +66,6 @@ describe('OpenAI Agent Behavior Analysis', () => {
   });
 
   it('should connect to OpenAI and respond to basic greeting', async () => {
-    if (testApiKey === 'test-api-key') {
-      console.log('⚠️ Skipping real API test - no valid API key found');
-      return;
-    }
-
     const agent = new OpenAIRealtimeAgent(mockHomey, toolManager, {
       apiKey: testApiKey,
       voice: 'alloy',
@@ -108,11 +107,6 @@ describe('OpenAI Agent Behavior Analysis', () => {
   }, 20000);
 
   it('should understand and execute smart home commands', async () => {
-    if (testApiKey === 'test-api-key') {
-      console.log('⚠️ Skipping real API test - no valid API key found');
-      return;
-    }
-
     const agent = new OpenAIRealtimeAgent(mockHomey, toolManager, {
       apiKey: testApiKey,
       voice: 'alloy',
@@ -178,11 +172,6 @@ describe('OpenAI Agent Behavior Analysis', () => {
   }, 35000);
 
   it('should handle complex multi-device commands', async () => {
-    if (testApiKey === 'test-api-key') {
-      console.log('⚠️ Skipping real API test - no valid API key found');
-      return;
-    }
-
     const agent = new OpenAIRealtimeAgent(mockHomey, toolManager, {
       apiKey: testApiKey,
       voice: 'alloy',
@@ -252,11 +241,6 @@ describe('OpenAI Agent Behavior Analysis', () => {
   }, 50000);
 
   it('should test different instruction variations', async () => {
-    if (testApiKey === 'test-api-key') {
-      console.log('⚠️ Skipping real API test - no valid API key found');
-      return;
-    }
-
     const testCases = [
       {
         instruction: 'Turn on the kitchen lights',
