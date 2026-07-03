@@ -108,6 +108,15 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
   // Accumulates the reply PCM to ship as one file.
   private replyViaTtsUrl: boolean = false;
   private replyPcm: Buffer[] = [];
+  // Serializes the async announce-path chunk work (FLAC encode + buildStream +
+  // play). The segmenter can emit several 'chunk' events back-to-back, and each
+  // handler awaits; without a chain a short later segment can finish its awaits
+  // first and play before an earlier, slower one. Chained => strict FIFO order.
+  private announceChain: Promise<void> = Promise.resolve();
+  // Bumped whenever the current turn is aborted (see abortCurrentTurn). Announce
+  // chunk work captures the generation at enqueue time and skips playback if the
+  // turn was aborted while it was queued, so a stale segment can't play late.
+  private replyGeneration: number = 0;
   // Accumulates the assistant's streamed reply (audio transcript or text) for the
   // current turn so the full reply can be logged on response.done.
   private replyText: string = '';
@@ -491,7 +500,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
 
     // The segmenter has detected a small silent gap in what the agent said and has produced a new chunk of audio data for us to play.
-    this.segmenter.on('chunk', async (chunk: Buffer) => {
+    this.segmenter.on('chunk', (chunk: Buffer) => {
       this.logger.info(`New TX chunk: ${chunk.length} bytes`);
 
       // Continue run: the PE won't fetch a standalone announce mid-conversation,
@@ -499,56 +508,25 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       // reply as one file on TTS_END (see the segmenter 'done' handler). The
       // intent_end -> tts_start transition is deferred to 'done' too: INTENT_END is
       // where the firmware reads continue_conversation, and the "?" decision isn't
-      // final until the whole reply has streamed.
+      // final until the whole reply has streamed. This branch is SYNCHRONOUS on
+      // purpose — it must complete before the 'done' handler reads replyPcm, so it
+      // must not go through the (deferred) announce chain below.
       if (this.replyViaTtsUrl) {
         this.replyPcm.push(chunk);
         return;
       }
 
-
-      // If we have an input buffer to play, do that first, before playing the new chunk from the segmenter
-      if (this.inputBufferDebug && this.inputPlaybackUrl) {
-        this.playUrlByFileInfo(this.inputPlaybackUrl, false);
-        this.inputPlaybackUrl = null;
-      }
-
-      const flac = await pcmToFlacBuffer(chunk, {
-        sampleRate: 24_000,
-        channels: 1,
-        bitsPerSample: 16
-      });
-
-      const audioData: AudioData = {
-        data: flac,
-        extension: 'flac',
-        prefix: 'tx'
-      }
-
-      if (this.hasIntent) {
-        this.esp.intent_end('');
-        this.hasIntent = false;
-        // Deliberately NO text here: on the announce path the firmware's own
-        // announcement handler fires tts_start_trigger_ (replying phase, stop-word
-        // script) at playback start. Sending a text-carrying TTS_START as well made
-        // those fire a second time ~1s early, and is the prime suspect for the PE
-        // getting stuck "running" after a turn (wake word then silently hits the
-        // voice_assistant.stop branch instead of starting a run). A text-less
-        // TTS_START is discarded by the firmware — kept for protocol shape only.
-        this.esp.tts_start();
-      }
-
-      const fileInfo = await this.webServer.buildStream(audioData);
-
-      if (this.isPlaying) {
-        this.announceUrls.push(fileInfo);
-        return;
-      }
-
-      this.isPlaying = true;
-      this.convo.info('Speaking reply (announce)', 'TTS');
-      this.logger.info(`Playing FIRST announcement from URL: ${fileInfo.url}`);
-      this.playUrlByFileInfo(fileInfo, false);
-
+      // Announce path: encode/serve/play is async and the segmenter can emit
+      // several chunks in a row, so run them through a promise chain to guarantee
+      // they play in order (H-l). Capture the turn generation so a chunk queued
+      // before an abort doesn't play after it.
+      const gen = this.replyGeneration;
+      this.announceChain = this.announceChain
+        .then(() => {
+          if (gen !== this.replyGeneration) return; // turn aborted while queued
+          return this.playReplyChunkAnnounce(chunk);
+        })
+        .catch(err => this.logger.error('Failed to play reply chunk', err));
     });
 
 
@@ -695,6 +673,11 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
           });
           const fileInfo = await this.webServer.buildStream({ data: flac, extension: 'flac', prefix: 'tx' });
           fileUrl = fileInfo.url;
+          // Clean up the in-band reply file (the announce path deletes via
+          // playUrlByFileInfo; this path never did, leaking one FLAC per turn onto
+          // /userdata). Extend the TTL by the reply's playback length so the PE can
+          // finish streaming a long reply before the file is removed.
+          scheduleAudioFileDeletion(this.homey, fileInfo, playbackMs);
         }
 
         if (fileUrl) {
@@ -836,6 +819,10 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     this.emptyTurnRetries = 0;
     this.announceUrls = [];
     this.replyPcm = [];
+    // Invalidate any announce-path chunk work still queued on the chain so a stale
+    // segment from the aborted turn can't play late, and start a fresh chain.
+    this.replyGeneration++;
+    this.announceChain = Promise.resolve();
     this.reSampler?.reset();
     this.segmenter?.reset();
 
@@ -968,6 +955,57 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
   private playUrlByFileInfo(fileInfo: FileInfo, startConversation: boolean) {
     this.esp.playAudioFromUrl(fileInfo.url, startConversation);
     scheduleAudioFileDeletion(this.homey, fileInfo);
+  }
+
+  /**
+   * Announce-path handling for one reply segment: encode to FLAC, serve it over
+   * LAN, and either play it (first segment) or queue it (a later segment plays
+   * when the current AnnounceFinished arrives). Runs serialized via announceChain
+   * so segments never play out of order.
+   */
+  private async playReplyChunkAnnounce(chunk: Buffer): Promise<void> {
+    // If we have an input buffer to play, do that first, before playing the new chunk from the segmenter
+    if (this.inputBufferDebug && this.inputPlaybackUrl) {
+      this.playUrlByFileInfo(this.inputPlaybackUrl, false);
+      this.inputPlaybackUrl = null;
+    }
+
+    const flac = await pcmToFlacBuffer(chunk, {
+      sampleRate: 24_000,
+      channels: 1,
+      bitsPerSample: 16
+    });
+
+    const audioData: AudioData = {
+      data: flac,
+      extension: 'flac',
+      prefix: 'tx'
+    }
+
+    if (this.hasIntent) {
+      this.esp.intent_end('');
+      this.hasIntent = false;
+      // Deliberately NO text here: on the announce path the firmware's own
+      // announcement handler fires tts_start_trigger_ (replying phase, stop-word
+      // script) at playback start. Sending a text-carrying TTS_START as well made
+      // those fire a second time ~1s early, and is the prime suspect for the PE
+      // getting stuck "running" after a turn (wake word then silently hits the
+      // voice_assistant.stop branch instead of starting a run). A text-less
+      // TTS_START is discarded by the firmware — kept for protocol shape only.
+      this.esp.tts_start();
+    }
+
+    const fileInfo = await this.webServer.buildStream(audioData);
+
+    if (this.isPlaying) {
+      this.announceUrls.push(fileInfo);
+      return;
+    }
+
+    this.isPlaying = true;
+    this.convo.info('Speaking reply (announce)', 'TTS');
+    this.logger.info(`Playing FIRST announcement from URL: ${fileInfo.url}`);
+    this.playUrlByFileInfo(fileInfo, false);
   }
 
 

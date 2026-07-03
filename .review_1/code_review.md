@@ -88,6 +88,23 @@ Build (`tsc`) clean; full suite green (174 passing, 8 integration skipped).
 New tests: real `DeviceManager` zone-change handler (5 cases incl. the storm fix — first real coverage
 of that module) and `ToolManager` standard-zone. Build clean; full suite green (182 passing).
 
+## Fixes applied (session 4 — H-l & M2)
+
+- **H-l reply audio out-of-order** — the announce-path `chunk` handler (async FLAC encode + serve +
+  play) now runs through a per-device promise chain (`announceChain`), so segments emitted back-to-back
+  play in strict FIFO order instead of racing on encode time. Extracted the body into
+  `playReplyChunkAnnounce()`. The in-band branch stays synchronous (it must complete before the `done`
+  handler reads `replyPcm`). Added a `replyGeneration` counter, bumped in `abortCurrentTurn()`, so a
+  segment queued before an abort can't play after it.
+- **M2 in-band reply files leaked** — the in-band `done` path built a FLAC and served it but never
+  scheduled deletion (only the announce path did), leaking one file per conversation turn onto
+  `/userdata` until restart. Now calls `scheduleAudioFileDeletion()`, and that helper gained an optional
+  `extraMs` (passed the reply's playback length) so a long reply isn't deleted mid-stream.
+
+New test: `file-helper-deletion` (TTL math incl. the extraMs extension and env override). H-l is
+verified by build + reasoning (unit-testing it needs a full device harness, same as H-k). Build clean;
+full suite green (186 passing).
+
 ---
 
 ## Critical bugs
