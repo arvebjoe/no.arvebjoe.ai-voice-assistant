@@ -40,19 +40,34 @@ describe('PcmSegmenter', () => {
         expect(chunks[0].length).toBeGreaterThanOrEqual(MIN_CHUNK_BYTES);
     });
 
-    it('drops a short (<600 ms) segment on flush and still emits done', async () => {
-        // Documents current behaviour: flush() routes the tail through the same
-        // MIN_CHUNK guard, so a sub-600 ms reply produces no audio at all.
+    it('M1 — emits a short (<600 ms) reply on flush, before done', async () => {
+        // flush() marks end-of-reply, so the tail bypasses the MIN_CHUNK
+        // anti-fragment guard: a sub-600 ms reply ("Ja?") must still play.
         const seg = new PcmSegmenter();
         const chunks = collectChunks(seg);
-        let done = false;
-        seg.on('done', () => { done = true; });
+        let doneAfterChunk = false;
+        seg.on('done', () => { doneAfterChunk = chunks.length > 0; });
 
-        await seg.feed(pcm(5, 8000)); // 150 ms speech, below the minimum
+        await seg.feed(pcm(5, 8000)); // 150 ms speech, below MIN_CHUNK
         seg.flush();
 
-        expect(chunks).toHaveLength(0);
-        expect(done).toBe(true);
+        expect(chunks).toHaveLength(1);
+        expect(chunks[0].length).toBe(5 * FRAME_BYTES);
+        expect(doneAfterChunk).toBe(true); // chunk arrives before done
+    });
+
+    it('M1 — does not emit the pure-silence leftover of a mid-stream cut on flush', async () => {
+        const seg = new PcmSegmenter();
+        const chunks = collectChunks(seg);
+
+        await seg.feed(pcm(20, 8000)); // 600 ms speech
+        await seg.feed(pcm(10, 0));    // 300 ms silence -> cut (chunk 1)
+        expect(chunks).toHaveLength(1);
+
+        // What remains buffered is only the tail of the long silence — flushing
+        // must not turn that into a tiny silent file.
+        seg.flush();
+        expect(chunks).toHaveLength(1);
     });
 
     it('flushes a large-enough tail that never saw trailing silence', async () => {

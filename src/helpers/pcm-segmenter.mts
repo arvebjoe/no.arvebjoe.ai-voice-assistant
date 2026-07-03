@@ -61,15 +61,35 @@ export class PcmSegmenter extends (EventEmitter as new () => TypedEmitter<Segmen
 
     flush(): void {
         if (this.bytesInCurrent > 0) {
-            this.emit_segment(Buffer.concat(this.current));
+            const segment = Buffer.concat(this.current);
+            // The tail at flush time IS the end of the reply, so bypass the
+            // MIN_CHUNK anti-fragment guard — a sub-600 ms reply ("Ja?") was
+            // otherwise dropped entirely while 'done' still fired (M1). But a
+            // tail of pure silence (the leftover kept after a mid-stream cut)
+            // is not worth a file of its own.
+            if (this.hasSpeech(segment)) {
+                this.emit('chunk', segment);
+            }
             this.current = [];
             this.bytesInCurrent = 0;
             this.remainder = Buffer.alloc(0);
             this.silenceFrames = 0;
             this.trailingBuffer = Buffer.alloc(0);
         }
-        
+
         this.emit('done');
+    }
+
+    /** Whether any full frame in the buffer is above the silence threshold. */
+    private hasSpeech(buf: Buffer): boolean {
+        for (let off = 0; off + FRAME_BYTES <= buf.length; off += FRAME_BYTES) {
+            const frame = buf.subarray(off, off + FRAME_BYTES);
+            const int16 = new Int16Array(frame.buffer, frame.byteOffset, frame.length / 2);
+            if (this.frameDbfs(int16) >= SILENCE_DBFS) {
+                return true;
+            }
+        }
+        return false;
     }
 
     // feed() with arbitrary PCM chunk boundaries

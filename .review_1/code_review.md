@@ -250,6 +250,20 @@ request + reuse for shorter), `timeformat=unixtime` in the URL + timestamps deco
 instant, and the day-10 out-of-range question returning `null` while requesting `forecast_days=11`.
 Build clean; full suite green (214 passing, 15 skipped).
 
+## Fixes applied (session 12 — M1)
+
+- **M1 short replies produce no audio** — `flush()` marks end-of-reply, so the buffered tail IS the
+  reply; it now bypasses the `MIN_CHUNK` anti-fragment guard (which stays in place for mid-stream
+  cuts) and emits before `done`. A sub-600 ms reply ("Ja?") plays instead of vanishing. Guarded by a
+  new `hasSpeech()` frame scan so the pure-silence leftover kept after a mid-stream cut doesn't
+  become a tiny silent file at flush time. Both device consumers already handle arbitrary chunk
+  sizes (in-band accumulates into one FLAC; announce encodes per chunk).
+
+The old test that pinned the drop was rewritten to assert the fix (chunk emitted, before `done`),
+plus a new test that the post-cut silence leftover still isn't emitted. Build clean; full suite
+green (215 passing, 15 skipped). **Needs an on-device listen** — this touches the live
+conversation-flow work (short follow-ups like "Ja?" are exactly the case being debugged).
+
 ---
 
 ## Critical bugs
