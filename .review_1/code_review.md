@@ -375,6 +375,24 @@ Still explicitly open after this session: **S1 (redacted in the doc — needs Ar
 it was the ESP RX-buffer DoS fixed in session 1)**, the S6 cleartext-key textarea (product choice),
 and the three structural refactors under Organization & testability.
 
+## Fixes applied (session 16 — S6 remainder)
+
+- **API keys masked in settings** — the two 5-row cleartext `<textarea>`s are now
+  `<input type="password">` fields with a Show/Hide toggle (`autocomplete="off"`); keys are
+  trimmed on save (the tall textareas invited pasted whitespace/newlines).
+- **ESP identity sniff narrowed** — the PE/XiaoZhi device-type sniff during pairing discovery now
+  inspects only the two identity-bearing messages (`HelloResponse` — device name/server info — and
+  `DeviceInfoResponse` — manufacturer/model/project/friendly name) instead of every frame, so an
+  entity named "xiaozhi", a log line, or a state value can no longer "validate" a device's
+  identity. Substring matching itself remains — on a plaintext ESPHome API those name fields ARE
+  the only identity available (real authentication would need the Noise-encryption support noted
+  in CLAUDE.md). Both messages arrive during a probe (Hello at connect, DeviceInfo after
+  ListEntitiesDone), so factory *and* self-compiled firmware still identify.
+  **Sanity-check pairing on real hardware next time a device is paired** — the sniff scope
+  changed and pairing isn't unit-testable (needs a fake `net` socket, the known H-k gap).
+
+Build clean; full suite green (228 passing, 15 skipped).
+
 ---
 
 ## Findings checklist
@@ -419,8 +437,8 @@ Ticked = fix verified against the code on `code-review-1` (not just claimed in a
 - [x] **S4** Logger.error secret masking (session 1)
 - [x] **S5** input_buffer_debug emulator-only (session 15)
 - [x] **S6** language-code import whitelist (session 15)
-- [ ] **S6 (rest)** API keys in cleartext `<textarea>` — product choice, deferred
-- [ ] **S6 (rest)** ESP peer identity via string-sniffing — accepted for now
+- [x] **S6 (rest)** API keys masked (`type="password"` + Show/Hide, trim on save) (session 16)
+- [x] **S6 (rest)** ESP identity sniff narrowed to HelloResponse/DeviceInfoResponse (session 16) — substring match itself stays: it's the only identity a plaintext API offers; verify pairing on hardware
 - [ ] **Org 1** TurnStateMachine + AudioOutputPipeline extraction — future refactor
 - [ ] **Org 2** shared ReconnectPolicy / tool-execution / InstructionState — future refactor
 - [ ] **Org 3** DeviceManager role-split (MAC→callback) — partially mitigated by H-h fix; full split is future refactor

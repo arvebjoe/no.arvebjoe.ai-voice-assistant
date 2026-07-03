@@ -368,7 +368,13 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
         break;
       }
 
-      if (this.discoveryMode && !this.deviceType && frame.message) {
+      // Identity sniff: ONLY the two identity-bearing messages count (S6). The
+      // device name is in HelloResponse (serverInfo/name); manufacturer/model/
+      // project/friendly name are in DeviceInfoResponse — both arrive during a
+      // probe. Matching every frame let any string field anywhere (an entity
+      // named "xiaozhi", a log line) "validate" a device's identity.
+      if (this.discoveryMode && !this.deviceType && frame.message
+        && (frame.name === 'HelloResponse' || frame.name === 'DeviceInfoResponse')) {
         const rawMessage = JSON.stringify(frame.message).toLocaleLowerCase();
         // Factory PE firmware reports "Nabu Casa" / "Home Assistant Voice PE".
         // Self-compiled firmware from the stock home-assistant-voice.yaml has no
