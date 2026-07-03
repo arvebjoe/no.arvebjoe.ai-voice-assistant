@@ -217,7 +217,14 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
                 }
             });
 
-            this.ws.on("message", (data) => this.onMessage(data));
+            // onMessage is async and fire-and-forget — without this catch, any
+            // throw in a server-event handler becomes an unhandled rejection
+            // (fatal on modern Node).
+            this.ws.on("message", (data) => {
+                this.onMessage(data).catch((err) => {
+                    this.logger.error("Error handling server event", err);
+                });
+            });
 
             this.ws.on("error", (err) => {
                 this.logger.error("WebSocket error", err);
@@ -403,7 +410,14 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
             return;
         }
 
-        this.assertOpen();
+        // The device calls this unguarded per mic frame, so the seam contract is
+        // no-throw (Gemini already honors it). On a dead socket, kick the
+        // reconnect campaign and drop the frame instead of throwing into the
+        // ESP 'chunk' handler.
+        if (!this.isSocketOpen()) {
+            this.requestReconnect();
+            return;
+        }
 
         // Default to audio output when receiving audio input (unless explicitly set to text mode)
         if (this.outputMode !== "audio") {
@@ -806,24 +820,31 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
         this.emit("tool.called", { callId, name: rec.name, args });
 
         try {
-            const output = await this.handleTool(callId, rec.name, args);
+            // Phase 1: run the tool locally.
+            let output: any;
+            let toolFailed = false;
+            try {
+                output = await this.handleTool(callId, rec.name, args);
+            } catch (err: any) {
+                toolFailed = true;
+                output = { error: String(err?.message ?? err) };
+            }
             this.emit("tool.completed", { callId, name: rec.name, result: output });
 
-            // Inject the function result into the conversation:
-            this.sendFunctionResult(callId, output, rec.itemId);
-
-            // Tell the model to continue and produce audio/text based on that result:
-            this.createResponse({
-                //instructions: getResponseInstructions(),
-            });
-
-        } catch (err: any) {
-            this.emit("tool.completed", { callId, name: rec.name, result: { error: String(err?.message ?? err) } });
-            // Even on error, feed a structured output back so the model can handle it gracefully:
-            this.sendFunctionResult(callId, { error: String(err?.message ?? err) }, rec.itemId);
-            this.createResponse({
-                instructions: this.instructionModule?.getErrorResponseInstructions?.() || "Explain what failed in plain language.",
-            });
+            // Phase 2: inject the result into the conversation (even a tool error is
+            // fed back structured so the model can explain it) and ask the model to
+            // continue. If the socket dropped mid-execution these sends throw — the
+            // turn is lost either way and assertOpen has already kicked the
+            // reconnect campaign, so log instead of rejecting out of the ws
+            // message handler.
+            try {
+                this.sendFunctionResult(callId, output, rec.itemId);
+                this.createResponse(toolFailed ? {
+                    instructions: this.instructionModule?.getErrorResponseInstructions?.() || "Explain what failed in plain language.",
+                } : {});
+            } catch (sendErr: any) {
+                this.logger.error(`Could not send result of tool '${rec.name}' back to the model (socket closed?)`, sendErr);
+            }
         } finally {
             rec.executed = true;
             this.pendingToolCalls.set(callId, rec);
@@ -933,12 +954,20 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
     }
 
     private assertOpen() {
-        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-            // If we're not manually closing and not already reconnecting, start reconnection
-            if (!this.isManuallyClosing && !this.isReconnecting) {
-                this.scheduleReconnect();
-            }
+        if (!this.isSocketOpen()) {
+            this.requestReconnect();
             throw new Error("WebSocket is not open - reconnection initiated");
+        }
+    }
+
+    private isSocketOpen(): boolean {
+        return !!this.ws && this.ws.readyState === WebSocket.OPEN;
+    }
+
+    /** Kick the reconnect campaign unless we're closing on purpose or one is already running. */
+    private requestReconnect() {
+        if (!this.isManuallyClosing && !this.isReconnecting) {
+            this.scheduleReconnect();
         }
     }
 

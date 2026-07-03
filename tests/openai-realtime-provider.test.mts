@@ -152,6 +152,106 @@ describe('OpenAIRealtimeProvider (fake WebSocket harness)', () => {
         expect(sent.some(m => m.type === 'response.create')).toBe(true);
     });
 
+    it('H-g — sendAudioChunk on a dead socket drops the frame and schedules a reconnect instead of throwing', async () => {
+        vi.useFakeTimers();
+        makeProvider();
+        await provider.start();
+        const ws = createdSockets[0];
+        ws.__open();
+        await Promise.resolve();
+
+        // Socket dies (Wi-Fi blip). The device keeps pumping mic frames unguarded.
+        ws.close();
+        const sentBefore = ws.sent.length;
+        expect(() => provider.sendAudioChunk(Buffer.from([1, 2, 3, 4]))).not.toThrow();
+        expect(ws.sent.length).toBe(sentBefore); // frame dropped, not sent
+
+        // The dropped frame kicked the reconnect campaign.
+        await vi.advanceTimersByTimeAsync(6000);
+        expect(createdSockets.length).toBe(2);
+    });
+
+    it('H-f — socket closing during tool execution does not produce an unhandled rejection', async () => {
+        // A tool whose handler closes the socket while running — the classic
+        // "turn on the lights" + Wi-Fi drop mid-execution.
+        let wsRef: InstanceType<typeof FakeWebSocket>;
+        const tm = {
+            getToolDefinitions: () => [],
+            getToolHandlers: () => ({
+                slow_tool: async () => { wsRef.close(); return { ok: true }; },
+            }),
+            setStandardZone: () => { },
+        };
+        const homey = new MockHomey();
+        provider = new OpenAIRealtimeProvider(homey as any, tm as any, { ...baseOpts });
+        const ws = await connect();
+        wsRef = ws;
+
+        const rejections: unknown[] = [];
+        const onRejection = (err: unknown) => rejections.push(err);
+        process.on('unhandledRejection', onRejection);
+        try {
+            const completed = vi.fn();
+            provider.on('tool.completed', completed);
+
+            ws.__message({
+                type: 'response.output_item.added', output_index: 0,
+                item: { type: 'function_call', call_id: 'c9', id: 'i9', name: 'slow_tool', arguments: '{}' },
+            });
+            ws.__message({
+                type: 'response.output_item.done',
+                item: { type: 'function_call', call_id: 'c9', id: 'i9', name: 'slow_tool', arguments: '{}' },
+            });
+            // Let the async tool run, the socket close, and the guarded send fail.
+            await tick();
+            await tick();
+            await tick();
+
+            expect(completed).toHaveBeenCalledWith(expect.objectContaining({ result: { ok: true } }));
+            expect(rejections).toEqual([]);
+        } finally {
+            process.off('unhandledRejection', onRejection);
+        }
+    });
+
+    it('H-f — a throwing tool handler still feeds a structured error back to the model', async () => {
+        const tm = {
+            getToolDefinitions: () => [],
+            getToolHandlers: () => ({
+                broken_tool: async () => { throw new Error('device unreachable'); },
+            }),
+            setStandardZone: () => { },
+        };
+        const homey = new MockHomey();
+        provider = new OpenAIRealtimeProvider(homey as any, tm as any, { ...baseOpts });
+        const ws = await connect();
+
+        const completed = vi.fn();
+        provider.on('tool.completed', completed);
+
+        ws.__message({
+            type: 'response.output_item.added', output_index: 0,
+            item: { type: 'function_call', call_id: 'c8', id: 'i8', name: 'broken_tool', arguments: '{}' },
+        });
+        ws.__message({
+            type: 'response.output_item.done',
+            item: { type: 'function_call', call_id: 'c8', id: 'i8', name: 'broken_tool', arguments: '{}' },
+        });
+        await tick();
+        await tick();
+
+        expect(completed).toHaveBeenCalledWith(expect.objectContaining({
+            result: { error: 'device unreachable' },
+        }));
+        const sent = ws.parsedSent();
+        const fnOut = sent.find(m => m.type === 'conversation.item.create' && m.item?.type === 'function_call_output');
+        expect(fnOut).toBeDefined();
+        expect(JSON.parse(fnOut.item.output)).toEqual({ error: 'device unreachable' });
+        // The continuation asks the model to explain the failure.
+        const cont = sent.filter(m => m.type === 'response.create').pop();
+        expect(cont.response.instructions).toBeTruthy();
+    });
+
     it('C2 — keeps reconnecting after repeated failed attempts', async () => {
         vi.useFakeTimers();
         makeProvider();

@@ -115,6 +115,11 @@ export interface IVoiceProvider extends TypedEmitter<VoiceProviderEvents> {
     hasApiKey(): boolean;
 
     // --- audio in / conversation ---
+    /**
+     * Must not throw. The device calls this unguarded for every mic frame
+     * (~every 30 ms); if the transport is down, drop the frame (and kick any
+     * reconnect logic) instead of throwing into the ESP 'chunk' handler.
+     */
     sendAudioChunk(pcm16Mono24k: Buffer): void;
     resetConversation(): void;
 
