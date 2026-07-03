@@ -209,6 +209,26 @@ New tests (fake-ws harness): H-g drop-and-reconnect, H-f socket-close-mid-tool (
 `unhandledRejection`s), and throwing-tool-handler → structured error fed back with error
 instructions. Build clean; full suite green (208 passing, 15 skipped).
 
+## Fixes applied (session 10 — M8 & M7)
+
+- **M8 Gemini emits `response.done` on tool-call turns** — ported the OpenAI-side suppression:
+  a `toolCall` message sets `pendingToolTurn` (synchronously, so a `turnComplete` in the same
+  message is covered) and that turn's `turnComplete` is swallowed — the continuation after
+  `sendToolResponse` carries the real one. Defensive against both server timelines: if the server
+  *doesn't* send a `turnComplete` for the tool-call turn, the first model output after the tool
+  response clears the flag so the single real `turnComplete` isn't swallowed
+  (`markToolContinuation`, gated on `toolResponseSent` so pre-tool speech doesn't count). A failed
+  `sendToolResponse` and a barge-in (`interrupted` → `endTurn`) also clear it.
+- **M7 `emitGlobals` per-subscriber error isolation** — each subscriber callback is now wrapped in
+  try/catch (logged), so one throwing device no longer stops the rest from seeing a settings
+  update — nor throws back into Homey's settings `set` emitter. The initial-snapshot call in
+  `onGlobals` got the same guard (same failure class: a throwing subscriber used to break the
+  subscribe call itself and lose the unsubscribe handle).
+
+New tests: two M8 cases in the Gemini fake-SDK harness (suppress-then-emit, and the
+no-tool-turn-turnComplete timeline) and an M7 bad-subscriber case in the pub/sub suite. Build
+clean; full suite green (211 passing, 15 skipped).
+
 ---
 
 ## Critical bugs

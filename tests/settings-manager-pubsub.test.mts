@@ -59,6 +59,22 @@ describe('SettingsManager pub/sub', () => {
         expect(sub).not.toHaveBeenCalled();
     });
 
+    it('M7 — a throwing subscriber does not block the others', () => {
+        const bad = vi.fn(() => { throw new Error('device mid-rebuild'); });
+        const good = vi.fn();
+        // The initial-snapshot call is guarded too: subscribing must not throw.
+        expect(() => settingsManager.onGlobals(bad)).not.toThrow();
+        settingsManager.onGlobals(good);
+        bad.mockClear();
+        good.mockClear();
+
+        expect(() => homey.setMockSetting('selected_voice', 'verse')).not.toThrow();
+
+        expect(bad).toHaveBeenCalledTimes(1);
+        expect(good).toHaveBeenCalledTimes(1);
+        expect(good.mock.calls[0][0].selected_voice).toBe('verse');
+    });
+
     it('hands each subscriber an independent snapshot copy', () => {
         let captured: any;
         settingsManager.onGlobals((s) => { captured = s; });

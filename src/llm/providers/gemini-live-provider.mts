@@ -126,6 +126,13 @@ export class GeminiLiveProvider extends (EventEmitter as new () => TypedEmitter<
     private awaitingResponse = false;
     private currentInputTranscript = "";
 
+    // A turn that issued tool calls is NOT the end of the conversation turn:
+    // sendToolResponse feeds the result back and the model continues with the
+    // spoken answer (its own turnComplete) — mirror of the OpenAI provider's
+    // response.done suppression on function_call turns (M8).
+    private pendingToolTurn = false;
+    private toolResponseSent = false;
+
     constructor(homey: any, toolManager: ToolManager, opts: VoiceProviderOptions) {
         super();
         this.homey = homey;
@@ -296,6 +303,10 @@ export class GeminiLiveProvider extends (EventEmitter as new () => TypedEmitter<
             // Tool calls (function calling)
             const functionCalls = message?.toolCall?.functionCalls;
             if (Array.isArray(functionCalls) && functionCalls.length) {
+                // Set synchronously so a turnComplete in this same (or the next)
+                // message is suppressed even while the handlers are still running.
+                this.pendingToolTurn = true;
+                this.toolResponseSent = false;
                 void this.handleToolCalls(functionCalls);
             }
 
@@ -305,6 +316,7 @@ export class GeminiLiveProvider extends (EventEmitter as new () => TypedEmitter<
             const audioB64: string | undefined = message?.data;
             if (audioB64) {
                 this.markResponding();
+                this.markToolContinuation();
                 this.emit("audio.delta", Buffer.from(audioB64, "base64"));
             }
 
@@ -312,6 +324,7 @@ export class GeminiLiveProvider extends (EventEmitter as new () => TypedEmitter<
             const outText = sc?.outputTranscription?.text;
             if (outText) {
                 this.markResponding();
+                this.markToolContinuation();
                 this.emit("transcript.delta", outText);
             }
 
@@ -323,7 +336,14 @@ export class GeminiLiveProvider extends (EventEmitter as new () => TypedEmitter<
             }
 
             if (sc?.turnComplete) {
-                this.emit("response.done");
+                if (this.pendingToolTurn) {
+                    // Tool-call turn: the continuation with the spoken answer is
+                    // still coming, so suppress response.done — emitting it here
+                    // closes the device's reply pipeline mid-turn (M8).
+                    this.pendingToolTurn = false;
+                } else {
+                    this.emit("response.done");
+                }
                 this.endTurn();
             }
             if (sc?.interrupted) {
@@ -347,9 +367,23 @@ export class GeminiLiveProvider extends (EventEmitter as new () => TypedEmitter<
         this.currentInputTranscript = "";
     }
 
+    /**
+     * First model output after the tool response went back: the continuation is
+     * streaming, so the next turnComplete really ends the turn. (Covers a server
+     * that does not send a turnComplete for the tool-call turn itself; output
+     * arriving before our tool response is pre-tool speech and doesn't count.)
+     */
+    private markToolContinuation(): void {
+        if (this.pendingToolTurn && this.toolResponseSent) {
+            this.pendingToolTurn = false;
+        }
+    }
+
     private endTurn(): void {
         this.awaitingResponse = false;
         this.currentInputTranscript = "";
+        // A barge-in (interrupted) aborts any pending tool continuation too.
+        this.pendingToolTurn = false;
     }
 
     private async handleToolCalls(functionCalls: any[]): Promise<void> {
@@ -378,8 +412,10 @@ export class GeminiLiveProvider extends (EventEmitter as new () => TypedEmitter<
 
         try {
             this.session?.sendToolResponse({ functionResponses });
+            this.toolResponseSent = true;
         } catch (e) {
             this.logger.error("sendToolResponse failed", e);
+            this.pendingToolTurn = false; // no continuation is coming
         }
     }
 

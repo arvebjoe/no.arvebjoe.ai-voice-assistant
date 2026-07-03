@@ -128,6 +128,44 @@ describe('GeminiLiveProvider (fake GenAI harness)', () => {
         expect(fr.response).toEqual({ ok: true, now: '12:00' });
     });
 
+    it('M8 — suppresses response.done for the tool-call turn but emits it after the continuation', async () => {
+        makeProvider();
+        const session = await connect();
+        const done = vi.fn();
+        provider.on('response.done', done);
+
+        // Model calls a tool; the turnComplete of the tool-call turn must NOT
+        // end the device turn (the spoken answer is still coming).
+        session.__message({ toolCall: { functionCalls: [{ id: 'c1', name: 'get_time', args: {} }] } });
+        session.__message({ serverContent: { turnComplete: true } });
+        await tick();
+        await tick();
+        expect(done).not.toHaveBeenCalled();
+        expect(session.sentOf('sendToolResponse')).toHaveLength(1);
+
+        // Continuation with the spoken answer -> this turnComplete ends the turn.
+        session.__message({ data: Buffer.from([1, 2]).toString('base64') });
+        session.__message({ serverContent: { turnComplete: true } });
+        expect(done).toHaveBeenCalledTimes(1);
+    });
+
+    it('M8 — a tool turn without its own turnComplete still ends on the continuation turnComplete', async () => {
+        makeProvider();
+        const session = await connect();
+        const done = vi.fn();
+        provider.on('response.done', done);
+
+        session.__message({ toolCall: { functionCalls: [{ id: 'c1', name: 'get_time', args: {} }] } });
+        await tick();
+        await tick(); // tool response sent
+
+        // Continuation output clears the pending-tool state, so the (single)
+        // turnComplete is not swallowed.
+        session.__message({ data: Buffer.from([3, 4]).toString('base64') });
+        session.__message({ serverContent: { turnComplete: true } });
+        expect(done).toHaveBeenCalledTimes(1);
+    });
+
     it('does not crash on an empty/odd server message', async () => {
         makeProvider();
         const session = await connect();
