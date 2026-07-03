@@ -431,7 +431,7 @@ Ticked = fix verified against the code on `code-review-1` (not just claimed in a
 - [x] **Low:** FLAC 8-bit path removed (session 14)
 - [x] **Low:** resampler odd-byte carry (session 14)
 - [x] **Low:** webserver stale IP re-resolved per file (session 14) — naming ("isn't a server") deliberately left
-- [ ] **S1** — redacted in this doc; cannot verify. Likely the ESP RX DoS (fixed session 1) but needs Arve's confirmation
+- [x] **S1** LAN denial-of-service via ESP RX path — confirmed identical to the H-a/H-b fix (session 1); all four elements verified in code: 1 MiB `MAX_PAYLOAD_LEN` (esp-messages.mts), 2 MiB `MAX_RX_BUFFER` (onTcpData), guarded decode, disconnect on violation
 - [x] **S2** tool gates enforced in code (session 13) — residual: `confirmed`/`allow_cross_zone` stay model-attested
 - [x] **S3** unlock single-target only (session 13)
 - [x] **S4** Logger.error secret masking (session 1)
@@ -568,7 +568,9 @@ illusion — the real max is 1. Gemini's reconnect is correct (it awaits `live.c
 Threat model: hostile LAN peer, prompt injection, key/PII leakage, spoofed satellite. No RCE, `eval`,
 command injection, or key exfiltration found.
 
-- **S1. HIGH** — redacted for now. Handle last by Opus 4.8
+- **S1. HIGH — LAN denial-of-service via the ESP RX path** (H-a/H-b above). Network-reachable, no
+  auth. Fix: cap `payloadLen` (~1 MB) and `rxBuf`, wrap decode in try/catch, disconnect on
+  violation. _(Text restored 2026-07-03 from the reviewer's notes; was briefly redacted.)_
 - **S2. MEDIUM — destructive tool gates enforced by the model, not the code** —
   `tool-manager.mts:348-386`. `confirmed`/`allow_cross_zone` are just parameters the LLM chooses;
   `setDeviceCapability(Bulk)` ignores `allow_cross_zone`; the device-ID whitelist only runs if the
