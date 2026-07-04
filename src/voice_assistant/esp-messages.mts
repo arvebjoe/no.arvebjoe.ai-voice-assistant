@@ -63,7 +63,35 @@ if (!TYPES['VoiceAssistantAnnounceRequest']) {
 */
 
 const PLAINTEXT = 0x00;
+// Upper bound on a single frame's protobuf payload. ESPHome native-API frames are
+// small (audio chunks are a few KB at most); anything larger is a corrupt or hostile
+// peer. Treated as a protocol error so the caller resets rather than buffering
+// gigabytes waiting for a frame that will never complete.
+const MAX_PAYLOAD_LEN = 1_048_576; // 1 MiB
 const VA_EVENT = (root.lookupEnum('VoiceAssistantEvent') as any).values;
+
+/**
+ * Decode a varint at `off`, returning its value and byte length, or null when the
+ * buffer does not yet contain the whole varint (a normal partial-frame condition
+ * that must NOT throw — the caller keeps buffering until more bytes arrive).
+ */
+function tryDecodeVarint(buf: Buffer, off: number): { value: number; bytes: number } | null {
+    // A varint terminates at the first byte with the high bit clear. If we never
+    // find one before the end of the buffer, the varint is incomplete.
+    let hasTerminator = false;
+    for (let i = off; i < buf.length; i++) {
+        if ((buf[i] & 0x80) === 0) { hasTerminator = true; break; }
+    }
+    if (!hasTerminator) {
+        return null;
+    }
+    try {
+        const value = varint.decode(buf, off);
+        return { value, bytes: varint.decode.bytes ?? 0 };
+    } catch {
+        return null;
+    }
+}
 
 // Types for encode/decode
 interface EncodePayload {
@@ -102,21 +130,28 @@ function decodeFrame(buf: Buffer): DecodeResult | null {
 
     let off = 1;
 
-    // payload length
-    if (off >= buf.length) {
+    // payload length (may be split across TCP segments -> null means "wait")
+    const lenVarint = tryDecodeVarint(buf, off);
+    if (!lenVarint) {
         return null;
     }
-    const payloadLen = varint.decode(buf, off);
-    off += varint.decode.bytes ?? 0;
+    const payloadLen = lenVarint.value;
+    off += lenVarint.bytes;
+
+    // Reject absurd/hostile frame sizes rather than buffering indefinitely.
+    if (payloadLen > MAX_PAYLOAD_LEN) {
+        throw new Error(`frame payload too large: ${payloadLen} bytes (max ${MAX_PAYLOAD_LEN})`);
+    }
 
     // message id
-    if (off >= buf.length) {
+    const idVarint = tryDecodeVarint(buf, off);
+    if (!idVarint) {
         return null;
     }
-    const msgId = varint.decode(buf, off);
-    off += varint.decode.bytes ?? 0;
+    const msgId = idVarint.value;
+    off += idVarint.bytes;
 
-    const frameLen = 1 + off - 1 + payloadLen;           // full frame size
+    const frameLen = off + payloadLen;                   // full frame size
     if (buf.length < frameLen) {
         return null;
     }

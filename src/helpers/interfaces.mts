@@ -9,6 +9,12 @@ export declare interface FileInfo {
     filename: string;
     filepath: string;
     url: string;
+    /**
+     * Expected playback duration (ms). When set, file deletion is scheduled
+     * TTL + this, so a clip longer than the base TTL isn't unlinked while the
+     * device is still streaming it.
+     */
+    playbackMs?: number;
 }
 
 export declare interface StreamInfo {
@@ -57,14 +63,6 @@ export declare interface ZoneChanged {
 }
 
 
-export declare interface DeviceZoneChangedCallback {
-    device: Device;
-    callback: (changed: ZoneChanged) => void;
-}
-
-
-
-
 export declare interface Zone {
     id: string;
     name: string;
@@ -86,13 +84,6 @@ export declare interface PaginatedDevices {
     devices: Device[];
     next_page_token: string | null;
 }
-
-export declare interface WavOptions {
-    sampleRate: number;
-    channels: number;
-    bitsPerSample: number;
-}
-
 
 export type PairDevice = {
     name: string;

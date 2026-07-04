@@ -5,19 +5,23 @@ import { DeviceManager } from './src/helpers/device-manager.mjs';
 import { ApiHelper } from './src/helpers/api-helper.mjs';
 import { GeoHelper } from './src/helpers/geo-helper.mjs';
 import { WeatherHelper } from './src/helpers/weather-helper.mjs';
+import { AppServices } from './src/helpers/app-services.mjs';
 import { settingsManager } from './src/settings/settings-manager.mjs';
 import { createLogger } from './src/helpers/logger.mjs';
 import homeyLogPkg from 'homey-log'; // requires "esModuleInterop": true in tsconfig
 const { Log } = homeyLogPkg;
 
 
-export default class AiVoiceAssistantApp extends Homey.App {
-  // Define class properties
-  private webServer: WebServer | undefined;
+export default class AiVoiceAssistantApp extends Homey.App implements AppServices {
+  // Shared services devices consume via getAppServices() — the AppServices
+  // contract keeps this producing side and the consuming side in sync at
+  // compile time. Assigned in onInit (hence `!`); devices init after the app.
+  public webServer!: WebServer;
+  public deviceManager!: DeviceManager;
+  public geoHelper!: GeoHelper;
+  public weatherHelper!: WeatherHelper;
+
   private apiHelper: ApiHelper | undefined;
-  private deviceManager: DeviceManager | undefined;
-  private geoHelper: GeoHelper | undefined;
-  private weatherHelper: WeatherHelper | undefined;
   private logger = createLogger('APP');
   private homeyLog: any;
 

@@ -1,5 +1,3 @@
-import { WavOptions } from './interfaces.mjs';
-
 // Import libflacjs (pure JavaScript FLAC encoder) - using createRequire for CommonJS modules
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
@@ -41,32 +39,6 @@ interface FlacOptions {
     verify?: boolean;
 }
 
-// Add RIFF/WAVE header to a PCM Buffer
-export function pcmToWavBuffer(pcmBuf: Buffer, { sampleRate, channels, bitsPerSample }: WavOptions): Buffer {
-    const dataSize = pcmBuf.length;
-    const blockAlign = (channels * bitsPerSample) >> 3;
-    const byteRate = sampleRate * blockAlign;
-    const header = Buffer.alloc(44);
-
-    header.write('RIFF', 0);
-    header.writeUInt32LE(36 + dataSize, 4);
-    header.write('WAVE', 8);
-    header.write('fmt ', 12);
-    header.writeUInt32LE(16, 16);                 // PCM fmt chunk size
-    header.writeUInt16LE(1, 20);                  // AudioFormat=PCM
-    header.writeUInt16LE(channels, 22);
-    header.writeUInt32LE(sampleRate, 24);
-    header.writeUInt32LE(byteRate, 28);
-    header.writeUInt16LE(blockAlign, 32);
-    header.writeUInt16LE(bitsPerSample, 34);
-    header.write('data', 36);
-    header.writeUInt32LE(dataSize, 40);
-
-    return Buffer.concat([header, pcmBuf]);
-}
-
-
-
 /**
  * Convert raw PCM → FLAC in memory using libflacjs.
  * @param {Buffer|TypedArray} pcmData
@@ -95,29 +67,29 @@ export async function pcmToFlacBuffer(pcmData: Buffer | Uint8Array,
     }
 
     return new Promise((resolve, reject) => {
+        // Declared outside the try so it can be released in `finally` — the
+        // libflacjs Encoder allocates a native (emscripten-heap) encoder plus a
+        // listener on the shared Flac singleton, both freed only by destroy().
+        let encoder: any = null;
         try {
             // Convert Buffer to appropriate format for libflacjs
             const buffer = Buffer.isBuffer(pcmData) ? pcmData : Buffer.from(pcmData.buffer, pcmData.byteOffset, pcmData.byteLength);
             
-            // Convert PCM data to Int32Array format expected by libflacjs
-            const samples = new Int32Array(buffer.length / (bitsPerSample / 8));
-            if (bitsPerSample === 16) {
-                // Convert 16-bit PCM to Int32Array
-                for (let i = 0; i < samples.length; i++) {
-                    samples[i] = buffer.readInt16LE(i * 2);
-                }
-            } else if (bitsPerSample === 8) {
-                // Convert 8-bit PCM to Int32Array
-                for (let i = 0; i < samples.length; i++) {
-                    samples[i] = buffer.readInt8(i) << 8; // Scale to 16-bit range
-                }
-            } else {
+            // Convert PCM data to the Int32Array format expected by libflacjs.
+            // Only 16-bit PCM is supported — the whole pipeline is s16le. (An
+            // earlier 8-bit branch scaled samples to 16-bit range while telling
+            // the encoder 8-bit; internally inconsistent and never used.)
+            if (bitsPerSample !== 16) {
                 reject(new Error(`Unsupported bits per sample: ${bitsPerSample}`));
                 return;
             }
+            const samples = new Int32Array(buffer.length / 2);
+            for (let i = 0; i < samples.length; i++) {
+                samples[i] = buffer.readInt16LE(i * 2);
+            }
 
             // Create encoder with configuration - Encoder needs Flac instance as first parameter
-            const encoder = new Encoder(Flac, {
+            encoder = new Encoder(Flac, {
                 sampleRate: sampleRate,
                 channels: channels,
                 bitsPerSample: bitsPerSample,
@@ -159,6 +131,16 @@ export async function pcmToFlacBuffer(pcmData: Buffer | Uint8Array,
 
         } catch (error) {
             reject(error);
+        } finally {
+            // Always release the native encoder + its Flac-singleton listener,
+            // whether encoding succeeded or threw. Guarded so a partially
+            // constructed encoder (or a destroy() that itself throws) can't mask
+            // the original result/error.
+            try {
+                encoder?.destroy();
+            } catch {
+                // ignore teardown errors
+            }
         }
     });
 }

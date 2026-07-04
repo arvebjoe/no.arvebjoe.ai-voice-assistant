@@ -22,6 +22,7 @@ export class Pcm16kTo24k {
     private resamplePrev: number | null = null;    // last source sample from previous chunk
     private resampleFrac = 0;                      // fractional source position [0, step)
     private txBuf = Buffer.alloc(0);               // accumulates 24 kHz bytes until full frames
+    private pendingOdd: Buffer | null = null;      // dangling byte of an int16 split across chunks
 
     // (optional) sanity counters
     private inTotal = 0;
@@ -44,10 +45,20 @@ export class Pcm16kTo24k {
 
     /** Push a chunk of 16 kHz PCM (s16le mono). Returns zero or more 24 kHz frames. */
     push(pcm16k: Buffer): Array<Buffer> {
-        if (!pcm16k || pcm16k.length < 2) return [];
+        if (!pcm16k || pcm16k.length === 0) return [];
 
-        // Ensure even number of bytes (int16). Drop last odd byte if any.
-        if (pcm16k.length & 1) pcm16k = pcm16k.subarray(0, pcm16k.length - 1);
+        // An int16 can be split across chunk boundaries: carry the dangling byte
+        // into the next push instead of dropping it (odd-length feeds must be
+        // invariant with even-length ones).
+        if (this.pendingOdd) {
+            pcm16k = Buffer.concat([this.pendingOdd, pcm16k]);
+            this.pendingOdd = null;
+        }
+        if (pcm16k.length & 1) {
+            this.pendingOdd = Buffer.from(pcm16k.subarray(pcm16k.length - 1));
+            pcm16k = pcm16k.subarray(0, pcm16k.length - 1);
+        }
+        if (pcm16k.length < 2) return [];
 
         const inSamples = pcm16k.length >>> 1;
         this.inTotal += inSamples;
@@ -150,6 +161,7 @@ export class Pcm16kTo24k {
         this.resamplePrev = null;
         this.resampleFrac = 0;
         this.txBuf = Buffer.alloc(0);
+        this.pendingOdd = null;
         this.inTotal = 0;
         this.outTotal = 0;
     }

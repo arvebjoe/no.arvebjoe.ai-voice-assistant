@@ -4,7 +4,9 @@ import { TypedEmitter } from "tiny-typed-emitter";
 import { createLogger } from '../../helpers/logger.mjs';
 import { ToolManager } from '../tool-manager.mjs';
 import { IVoiceProvider, VoiceProviderEvents, VoiceProviderOptions } from '../voice-provider.mjs';
-import { loadInstructionModule } from '../agent-instructions.mjs';
+import { InstructionState } from '../instruction-state.mjs';
+import { ReconnectPolicy } from '../reconnect-policy.mjs';
+import { isBlankOrHallucinatedTranscript } from '../transcript-hallucinations.mjs';
 
 /**
  * Event/option shapes now live in the provider-agnostic seam (`voice-provider.mts`).
@@ -34,7 +36,6 @@ type PendingToolCall = {
  * Input/Output Combinations:
  * - Audio -> Audio: Use sendAudioChunk() (default behavior, output mode auto-set to "audio")
  * - Text -> Audio: Use sendTextForAudioResponse(text) or setOutputMode("audio") + sendUserText() + createResponse()
- * - Audio -> Text: Use setAudioToTextMode() then sendAudioChunk() (output mode set to "text")
  * - Text -> Text: Use sendTextForTextResponse(text) or setOutputMode("text") + sendUserText() + createResponse()
  * 
  * Direct TTS (minimal AI processing):
@@ -93,8 +94,7 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
     private homey: any;
     private logger = createLogger('AGENT', true);
     private toolManager: ToolManager;
-    private instructions: string = '';
-    private instructionModule: any = null;
+    private instructionState = new InstructionState(this.logger);
 
     private options: Required<
         Pick<
@@ -115,14 +115,9 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
     // Ids of conversation items the server has, so we can clear context on a fresh session.
     private conversationItemIds: Set<string> = new Set();
 
-    // Reconnection logic properties
-    private reconnectAttempts = 0;
-    private maxReconnectAttempts = Infinity; // Keep trying indefinitely
-    private reconnectDelay = 1000; // Start with 1 second
-    private maxReconnectDelay = 30000; // Max 30 seconds between attempts
-    private reconnectTimeoutId?: NodeJS.Timeout;
+    // Reconnection campaign (shared backoff machinery — see ReconnectPolicy).
+    private reconnect: ReconnectPolicy;
     private isManuallyClosing = false;
-    private isReconnecting = false;
     private pingIntervalId?: NodeJS.Timeout;
     private lastPongTime = 0;
     private connectionHealthCheckInterval = 30000; // Check every 30 seconds
@@ -147,22 +142,25 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
             supportsTimers: opts.supportsTimers ?? false
         };
 
-        // Initialize instructions asynchronously
-        this.loadInstructionModule();
+        this.reconnect = new ReconnectPolicy(homey, {
+            connect: () => this.start(),
+            onScheduled: (attempt, delay) => this.emit("reconnecting", attempt, delay),
+            onAttemptFailed: (attempt, error) => this.emit("reconnectFailed", attempt, error),
+        }, this.logger);
+
+        // Kick off the instruction load; session.created awaits it before
+        // configuring the session (see ensureLoaded there).
+        void this.instructionState.reload(this.instructionParams());
     }
 
-    /**
-     * Load the appropriate instruction module based on language
-     */
-    private async loadInstructionModule() {
-        try {
-            this.instructionModule = await loadInstructionModule(this.options.languageCode);
-            this.instructions = this.instructionModule.getDefaultInstructions(this.options.languageName, this.options.additionalInstructions, this.options.supportsTimers);
-        } catch (error) {
-            this.logger.error('Failed to load instruction module:', error);
-            // Fallback to empty instructions
-            this.instructions = '';
-        }
+    /** The option fields the system prompt is built from. */
+    private instructionParams() {
+        return {
+            languageCode: this.options.languageCode,
+            languageName: this.options.languageName,
+            additionalInstructions: this.options.additionalInstructions,
+            supportsTimers: this.options.supportsTimers,
+        };
     }
 
 
@@ -171,6 +169,11 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
      * (voice, output format, STT language, server VAD, tools, instructions).
      */
     async start(): Promise<void> {
+
+        // A fresh start() re-enables auto-reconnect. Without this a previous
+        // close() (which sets isManuallyClosing) would leave every future drop
+        // un-reconnected. (Matches the Gemini provider.)
+        this.isManuallyClosing = false;
 
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
             return;
@@ -181,11 +184,8 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
             return;
         }
 
-        // Clear any existing reconnect timeout
-        if (this.reconnectTimeoutId) {
-            this.homey.clearTimeout(this.reconnectTimeoutId);
-            this.reconnectTimeoutId = undefined;
-        }
+        // A manual start() supersedes any scheduled reconnect attempt.
+        this.reconnect.clearTimer();
 
         this.logger.info("Connecting WS:", 'START', this.options.url);
 
@@ -198,19 +198,26 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
             });
 
             this.ws.on("open", () => {
+                const wasReconnect = this.reconnect.attemptCount > 0;
                 this.logger.info("WebSocket open");
-                this.reconnectAttempts = 0; // Reset reconnect attempts on successful connection
-                this.isReconnecting = false;
+                this.reconnect.reset(); // Successful connection ends the campaign
                 this.lastPongTime = Date.now();
 
                 this.startConnectionHealthCheck();
 
-                if (this.reconnectAttempts > 0) {
+                if (wasReconnect) {
                     this.emit("reconnected");
                 }
             });
 
-            this.ws.on("message", (data) => this.onMessage(data));
+            // onMessage is async and fire-and-forget — without this catch, any
+            // throw in a server-event handler becomes an unhandled rejection
+            // (fatal on modern Node).
+            this.ws.on("message", (data) => {
+                this.onMessage(data).catch((err) => {
+                    this.logger.error("Error handling server event", err);
+                });
+            });
 
             this.ws.on("error", (err) => {
                 this.logger.error("WebSocket error", err);
@@ -222,9 +229,13 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
                 this.stopConnectionHealthCheck();
                 this.emit("close", code, reason.toString());
 
-                // Only attempt reconnection if not manually closing
-                if (!this.isManuallyClosing && !this.isReconnecting) {
-                    this.scheduleReconnect();
+                // Reconnect on any unexpected close. schedule() coalesces onto a
+                // pending timer, so a *failed* reconnect attempt's own close event
+                // correctly schedules the next attempt (the C2 fix — start() never
+                // rejects on async connect failure, so this close event is the only
+                // signal that keeps the campaign alive).
+                if (!this.isManuallyClosing) {
+                    this.reconnect.schedule();
                 }
             });
 
@@ -239,7 +250,7 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
             this.emit("error", error as Error);
 
             if (!this.isManuallyClosing) {
-                this.scheduleReconnect();
+                this.reconnect.schedule();
             }
         }
     }
@@ -250,12 +261,7 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
     close(code = 1000, reason = "client-close") {
         this.isManuallyClosing = true;
         this.stopConnectionHealthCheck();
-
-        // Clear any pending reconnect attempts
-        if (this.reconnectTimeoutId) {
-            this.homey.clearTimeout(this.reconnectTimeoutId);
-            this.reconnectTimeoutId = undefined;
-        }
+        this.reconnect.reset();
 
         this.ws?.close(code, reason);
     }
@@ -280,13 +286,6 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
             }
         });
 
-    }
-
-    /**
-     * Get the current output mode.
-     */
-    getOutputMode(): "audio" | "text" {
-        return this.outputMode;
     }
 
     /**
@@ -347,15 +346,7 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
 
 
     /**
-     * Send audio chunk and expect text response (Audio -> Text).
-     * Call this method first to set text mode, then use sendAudioChunk() normally.
-     */
-    setAudioToTextMode() {
-        this.setOutputMode("text");
-    }
-
-    /**
-     * Direct text-to-speech endpoint call.      
+     * Direct text-to-speech endpoint call.
      * @param text - The text to convert to speech
      */
     async textToSpeech(text: string): Promise<Buffer> {
@@ -391,7 +382,14 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
             return;
         }
 
-        this.assertOpen();
+        // The device calls this unguarded per mic frame, so the seam contract is
+        // no-throw (Gemini already honors it). On a dead socket, kick the
+        // reconnect campaign and drop the frame instead of throwing into the
+        // ESP 'chunk' handler.
+        if (!this.isSocketOpen()) {
+            this.requestReconnect();
+            return;
+        }
 
         // Default to audio output when receiving audio input (unless explicitly set to text mode)
         if (this.outputMode !== "audio") {
@@ -461,7 +459,7 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
      */
     updateAllInstructions(instructions: string) {
         this.assertOpen();
-        this.instructions = instructions;
+        this.instructionState.overrideText(instructions);
         this.sendSessionUpdate();
     }
 
@@ -471,18 +469,21 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
 
     async updateAdditionalInstructions(newAdditionalInstructions: string | null): Promise<void> {
         this.options.additionalInstructions = newAdditionalInstructions;
-        await this.loadInstructionModule();
+        await this.instructionState.reload(this.instructionParams());
     }
 
     async updateLanguage(newLanguageCode: string, newLanguageName: string): Promise<void> {
         this.options.languageCode = newLanguageCode;
         this.options.languageName = newLanguageName;
-        await this.loadInstructionModule();
+        await this.instructionState.reload(this.instructionParams());
     }
 
     async updateZone(newDeviceZone: string): Promise<void> {
         this.options.deviceZone = newDeviceZone;
-        await this.loadInstructionModule();
+        // The tools query "the standard zone" (this device's zone) — keep the tool
+        // manager in sync so get_devices_in_standard_zone targets the new room.
+        this.toolManager.setStandardZone(newDeviceZone);
+        await this.instructionState.reload(this.instructionParams());
     }
 
     /**
@@ -496,7 +497,7 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
         }
         this.logger.info(`Timer support ${supportsTimers ? 'enabled' : 'disabled'}, rebuilding instructions`);
         this.options.supportsTimers = supportsTimers;
-        await this.loadInstructionModule();
+        await this.instructionState.reload(this.instructionParams());
         if (this.isConnected()) {
             this.sendSessionUpdate();
         }
@@ -550,7 +551,10 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
             /* ---------- Session & rate-limits ---------- */
 
             case "session.created":
-                //this.emit("session.created", msg);                
+                // Don't race the constructor's fire-and-forget instruction load —
+                // a session configured before it finishes would run on an empty
+                // system prompt (ensureLoaded also retries a failed load once).
+                await this.instructionState.ensureLoaded(this.instructionParams());
                 this.sendSessionUpdate();
                 break;
 
@@ -630,11 +634,11 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
 
             case "conversation.item.input_audio_transcription.completed": {
                 this.emit("transcript.done", msg.transcript);
-                // Skip when the STT heard nothing: an empty transcript (or the noise
-                // string the engine returns for silence) would otherwise make the model
+                // Skip when the STT heard nothing: an empty transcript (or a known
+                // silence-hallucination string) would otherwise make the model
                 // respond to nothing. Mirrors the empty-transcript guard in the device.
                 const transcript = (msg.transcript ?? "").trim();
-                if (transcript === "" || transcript.toLowerCase() === "undertekster av ai-media") {
+                if (isBlankOrHallucinatedTranscript(transcript)) {
                     break;
                 }
                 // Anchor the reply on the TRANSCRIPT, not the audio. The realtime model's
@@ -791,24 +795,25 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
         this.emit("tool.called", { callId, name: rec.name, args });
 
         try {
-            const output = await this.handleTool(callId, rec.name, args);
+            // Phase 1: run the tool locally (execute never throws — an unknown
+            // tool or a throwing handler comes back as a structured { error }).
+            const { output, failed: toolFailed } = await this.toolManager.execute(rec.name, args);
             this.emit("tool.completed", { callId, name: rec.name, result: output });
 
-            // Inject the function result into the conversation:
-            this.sendFunctionResult(callId, output, rec.itemId);
-
-            // Tell the model to continue and produce audio/text based on that result:
-            this.createResponse({
-                //instructions: getResponseInstructions(),
-            });
-
-        } catch (err: any) {
-            this.emit("tool.completed", { callId, name: rec.name, result: { error: String(err?.message ?? err) } });
-            // Even on error, feed a structured output back so the model can handle it gracefully:
-            this.sendFunctionResult(callId, { error: String(err?.message ?? err) }, rec.itemId);
-            this.createResponse({
-                instructions: this.instructionModule?.getErrorResponseInstructions?.() || "Explain what failed in plain language.",
-            });
+            // Phase 2: inject the result into the conversation (even a tool error is
+            // fed back structured so the model can explain it) and ask the model to
+            // continue. If the socket dropped mid-execution these sends throw — the
+            // turn is lost either way and assertOpen has already kicked the
+            // reconnect campaign, so log instead of rejecting out of the ws
+            // message handler.
+            try {
+                this.sendFunctionResult(callId, output, rec.itemId);
+                this.createResponse(toolFailed ? {
+                    instructions: this.instructionState.module?.getErrorResponseInstructions?.() || "Explain what failed in plain language.",
+                } : {});
+            } catch (sendErr: any) {
+                this.logger.error(`Could not send result of tool '${rec.name}' back to the model (socket closed?)`, sendErr);
+            }
         } finally {
             rec.executed = true;
             this.pendingToolCalls.set(callId, rec);
@@ -835,15 +840,6 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
         };
         if (previousItemId) evt.previous_item_id = previousItemId; // optional but nice for ordering
         this.send(evt);
-    }
-
-    private async handleTool(callId: string, name: string, args: any) {
-        const toolHandlers = this.toolManager.getToolHandlers();
-        const fn = toolHandlers[name];
-        if (!fn) {
-            return { error: `Unknown tool: ${name}` };
-        }
-        return await fn(args);
     }
 
     private sendSessionUpdate() {
@@ -895,7 +891,7 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
                         speed: 1.0
                     }
                 },
-                instructions: this.instructions,
+                instructions: this.instructionState.text,
                 tools,
             },
         };
@@ -918,12 +914,20 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
     }
 
     private assertOpen() {
-        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-            // If we're not manually closing and not already reconnecting, start reconnection
-            if (!this.isManuallyClosing && !this.isReconnecting) {
-                this.scheduleReconnect();
-            }
+        if (!this.isSocketOpen()) {
+            this.requestReconnect();
             throw new Error("WebSocket is not open - reconnection initiated");
+        }
+    }
+
+    private isSocketOpen(): boolean {
+        return !!this.ws && this.ws.readyState === WebSocket.OPEN;
+    }
+
+    /** Kick the reconnect campaign unless we're closing on purpose or one is already running. */
+    private requestReconnect() {
+        if (!this.isManuallyClosing && !this.reconnect.isActive) {
+            this.reconnect.schedule();
         }
     }
 
@@ -959,52 +963,6 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
 
 
 
-    /* ----------------- Reconnection logic ----------------- */
-
-    /**
-     * Schedule a reconnection attempt with exponential backoff
-     */
-    private scheduleReconnect() {
-        if (this.isManuallyClosing || this.reconnectTimeoutId) {
-            return; // Don't reconnect if manually closing, already scheduled, or auto-reconnect disabled
-        }
-
-        this.isReconnecting = true;
-        this.reconnectAttempts++;
-
-        // Calculate delay with exponential backoff and jitter
-        const baseDelay = Math.min(
-            this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1),
-            this.maxReconnectDelay
-        );
-
-        // Add jitter (±25%) to prevent thundering herd
-        const jitter = baseDelay * 0.25 * (Math.random() - 0.5);
-        const delay = Math.max(1000, baseDelay + jitter);
-
-        this.logger.info(`Scheduling reconnect attempt ${this.reconnectAttempts} in ${delay}ms`, 'RECONNECT');
-        this.emit("reconnecting", this.reconnectAttempts, delay);
-
-        this.reconnectTimeoutId = this.homey.setTimeout(async () => {
-            this.reconnectTimeoutId = undefined;
-
-            try {
-                await this.start();
-            } catch (error) {
-                this.logger.info(`Reconnect attempt ${this.reconnectAttempts} failed:`, 'RECONNECT', error);
-                this.emit("reconnectFailed", this.reconnectAttempts, error as Error);
-
-                // If we haven't exceeded max attempts, schedule another reconnect
-                if (this.reconnectAttempts < this.maxReconnectAttempts) {
-                    this.scheduleReconnect();
-                } else {
-                    this.logger.info("Max reconnect attempts reached", 'RECONNECT');
-                    this.isReconnecting = false;
-                }
-            }
-        }, delay);
-    }
-
     /**
      * Start monitoring connection health with periodic pings
      */
@@ -1021,8 +979,10 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
                     this.logger.info("Connection appears unhealthy - no pong received", 'HEALTH');
                     this.emit("Unhealthy");
 
-                    // Force reconnection
-                    this.ws.close(1006, "connection-health-check-failed");
+                    // Force reconnection. Code 1006 is reserved and makes ws throw,
+                    // so use an application-defined code (4000-4999) and never let a
+                    // close() throw escape this interval callback (it would crash the app).
+                    this.safeCloseSocket(4000, "connection-health-check-failed");
                 } else {
                     // Send ping to check connection
                     try {
@@ -1030,11 +990,23 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
                         this.ws.ping();
                     } catch (error) {
                         this.logger.info("Failed to send ping:", 'HEALTH', error);
-                        this.ws.close(1006, "ping-failed");
+                        this.safeCloseSocket(4000, "ping-failed");
                     }
                 }
             }
         }, this.connectionHealthCheckInterval);
+    }
+
+    /**
+     * Close the socket without ever throwing out of the caller. Used from the
+     * health-check interval, where an uncaught throw would take down the app.
+     */
+    private safeCloseSocket(code: number, reason: string) {
+        try {
+            this.ws?.close(code, reason);
+        } catch (error) {
+            this.logger.info("Failed to close socket:", 'HEALTH', error);
+        }
     }
 
     /**
@@ -1045,20 +1017,6 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
             this.homey.clearInterval(this.pingIntervalId);
             this.pingIntervalId = undefined;
         }
-    }
-
-    /**
-     * Get current connection status and statistics
-     */
-    public getConnectionStatus() {
-        return {
-            connected: this.ws?.readyState === WebSocket.OPEN,
-            reconnectAttempts: this.reconnectAttempts,
-            isReconnecting: this.isReconnecting,
-            isManuallyClosing: this.isManuallyClosing,
-            lastPongTime: this.lastPongTime,
-            timeSinceLastPong: this.lastPongTime > 0 ? Date.now() - this.lastPongTime : -1,
-        };
     }
 
     public isConnected(): boolean {
@@ -1074,24 +1032,6 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
     }
 
     /**
-     * Force a reconnection (useful for testing or manual recovery)
-     */
-    public async forceReconnect() {
-        if (this.isManuallyClosing) {
-            throw new Error("Cannot force reconnect while manually closing");
-        }
-
-        this.logger.info("Forcing reconnection");
-        this.reconnectAttempts = 0; // Reset attempts for forced reconnect
-
-        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-            this.ws.close(1000, "force-reconnect");
-        } else {
-            await this.start();
-        }
-    }
-
-    /**
      * Completely destroy the agent and clean up all resources
      */
     public destroy() {
@@ -1100,10 +1040,7 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
 
         // Clear all timers
         this.stopConnectionHealthCheck();
-        if (this.reconnectTimeoutId) {
-            this.homey.clearTimeout(this.reconnectTimeoutId);
-            this.reconnectTimeoutId = undefined;
-        }
+        this.reconnect.reset();
 
         // Close WebSocket
         if (this.ws) {

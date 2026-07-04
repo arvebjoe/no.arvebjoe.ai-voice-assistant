@@ -116,6 +116,11 @@ export class TimerManager extends (EventEmitter as new () => TypedEmitter<TimerM
     if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) {
       return { ok: false, code: 'INVALID_DURATION', message: 'Timer duration must be a positive number of seconds.' };
     }
+    // setTimeout uses a signed 32-bit delay in ms; anything larger silently clamps
+    // to 1 ms and "finishes" instantly. Cap at the largest representable delay.
+    if (durationSeconds * 1000 > 2_147_483_647) {
+      return { ok: false, code: 'INVALID_DURATION', message: 'Timer duration is too long (max ~24 days).' };
+    }
 
     if (this.timer) {
       // A finished timer is just leftover (its ring may still be sounding). It's

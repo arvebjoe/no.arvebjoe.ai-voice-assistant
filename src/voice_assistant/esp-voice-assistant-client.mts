@@ -63,10 +63,17 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
   private healthCheckTimer: NodeJS.Timeout | null;
   private readonly PING_TIMEOUT: number;
   private readonly HEALTH_CHECK_INTERVAL: number;
+  private readonly MAX_RX_BUFFER: number;
   private mediaPlayersCount: number;
   private subscribeVoiceAssistantCount: number;
   private voiceAssistantConfigurationCount: number;
   private discoveryMode: boolean;
+  // Immutable: was this client created purely to probe a device during pairing?
+  // Unlike `discoveryMode` (which is flipped to false once the device type is
+  // sniffed), this stays true for the connection's whole life, so we know never
+  // to grab the device's voice-assistant subscription (which would steal it from
+  // the real, in-use connection of an already-paired satellite).
+  private readonly isDiscoveryProbe: boolean;
   // Whether the device advertised the TIMERS voice-assistant feature flag
   // (DeviceInfoResponse.voice_assistant_feature_flags & 8). Used to gate the
   // timer feature; the PE sets it.
@@ -105,6 +112,7 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
     this.host = host;
     this.apiPort = apiPort;
     this.discoveryMode = discoveryMode;
+    this.isDiscoveryProbe = discoveryMode;
     // Opt-in via the option or the ESP_LOG_LEVEL env var (e.g. ESP_LOG_LEVEL=DEBUG).
     this.logLevel = resolveLogLevel(logLevel ?? process.env.ESP_LOG_LEVEL);
     // Discovery probes are one-shot; never reconnect them.
@@ -121,6 +129,9 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
     this.healthCheckTimer = null;
     this.PING_TIMEOUT = 120_000;
     this.HEALTH_CHECK_INTERVAL = 55_000;
+    // Well above any legitimate ESPHome frame; a stream that exceeds this without
+    // yielding a decodable frame is treated as corrupt.
+    this.MAX_RX_BUFFER = 2 * 1_048_576; // 2 MiB
     this.mediaPlayersCount = 0;
     this.subscribeVoiceAssistantCount = 0;
     this.voiceAssistantConfigurationCount = 0;
@@ -146,6 +157,11 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
       try { this.tcp.destroy(); } catch { }
       this.tcp = null;
     }
+
+    // Discard any partial frame left over from a previous connection. A stale
+    // half-frame would otherwise be prepended to the new session's bytes and
+    // desync the parser so no frame ever decodes again.
+    this.rxBuf = Buffer.alloc(0);
 
     this.logger.info(`Connecting to ${this.host}:${this.apiPort}`);
     this.tcp = net.createConnection(this.apiPort, this.host, () => this.onConnect());
@@ -200,6 +216,10 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
   async onConnect(): Promise<void> {
     this.logger.info(`Connected to ${this.host}:${this.apiPort}`);
     this.reconnectAttempt = 0;
+    // Seed the health-check clock so a connection that TCP-connects but never
+    // sends a frame (hung/half-open peer) is still detected as timed-out. The
+    // check requires lastMessageReceivedTime > 0.
+    this.lastMessageReceivedTime = Date.now();
     this.startHealthCheck();
 
     this.send('HelloRequest',
@@ -320,14 +340,41 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
   async onTcpData(data: Buffer): Promise<void> {
     this.rxBuf = Buffer.concat([this.rxBuf, data]);
 
+    // Guard against a hostile/desynced peer buffering unboundedly: if we have
+    // accumulated far more than any legitimate frame without decoding one, the
+    // stream is corrupt — drop the connection and let reconnect resync.
+    if (this.rxBuf.length > this.MAX_RX_BUFFER) {
+      this.logger.warn('RX buffer exceeded limit, resetting connection', { bytes: this.rxBuf.length });
+      this.rxBuf = Buffer.alloc(0);
+      this.handleDisconnect();
+      return;
+    }
+
     while (true) {
-      const frame = decodeFrame(this.rxBuf);
+      let frame: ReturnType<typeof decodeFrame>;
+      try {
+        frame = decodeFrame(this.rxBuf);
+      } catch (err) {
+        // Malformed frame (bad protobuf body, oversized payload, …). Without this
+        // guard the throw would leave rxBuf un-advanced and every subsequent
+        // packet would re-throw on the same bytes, wedging the pipeline forever.
+        this.logger.error('Failed to decode frame, resetting connection', err);
+        this.rxBuf = Buffer.alloc(0);
+        this.handleDisconnect();
+        return;
+      }
 
       if (!frame) {
         break;
       }
 
-      if (this.discoveryMode && !this.deviceType && frame.message) {
+      // Identity sniff: ONLY the two identity-bearing messages count (S6). The
+      // device name is in HelloResponse (serverInfo/name); manufacturer/model/
+      // project/friendly name are in DeviceInfoResponse — both arrive during a
+      // probe. Matching every frame let any string field anywhere (an entity
+      // named "xiaozhi", a log line) "validate" a device's identity.
+      if (this.discoveryMode && !this.deviceType && frame.message
+        && (frame.name === 'HelloResponse' || frame.name === 'DeviceInfoResponse')) {
         const rawMessage = JSON.stringify(frame.message).toLocaleLowerCase();
         // Factory PE firmware reports "Nabu Casa" / "Home Assistant Voice PE".
         // Self-compiled firmware from the stock home-assistant-voice.yaml has no
@@ -337,7 +384,15 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
         if (rawMessage.includes('nabu casa')
           || rawMessage.includes('nabucasa')
           || rawMessage.includes('home assistant voice')
-          || rawMessage.includes('home-assistant-voice')) {
+          || rawMessage.includes('home-assistant-voice')
+          // POC (branch ThirdReality): treat the ThirdReality Voice & Music
+          // Assistant as a PE so it pairs through the existing PE driver.
+          // Its DeviceInfoResponse reports manufacturer "ThirdReality" /
+          // project "ThirdReality.Linux Voice Assistant (C++)"; HelloResponse
+          // name is "3RSPK…". Real support = its own deviceType + driver
+          // (see docs/thirdreality-voice-and-music/README.md).
+          || rawMessage.includes('thirdreality')
+          || rawMessage.includes('3rspk')) {
           this.deviceType = 'pe';
           this.discoveryMode = false;
         } else if (rawMessage.includes('xiaozhi')) {
@@ -448,16 +503,23 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
 
     else if (name === 'ListEntitiesDoneResponse') {
 
-      const subscribe = {
-        subscribe: true,
-        flags: 1    // 1 = API (TCP)
-      };
+      // A discovery probe must NOT subscribe: ESPHome tracks a single voice-assistant
+      // API subscriber, so subscribing here would re-bind an already-paired device's
+      // voice pipeline to this short-lived probe connection and break the real one
+      // until it reconnects. Identification only needs DeviceInfo + VA config (below),
+      // which drive the counts the pairing capability check reads.
+      if (!this.isDiscoveryProbe) {
+        const subscribe = {
+          subscribe: true,
+          flags: 1    // 1 = API (TCP)
+        };
 
-      this.send('SubscribeVoiceAssistantRequest', subscribe);
+        this.send('SubscribeVoiceAssistantRequest', subscribe);
 
-      // Subscribe to all entity state updates (standard ESPHome flow)
-      // This delivers MediaPlayerStateResponse, SwitchStateResponse, NumberStateResponse, etc.
-      this.send('SubscribeStatesRequest', {});
+        // Subscribe to all entity state updates (standard ESPHome flow)
+        // This delivers MediaPlayerStateResponse, SwitchStateResponse, NumberStateResponse, etc.
+        this.send('SubscribeStatesRequest', {});
+      }
 
       this.homey.setTimeout(() => {
         if (this.connected) {

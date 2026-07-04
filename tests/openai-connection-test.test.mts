@@ -20,7 +20,11 @@ if (fs.existsSync(envPath)) {
   }
 }
 
-describe('Quick OpenAI Connection Test', () => {
+// Real-API integration suite: skipped (reported as skipped, not vacuously passed)
+// unless a real OPENAI_API_KEY is present in env.json.
+const hasValidApiKey = typeof envConfig.OPENAI_API_KEY === 'string' && envConfig.OPENAI_API_KEY.length > 0;
+
+describe.skipIf(!hasValidApiKey)('Quick OpenAI Connection Test', () => {
   let mockHomey: MockHomey;
   let mockDeviceManager: MockDeviceManager;
   let mockGeoHelper: MockGeoHelper;
@@ -43,11 +47,6 @@ describe('Quick OpenAI Connection Test', () => {
   });
 
   it('should check API key and create agent', () => {
-    if (testApiKey === 'test-api-key') {
-      console.log('⚠️ Skipping - no valid API key (set OPENAI_API_KEY in env.json to run this integration test)');
-      return;
-    }
-
     console.log('🔑 API Key available:', testApiKey ? 'YES' : 'NO');
     console.log('🔑 API Key length:', testApiKey ? testApiKey.length : 0);
     console.log('🔑 API Key starts with sk-:', testApiKey ? testApiKey.startsWith('sk-') : false);
@@ -69,11 +68,6 @@ describe('Quick OpenAI Connection Test', () => {
   });
 
   it('should attempt to connect to OpenAI', async () => {
-    if (testApiKey === 'test-api-key') {
-      console.log('⚠️ Skipping - no valid API key');
-      return;
-    }
-
     const agent = new OpenAIRealtimeAgent(mockHomey, toolManager, {
       apiKey: testApiKey,
       voice: 'alloy',
@@ -91,7 +85,7 @@ describe('Quick OpenAI Connection Test', () => {
 
       let connected = false;
 
-      agent.on('connected', () => {
+      agent.on('open', () => {
         console.log('✅ Successfully connected to OpenAI!');
         connected = true;
         clearTimeout(timeout);

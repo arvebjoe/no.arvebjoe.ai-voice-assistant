@@ -56,6 +56,15 @@ describe('TimerManager', () => {
         expect(tm.hasActiveTimer()).toBe(false);
     });
 
+    it('rejects a duration that would overflow the 32-bit setTimeout delay', () => {
+        // > ~24.8 days in seconds. Without the guard, setTimeout clamps to 1 ms
+        // and the timer "finishes" instantly.
+        const res = tm.startTimer(3_000_000);
+        expect(res.ok).toBe(false);
+        if (!res.ok) expect(res.code).toBe('INVALID_DURATION');
+        expect(tm.hasActiveTimer()).toBe(false);
+    });
+
     it('refuses a second timer with TIMER_ALREADY_ACTIVE and surfaces the running one', () => {
         tm.startTimer(600, 'first');
         const res = tm.startTimer(300, 'second');

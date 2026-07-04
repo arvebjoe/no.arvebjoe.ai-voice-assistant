@@ -66,6 +66,29 @@
       margin-top: 5px;
       font-style: italic;
     }
+
+    /* API-key fields: password input with a show/hide toggle riding its right edge. */
+    .secret-wrap {
+      position: relative;
+    }
+
+    .secret-wrap .homey-form-input {
+      padding-right: 58px;
+    }
+
+    .secret-toggle {
+      position: absolute;
+      top: 50%;
+      right: 8px;
+      transform: translateY(-50%);
+      border: 0;
+      background: none;
+      color: #6c757d;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      padding: 4px 6px;
+    }
   </style>
 </head>
 
@@ -79,15 +102,22 @@
   <fieldset class="homey-form-fieldset">
     <div class="homey-form-group">
       <label class="homey-form-label" for="openai_api_key">Open AI APIKEY</label>
-      <textarea class="homey-form-input" id="openai_api_key" rows="5"
-        placeholder="Enter your OpenAI API key here..."></textarea>
+      <!-- Masked (S6): keys were previously shown in a cleartext textarea. -->
+      <div class="secret-wrap">
+        <input type="password" class="homey-form-input" id="openai_api_key" autocomplete="off"
+          placeholder="Enter your OpenAI API key here..." />
+        <button type="button" class="secret-toggle" data-for="openai_api_key">Show</button>
+      </div>
       <div class="help-text">Visit https://platform.openai.com to get one</div>
     </div>
 
     <div class="homey-form-group">
       <label class="homey-form-label" for="gemini_api_key">Google Gemini API key</label>
-      <textarea class="homey-form-input" id="gemini_api_key" rows="5"
-        placeholder="Enter your Google Gemini API key here..."></textarea>
+      <div class="secret-wrap">
+        <input type="password" class="homey-form-input" id="gemini_api_key" autocomplete="off"
+          placeholder="Enter your Google Gemini API key here..." />
+        <button type="button" class="secret-toggle" data-for="gemini_api_key">Show</button>
+      </div>
       <div class="help-text">Visit https://aistudio.google.com/apikey to get one (only needed for the Gemini provider)</div>
     </div>
 
@@ -150,12 +180,22 @@
 
       Homey.get("openai_api_key", function (err, apiKey) {
         if (err) return Homey.alert(err);
-        apiKeyElement.value = apiKey;
+        if (apiKey) apiKeyElement.value = apiKey;
       });
 
       Homey.get("gemini_api_key", function (err, apiKey) {
         if (err) return Homey.alert(err);
         if (apiKey) geminiApiKeyElement.value = apiKey;
+      });
+
+      // Show/hide toggles for the masked API-key inputs.
+      document.querySelectorAll(".secret-toggle").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          var input = document.getElementById(btn.getAttribute("data-for"));
+          var reveal = input.type === "password";
+          input.type = reveal ? "text" : "password";
+          btn.textContent = reveal ? "Hide" : "Show";
+        });
       });
 
       // Fill the voice dropdown with the voices the given provider offers.
@@ -210,12 +250,12 @@
       });
 
       saveElement.addEventListener("click", function (e) {
-        Homey.set("openai_api_key", apiKeyElement.value, function (err) {
+        Homey.set("openai_api_key", apiKeyElement.value.trim(), function (err) {
           if (err) return Homey.alert(err);
         });
 
         // Save Gemini API key
-        Homey.set("gemini_api_key", geminiApiKeyElement.value, function (err) {
+        Homey.set("gemini_api_key", geminiApiKeyElement.value.trim(), function (err) {
           if (err) return Homey.alert(err);
         });
 
