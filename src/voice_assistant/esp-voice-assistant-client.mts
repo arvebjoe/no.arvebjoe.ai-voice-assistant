@@ -384,7 +384,15 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
         if (rawMessage.includes('nabu casa')
           || rawMessage.includes('nabucasa')
           || rawMessage.includes('home assistant voice')
-          || rawMessage.includes('home-assistant-voice')) {
+          || rawMessage.includes('home-assistant-voice')
+          // POC (branch ThirdReality): treat the ThirdReality Voice & Music
+          // Assistant as a PE so it pairs through the existing PE driver.
+          // Its DeviceInfoResponse reports manufacturer "ThirdReality" /
+          // project "ThirdReality.Linux Voice Assistant (C++)"; HelloResponse
+          // name is "3RSPK…". Real support = its own deviceType + driver
+          // (see docs/thirdreality-voice-and-music/README.md).
+          || rawMessage.includes('thirdreality')
+          || rawMessage.includes('3rspk')) {
           this.deviceType = 'pe';
           this.discoveryMode = false;
         } else if (rawMessage.includes('xiaozhi')) {
