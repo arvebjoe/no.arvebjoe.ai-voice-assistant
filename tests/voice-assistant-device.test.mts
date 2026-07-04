@@ -25,24 +25,24 @@ describe('VoiceAssistantDevice (harness)', () => {
         it('resets turn state when the ESP connection drops mid-turn', async () => {
             const h = await createHarness();
             startTurn(h);
-            expect((h.device as any).isSteamingMic).toBe(true);
+            expect((h.device as any).turn.isListening).toBe(true);
 
             // Simulate the ESP link dropping while the mic is open.
             h.esp.emit('Unhealthy');
 
-            expect((h.device as any).isSteamingMic).toBe(false);
+            expect((h.device as any).turn.isListening).toBe(false);
             // The device told itself/the tile the turn is over.
-            expect((h.device as any).isPlaying).toBe(false);
+            expect((h.device as any).audioOutput.isPlaying).toBe(false);
         });
 
         it('resets turn state when the agent websocket closes mid-turn', async () => {
             const h = await createHarness();
             startTurn(h);
-            expect((h.device as any).isSteamingMic).toBe(true);
+            expect((h.device as any).turn.isListening).toBe(true);
 
             h.provider.emit('close');
 
-            expect((h.device as any).isSteamingMic).toBe(false);
+            expect((h.device as any).turn.isListening).toBe(false);
         });
 
         it('accepts a new wake after a mid-turn drop (no permanent wake-death)', async () => {
@@ -55,7 +55,7 @@ describe('VoiceAssistantDevice (harness)', () => {
 
             // The second wake was NOT swallowed by the duplicate-wake guard.
             expect(h.esp.countOf('run_start')).toBe(runStartsBefore + 1);
-            expect((h.device as any).isSteamingMic).toBe(true);
+            expect((h.device as any).turn.isListening).toBe(true);
         });
 
         it('ignores a duplicate wake while already streaming (guard still works)', async () => {
@@ -105,7 +105,7 @@ describe('VoiceAssistantDevice (harness)', () => {
             // Segment 1 takes 30 ms to "build", segment 2 is instant. Without
             // serialization, segment 2 would win the race and play first.
             const h = await createHarness({ buildStreamDelayByFirstByte: { 1: 30, 2: 0 } });
-            const seg = (h.device as any).segmenter;
+            const seg = (h.device as any).audioOutput.segmenter;
 
             seg.emit('chunk', chunk(1));
             seg.emit('chunk', chunk(2));
@@ -116,12 +116,12 @@ describe('VoiceAssistantDevice (harness)', () => {
             // First segment plays; second is queued behind it (announce queue).
             expect(plays).toHaveLength(1);
             expect(plays[0].args[0]).toBe('http://x/1');
-            expect((h.device as any).announceUrls).toHaveLength(1);
+            expect((h.device as any).audioOutput.queue).toHaveLength(1);
         });
 
         it('plays the queued next segment on announce_finished, in order', async () => {
             const h = await createHarness({ buildStreamDelayByFirstByte: { 1: 30, 2: 0 } });
-            const seg = (h.device as any).segmenter;
+            const seg = (h.device as any).audioOutput.segmenter;
 
             seg.emit('chunk', chunk(1));
             seg.emit('chunk', chunk(2));
@@ -138,7 +138,7 @@ describe('VoiceAssistantDevice (harness)', () => {
         it('M9 — extends the announce file TTL by the segment playback length', async () => {
             const h = await createHarness();
             const timeoutSpy = vi.spyOn(h.homey, 'setTimeout');
-            const seg = (h.device as any).segmenter;
+            const seg = (h.device as any).audioOutput.segmenter;
 
             // 4800 bytes of PCM16 mono 24 kHz = 100 ms of audio. The deletion
             // timer must be base TTL (30 000 ms) + 100 ms, not the bare TTL.
@@ -149,6 +149,122 @@ describe('VoiceAssistantDevice (harness)', () => {
             expect(ttlCalls).toHaveLength(1);
             expect(ttlCalls[0][1]).toBe(30_100);
             timeoutSpy.mockRestore();
+        });
+    });
+
+    describe('conversation flow — announce reopen and in-band reply', () => {
+        /**
+         * Drive one full announce-path turn whose reply ends in a question:
+         * wake -> silence -> user transcript -> reply audio segment -> response.done
+         * -> announce_finished. Leaves the device in a PE start_conversation session
+         * (mic reopened, next turn replies in-band).
+         */
+        async function runAnnounceTurnEndingInQuestion(h: Harness) {
+            h.esp.emit('starting');
+            h.provider.emit('silence', 'server');
+            h.provider.emit('transcript.done', 'hvordan er været?');
+            h.provider.emit('transcript.delta', 'Det er fint. Vil du høre mer?');
+            const seg = (h.device as any).audioOutput.segmenter;
+            seg.emit('chunk', Buffer.from([3, 0, 0, 0]));
+            await h.settle(10);
+            h.provider.emit('response.done'); // "?" -> continue the conversation
+            await h.settle(10);
+            h.esp.emit('announce_finished');  // queue empty -> end of playback
+            await h.settle(10);               // reopen fires on a 1 ms timeout
+        }
+
+        it('a reply ending in "?" ends the announce turn and reopens the mic', async () => {
+            const h = await createHarness();
+            await runAnnounceTurnEndingInQuestion(h);
+
+            // The reply segment played on the announce path (intent_end -> tts_start -> play).
+            expect(h.esp.countOf('playAudioFromUrl')).toBe(1);
+            expect(h.esp.countOf('tts_end')).toBe(1);
+            expect(h.esp.countOf('run_end')).toBe(1);
+            // The question reopened the mic (start_conversation session begins).
+            expect(h.esp.countOf('send_voice_assistant_request')).toBe(1);
+            expect((h.device as any).turn.peConversationActive).toBe(true);
+        });
+
+        it('a follow-up turn delivers its reply in-band on TTS_END and closes the session', async () => {
+            const h = await createHarness();
+            await runAnnounceTurnEndingInQuestion(h);
+            const playsBefore = h.esp.countOf('playAudioFromUrl');
+
+            // Follow-up turn (the reopen the PE answered with a new 'starting').
+            h.esp.emit('starting');
+            h.provider.emit('silence', 'server');
+            h.provider.emit('transcript.done', 'ja takk');
+            h.provider.emit('transcript.delta', 'Her er mer info.'); // no "?" -> close
+            const seg = (h.device as any).audioOutput.segmenter;
+            seg.emit('chunk', Buffer.alloc(4800, 7));
+            await h.settle(5);
+            // In-band: the segment is accumulated, NOT played as an announce.
+            expect(h.esp.countOf('playAudioFromUrl')).toBe(playsBefore);
+
+            h.provider.emit('response.done'); // flush -> segmenter 'done' -> in-band delivery
+            await h.settle(20);
+
+            // INTENT_END tells the PE not to reopen (reply is not a question).
+            const intentEnds = h.esp.calls.filter(c => c.method === 'intent_end');
+            expect(intentEnds[intentEnds.length - 1].args[1]).toBe(false);
+            // TTS_START carries the reply text (firmware discards a text-less one).
+            const ttsStarts = h.esp.calls.filter(c => c.method === 'tts_start');
+            expect(ttsStarts[ttsStarts.length - 1].args[0]).toBe('Her er mer info.');
+            // TTS_END carries the reply file URL (the in-band delivery mechanism).
+            const ttsEnds = h.esp.calls.filter(c => c.method === 'tts_end');
+            expect(ttsEnds[ttsEnds.length - 1].args[0]).toMatch(/^http:\/\/x\//);
+            expect(h.esp.countOf('run_end')).toBe(2);
+            // Final reply -> the PE goes idle after playback; session over.
+            expect((h.device as any).turn.peConversationActive).toBe(false);
+        });
+
+        it('a follow-up reply ending in "?" keeps the session open', async () => {
+            const h = await createHarness();
+            await runAnnounceTurnEndingInQuestion(h);
+
+            h.esp.emit('starting');
+            h.provider.emit('silence', 'server');
+            h.provider.emit('transcript.done', 'ja');
+            h.provider.emit('transcript.delta', 'Neste spørsmål: hva er 2+2?');
+            const seg = (h.device as any).audioOutput.segmenter;
+            seg.emit('chunk', Buffer.alloc(4800, 9));
+            await h.settle(5);
+            h.provider.emit('response.done');
+            await h.settle(20);
+
+            const intentEnds = h.esp.calls.filter(c => c.method === 'intent_end');
+            expect(intentEnds[intentEnds.length - 1].args[1]).toBe(true); // keep open
+            expect((h.device as any).turn.peConversationActive).toBe(true);
+        });
+
+        it('an empty transcript right after a follow-up mic-open retries the mic (spurious VAD trip)', async () => {
+            const h = await createHarness();
+            await runAnnounceTurnEndingInQuestion(h);
+            const reopensBefore = h.esp.countOf('send_voice_assistant_request');
+
+            // Follow-up turn hears "nothing" almost immediately (TTS echo tripped VAD).
+            h.esp.emit('starting');
+            h.provider.emit('silence', 'server');
+            h.provider.emit('transcript.done', '');
+            await h.settle(10);
+
+            // The turn was retried (mic reopened), not treated as the user leaving.
+            expect(h.esp.countOf('send_voice_assistant_request')).toBe(reopensBefore + 1);
+            expect((h.device as any).turn.peConversationActive).toBe(true);
+            expect((h.device as any).turn.emptyTurnRetries).toBe(1);
+        });
+
+        it('an empty transcript on a plain wake turn ends the run without a retry', async () => {
+            const h = await createHarness();
+            h.esp.emit('starting');
+            h.provider.emit('silence', 'server');
+            h.provider.emit('transcript.done', '');
+            await h.settle(10);
+
+            expect(h.esp.countOf('send_voice_assistant_request')).toBe(0);
+            expect(h.esp.countOf('run_end')).toBe(1);
+            expect((h.device as any).turn.peConversationActive).toBe(false);
         });
     });
 

@@ -468,6 +468,38 @@ semantics pinned by the existing provider tests, all passing unchanged in substa
 
 Build clean; full suite green (256 passing, 15 skipped).
 
+## Fixes applied (session 20 — Org 1: TurnStateMachine + AudioOutputPipeline)
+
+The last open finding. Before touching the device, the riskiest flows were PINNED with six new
+harness tests against the OLD code (announce turn-end → reopen; in-band follow-up delivery with
+keepOpen true/false; spurious empty-turn retry; plain-wake empty turn) — all six pass unchanged
+against the new code, alongside the existing C1/H-l/M9 harness tests.
+
+- **`TurnStateMachine` (`src/homey/turn-state-machine.mts`)** — every turn/session flag and
+  temporal value moved out of the device (~17 fields: isSteamingMic, hasIntent,
+  continueConversation, peConversationActive, replyViaTtsUrl, turnStartedAt, lastTurnEndedAt,
+  emptyTurnRetries, replyText/lastReplyText, skip accounting, the three tuning constants).
+  Named states idle/listening/thinking/speaking; the device's handlers call one decision method
+  per event (startTurn, consumeMicChunk, micClosed, transcriptDone, responseDone,
+  finishAnnouncePlayback, beginInbandDelivery/finishInbandDelivery) and act on the result.
+  `abort()` is THE single reset — the forgot-a-flag class of bug (C1) is structurally gone.
+  Pure logic, injectable clock, 21 unit tests.
+- **`AudioOutputPipeline` (`src/homey/audio-output-pipeline.mts`)** — segmenter + FLAC encode +
+  LAN serve + file TTLs (M2/M9) + the H-l FIFO chain + generation counter + announce queue +
+  in-band PCM accumulation. Emits 'segment' (play/queued, strict FIFO) and 'reply-done'; the
+  device keeps all ESP protocol sequencing. 11 unit tests.
+- **`voice-assistant-device.mts`: 1239 → 1066 lines**, no turn flags left; handlers are
+  protocol-sequencing only.
+- Two deliberate (small) hardenings beyond strict preservation: the segment generation is
+  re-checked after the encode awaits (an abort mid-encode now drops the segment instead of
+  racing it into the dead turn's queue), and `abort()` clears the accumulated replyText (a
+  dead turn's partial reply can no longer prepend itself to the next turn's response.done).
+  Known timing shift: on the announce path INTENT_END/TTS_START now go out a few ms later
+  (after buildStream rather than between encode and serve) — watch for this on hardware.
+- **Hardware-verified on the real PE** (Arve, 2026-07-05): works perfectly.
+
+Build clean; full suite green (293 passing, 15 skipped).
+
 ---
 
 ## Findings checklist
@@ -514,7 +546,7 @@ Ticked = fix verified against the code on `code-review-1` (not just claimed in a
 - [x] **S6** language-code import whitelist (session 15)
 - [x] **S6 (rest)** API keys masked (`type="password"` + Show/Hide, trim on save) (session 16)
 - [x] **S6 (rest)** ESP identity sniff narrowed to HelloResponse/DeviceInfoResponse (session 16) — substring match itself stays: it's the only identity a plaintext API offers; verify pairing on hardware
-- [ ] **Org 1** TurnStateMachine + AudioOutputPipeline extraction — future refactor
+- [x] **Org 1** TurnStateMachine + AudioOutputPipeline extraction (session 20) — flows pinned by harness tests before the refactor; verified on the real PE
 - [x] **Org 2** shared ReconnectPolicy / ToolManager.execute() / InstructionState (session 19) — providers keep only transport-specific code; instruction load now awaited before session config
 - [x] **Org 3** DeviceManager MAC→callback subscriptions, device resolved fresh per event (session 18) — fixed the register-before-fetch silent no-subscribe and the stale `zones`-hierarchy query bug along the way
 - [x] **Org:** typed accessor for `(this.homey as any).app.*` reaches — `AppServices` + `getAppServices()` (session 17)
