@@ -20,7 +20,6 @@ import { TypedEmitter } from "tiny-typed-emitter";
  * A future 16 kHz local pipeline would require device-side resample/encode changes.
  */
 export type VoiceProviderEvents = {
-    connected: () => void;
     open: () => void;
     close: (code: number, reason: string) => void;
     event: (message: any) => void;
@@ -39,8 +38,6 @@ export type VoiceProviderEvents = {
     Healthy: () => void;
     Unhealthy: () => void;
     missing_api_key: () => void;
-
-    "input_audio_buffer.committed": () => void;
 
     "session.updated": (msg: any) => void;
 
@@ -115,6 +112,11 @@ export interface IVoiceProvider extends TypedEmitter<VoiceProviderEvents> {
     hasApiKey(): boolean;
 
     // --- audio in / conversation ---
+    /**
+     * Must not throw. The device calls this unguarded for every mic frame
+     * (~every 30 ms); if the transport is down, drop the frame (and kick any
+     * reconnect logic) instead of throwing into the ESP 'chunk' handler.
+     */
     sendAudioChunk(pcm16Mono24k: Buffer): void;
     resetConversation(): void;
 

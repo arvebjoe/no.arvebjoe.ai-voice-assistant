@@ -482,7 +482,7 @@
           "hint": {
             "en": "Audio trimmed from the start of a wake-word turn to swallow the wake-word sound."
           },
-          "value": 350,
+          "value": 0,
           "min": 0,
           "max": 2000,
           "units": {
@@ -498,7 +498,7 @@
           "hint": {
             "en": "Audio trimmed from the start of a follow-up (conversation) turn. There is no wake-word sound here — keep this small, just enough to swallow the mic-open noise burst."
           },
-          "value": 150,
+          "value": 0,
           "min": 0,
           "max": 2000,
           "units": {
@@ -610,7 +610,7 @@
             "field": "txt.platform",
             "match": {
               "type": "regex",
-              "value": "esp32"
+              "value": "esp32|ESP32"
             }
           }
         ]

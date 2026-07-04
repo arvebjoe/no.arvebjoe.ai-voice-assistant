@@ -20,7 +20,11 @@ if (fs.existsSync(envPath)) {
     }
 }
 
-describe('OpenAI Smart Home Agent Test', () => {
+// Real-API integration suite: skipped (reported as skipped, not vacuously passed)
+// unless a real OPENAI_API_KEY is present in env.json.
+const hasValidApiKey = typeof envConfig.OPENAI_API_KEY === 'string' && envConfig.OPENAI_API_KEY.length > 0;
+
+describe.skipIf(!hasValidApiKey)('OpenAI Smart Home Agent Test', () => {
     let mockHomey: MockHomey;
     let mockDeviceManager: MockDeviceManager;
     let mockGeoHelper: MockGeoHelper;
@@ -50,11 +54,6 @@ describe('OpenAI Smart Home Agent Test', () => {
     });
 
     it('should test smart home command understanding', async () => {
-        if (testApiKey === 'test-api-key') {
-            console.log('⚠️ Skipping - no valid API key found');
-            return;
-        }
-
         console.log('\n🤖 Testing OpenAI Agent Smart Home Understanding');
         console.log('====================================================');
 

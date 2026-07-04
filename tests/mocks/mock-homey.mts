@@ -33,6 +33,11 @@ export class MockHomey {
         }
     };
 
+    // Homey-instance log sinks (the Logger routes here after setHomey()).
+    // Silent so app-boot tests don't spam the runner output.
+    log(..._args: any[]): void { }
+    error(..._args: any[]): void { }
+
     /**
      * Set a mock setting value (for testing)
      */

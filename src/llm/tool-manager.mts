@@ -45,6 +45,21 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
         this.registerDefaultTools();
     }
 
+    /** The zone `get_devices_in_standard_zone` resolves against (the device's own zone). */
+    getStandardZone(): string {
+        return this.standardZone;
+    }
+
+    /**
+     * Update the standard zone after the device is moved to another Homey zone.
+     * Without this the tool keeps querying the zone the device was in at startup.
+     */
+    setStandardZone(zone: string): void {
+        if (!zone || zone === this.standardZone) return;
+        this.logger.info(`Standard zone updated: ${this.standardZone} -> ${zone}`);
+        this.standardZone = zone;
+    }
+
     registerTool(definition: ToolDefinition): void {
         this.logger.info(definition.name, "REGISTER TOOL");
         this.tools.set(definition.name, definition);
@@ -54,6 +69,29 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
         const handlers: Record<string, ToolHandler> = {};
         for (const [name, tool] of this.tools) handlers[name] = tool.handler;
         return handlers;
+    }
+
+    /**
+     * Execute a registered tool by name (Org 2: the lookup/run/error-wrap dance
+     * lives here instead of being copied into every provider). Never throws:
+     * an unknown tool or a throwing handler both come back as a structured
+     * `{ error }` output the model can explain to the user.
+     *
+     * `failed` is true only when the handler THREW — the OpenAI provider uses
+     * it to switch the continuation response to error instructions. An unknown
+     * tool keeps failed=false (historical behavior: the model just relays the
+     * error text).
+     */
+    async execute(name: string, args: any): Promise<{ output: any; failed: boolean }> {
+        const tool = this.tools.get(name);
+        if (!tool) {
+            return { output: { error: `Unknown tool: ${name}` }, failed: false };
+        }
+        try {
+            return { output: await tool.handler(args ?? {}), failed: false };
+        } catch (err: any) {
+            return { output: { error: String(err?.message ?? err) }, failed: true };
+        }
     }
 
     getToolDefinitions(): Array<Omit<ToolDefinition, 'handler'>> {
@@ -88,6 +126,48 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
             pageToken = (data as any)?.next_page_token ?? null;
         } while (pageToken);
         return Array.from(new Set(ids));
+    }
+
+    /**
+     * S3: code-side whitelist + value coercion for set_device_capability — the
+     * schema's enum/oneOf only constrain a model that honors it. Mirrors what
+     * the instructions already tell the model (dim in [0,1] rounded to two
+     * decimals, temperature clamped to 5-35 °C).
+     */
+    private validateCapabilityWrite(capabilityId: string, newValue: any): { ok: true; value: any } | { ok: false; message: string } {
+        switch (capabilityId) {
+            case "onoff":
+            case "locked": {
+                const b = typeof newValue === "boolean" ? newValue
+                    : newValue === "true" ? true
+                        : newValue === "false" ? false
+                            : null;
+                if (b === null) {
+                    return { ok: false, message: `'${capabilityId}' requires a boolean value.` };
+                }
+                return { ok: true, value: b };
+            }
+            case "dim": {
+                let n = typeof newValue === "number" ? newValue : (typeof newValue === "string" ? Number(newValue) : NaN);
+                if (!Number.isFinite(n)) {
+                    return { ok: false, message: "'dim' requires a number in [0,1]." };
+                }
+                // A value in (1,100] is almost certainly a percentage the model
+                // forgot to divide (the instructions define dim as X/100).
+                if (n > 1 && n <= 100) n = n / 100;
+                n = Math.min(1, Math.max(0, n));
+                return { ok: true, value: Math.round(n * 100) / 100 };
+            }
+            case "target_temperature": {
+                const n = typeof newValue === "number" ? newValue : (typeof newValue === "string" ? Number(newValue) : NaN);
+                if (!Number.isFinite(n)) {
+                    return { ok: false, message: "'target_temperature' requires a number (°C)." };
+                }
+                return { ok: true, value: Math.min(35, Math.max(5, n)) };
+            }
+            default:
+                return { ok: false, message: `Capability '${capabilityId}' is not writable. Writable capabilities: onoff, dim, target_temperature, locked.` };
+        }
     }
 
     private registerDefaultTools(): void {
@@ -354,6 +434,14 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
                 additionalProperties: false
             },
             handler: async ({ deviceIds, capabilityId, newValue, expected_zone, expected_type, allow_cross_zone, confirmed }) => {
+                // S3: don't rely on the model honoring the JSON schema —
+                // whitelist the capability and coerce/clamp the value in code.
+                const validated = this.validateCapabilityWrite(capabilityId, newValue);
+                if (!validated.ok) {
+                    return { ok: false, error: { code: "INVALID_CAPABILITY_WRITE", message: validated.message } };
+                }
+                const value = validated.value;
+
                 const originalCount = Array.isArray(deviceIds) ? deviceIds.length : 0;
                 const uniqueIds = Array.from(new Set((deviceIds || []).filter(Boolean) as string[]));
                 let filteredIds = uniqueIds;
@@ -365,19 +453,43 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
                     filteredIds = uniqueIds.filter(id => allowedSet.has(id));
                 }
 
+                // S2: cross-zone writes are opt-in ("everywhere"/"whole house").
+                // Without allow_cross_zone, confine the write to one zone: the
+                // verified expected_zone when given (already applied above),
+                // otherwise this assistant's standard zone.
+                let crossZoneBlocked = 0;
+                if (allow_cross_zone !== true && !expected_zone && this.standardZone) {
+                    const inZone = new Set(await this.listDeviceIdsBy(this.standardZone, null));
+                    const before = filteredIds.length;
+                    filteredIds = filteredIds.filter(id => inZone.has(id));
+                    crossZoneBlocked = before - filteredIds.length;
+                }
+
                 const deduped = filteredIds.length;
 
                 if (deduped === 0) {
+                    if (crossZoneBlocked > 0) {
+                        return { ok: false, error: { code: "CROSS_ZONE_BLOCKED", message: `All ${crossZoneBlocked} devices are outside the standard zone (${this.standardZone}). Retry with allow_cross_zone=true only if the user explicitly asked for all zones / the whole house, or pass the zone the user named as expected_zone.` } };
+                    }
                     return { ok: false, error: { code: "NO_MATCHING_DEVICES_FOR_TYPE", message: "No devices match the expected type/zone for this action." } };
                 }
                 if (deduped > 10 && confirmed !== true) {
                     return { ok: false, error: { code: "CONFIRMATION_REQUIRED", message: `Refusing to change ${deduped} devices without explicit confirmation.` } };
                 }
 
-                this.logger.info('set_device_capability_bulk', 'TOOL', `devices=${deduped}/${originalCount}, cap=${capabilityId}, value=${newValue}, zone=${expected_zone}, type=${expected_type}`);
+                // S3: unlocking is physical security — allow it for exactly ONE
+                // device per call, so "unlock all doors" (or a prompt-injected
+                // equivalent) can't happen in a single write. Locking in bulk
+                // stays allowed. Deliberately NOT a confirmation prompt (that
+                // guard was removed on purpose).
+                if (capabilityId === "locked" && value === false && deduped > 1) {
+                    return { ok: false, error: { code: "UNLOCK_SINGLE_DEVICE_ONLY", message: `Refusing to unlock ${deduped} devices at once. Unlock only the specific lock the user named, one call per device.` } };
+                }
+
+                this.logger.info('set_device_capability_bulk', 'TOOL', `devices=${deduped}/${originalCount}, cap=${capabilityId}, value=${value}, zone=${expected_zone}, type=${expected_type}, xzoneBlocked=${crossZoneBlocked}`);
                 try {
-                    const data = await this.deviceManager.setDeviceCapabilityBulk(filteredIds, capabilityId, newValue, { expected_zone, allow_cross_zone, confirmed });
-                    return { ok: true, data, meta: { requested: originalCount, deduplicated: deduped } };
+                    const data = await this.deviceManager.setDeviceCapabilityBulk(filteredIds, capabilityId, value, { expected_zone, allow_cross_zone, confirmed });
+                    return { ok: true, data, meta: { requested: originalCount, deduplicated: deduped, cross_zone_blocked: crossZoneBlocked } };
                 } catch (error: any) {
                     this.logger.error(`Error executing set_device_capability_bulk`, error);
                     return { ok: false, error: { code: "BULK_SET_CAPABILITY_FAILED", message: "Could not set capability for multiple devices." } };
@@ -438,7 +550,9 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
             },
             handler: async ({ hours = 24 }) => {
                 try {
-                    const forecast = await this.weatherHelper.getForecast();
+                    // forecast_days counts from midnight today, so "hours from
+                    // now" needs one extra day of headroom (M5).
+                    const forecast = await this.weatherHelper.getForecast(false, Math.ceil(hours / 24) + 1);
                     const targetTime = new Date(Date.now() + hours * 60 * 60 * 1000);
                     
                     // Filter forecast items within the requested timeframe

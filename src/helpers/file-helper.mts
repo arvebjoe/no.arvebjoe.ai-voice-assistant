@@ -50,12 +50,17 @@ function audioFileTtlMs(): number {
     return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_AUDIO_FILE_TTL_MS;
 }
 
-export async function scheduleAudioFileDeletion(homey: any, fileInfo: FileInfo) {
+// `extraMs` extends the lifetime for files that keep playing past the base TTL —
+// e.g. a whole in-band reply concatenated into one file, which the PE streams over
+// its full playback duration. Pass the expected playback length so the file isn't
+// deleted mid-stream.
+export async function scheduleAudioFileDeletion(homey: any, fileInfo: FileInfo, extraMs: number = 0) {
 
+    const ttl = audioFileTtlMs() + Math.max(0, extraMs);
     homey.setTimeout(() => {
         log.info(`Deleting temporary file: ${fileInfo.filepath}`);
         fs.unlink(fileInfo.filepath).catch(err => log.error('Error deleting temporary file:', err));
-    }, audioFileTtlMs());
+    }, ttl);
 }
 
 

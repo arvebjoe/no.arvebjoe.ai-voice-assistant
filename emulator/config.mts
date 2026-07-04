@@ -66,6 +66,11 @@ try {
 
 export const config: EmulatorConfig = raw;
 
+// Mark this process as emulator-hosted. App code uses this to authorize
+// dev-only features that must never activate on a real Homey — e.g.
+// `input_buffer_debug` (serves raw mic audio over the LAN audio URL).
+process.env.HE_EMULATOR = '1';
+
 // Push settings.json `env` values into process.env so the app code (which reads
 // process.env.HE_HOST_IP, process.env.ESP_LOG_LEVEL, ...) picks them up without
 // you having to export them by hand. An already-set real env var takes

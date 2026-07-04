@@ -156,7 +156,11 @@ export class SettingsManager {
   /** Subscribe to global settings changes. */
   onGlobals(sub: Subscriber<GlobalSettings>): () => void {
     this.globalSubs.add(sub);
-    sub({ ...this.globals }); // initial
+    try {
+      sub({ ...this.globals }); // initial
+    } catch (e) {
+      this.logger.error('Global settings subscriber threw on initial snapshot', e);
+    }
     return () => this.globalSubs.delete(sub);
   }
 
@@ -172,7 +176,15 @@ export class SettingsManager {
 */
   private emitGlobals() {
     const snapshot = { ...this.globals };
-    for (const sub of this.globalSubs) sub(snapshot);
+    for (const sub of this.globalSubs) {
+      try {
+        sub(snapshot);
+      } catch (e) {
+        // One throwing subscriber (e.g. a device mid-rebuild) must not stop
+        // the remaining devices from seeing the settings update.
+        this.logger.error('Global settings subscriber threw', e);
+      }
+    }
   }
 
   /*

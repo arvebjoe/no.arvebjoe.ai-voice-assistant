@@ -80,7 +80,13 @@ class Logger {
         if (this.disabled) {
             return;
         }
+        this.write(message, subFrom, details);
+    }
 
+    // Unconditional write — `disabled` only silences info/log chatter; warn()
+    // and error() route here directly so diagnostics from quieted helpers
+    // (device-manager, weather, geo, webserver, file-helper) stay visible.
+    private write(message: string, subFrom: string = '', details: any = null) {
         const fromStr = `${colors.cyan}[${this.from}]${colors.reset}`;
         const subColor = subFrom === 'ERROR' ? colors.red : subFrom === 'WARN' ? colors.yellow : colors.magenta;
         const subStr = subFrom ? `${subColor}[${subFrom}]${colors.reset}` : '';
@@ -122,9 +128,12 @@ class Logger {
             this.reportError(details instanceof Error ? details : new Error(String(details)), message);
 
             if (Logger.homey) {
-                Logger.homey.error(message, details);
+                // Mask secret-looking fields on the error path too — error payloads
+                // (option/config snapshots, request headers) are exactly what gets
+                // written to the Homey log. info() already masks via its own path.
+                Logger.homey.error(message, maskSecrets(details));
             } else {
-                this.info(message, 'ERROR', details);
+                this.write(message, 'ERROR', details);
             }
         } catch (_) {
             // Ignore it, will be fine
@@ -133,7 +142,7 @@ class Logger {
     }
 
     warn(message: string, details: any = null) {
-        this.info(message, 'WARN', details);
+        this.write(message, 'WARN', details);
     }
 
     log(message: string, subFrom: string = '', details: any = null) {
