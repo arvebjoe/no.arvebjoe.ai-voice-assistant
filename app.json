@@ -610,7 +610,7 @@
             "field": "txt.platform",
             "match": {
               "type": "regex",
-              "value": "esp32"
+              "value": "esp32|ESP32"
             }
           }
         ]

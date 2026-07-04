@@ -9,7 +9,7 @@
     [
       {
         "field": "txt.platform",
-        "match": { "type": "regex", "value": "esp32" }
+        "match": { "type": "regex", "value": "esp32|ESP32" }
       }
     ]
   ]
