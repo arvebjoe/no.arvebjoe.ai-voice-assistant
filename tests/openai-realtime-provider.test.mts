@@ -6,16 +6,11 @@ vi.mock('ws', () => import('./mocks/mock-ws.mjs'));
 import { OpenAIRealtimeProvider } from '../src/llm/providers/openai-realtime-agent.mjs';
 import { MockHomey } from './mocks/mock-homey.mjs';
 import { createdSockets, __resetSockets, FakeWebSocket } from './mocks/mock-ws.mjs';
+import { fakeToolManager } from './mocks/mock-tool-manager.mjs';
 
 const tick = () => new Promise(r => setTimeout(r, 0));
 
-// Minimal ToolManager stand-in — the provider only needs tool definitions (for the
-// session update) and a handler map (for execution).
-const toolManager = {
-    getToolDefinitions: () => [],
-    getToolHandlers: () => ({ get_time: (_args: any) => ({ ok: true, now: '12:00' }) }),
-    setStandardZone: () => { },
-};
+const toolManager = fakeToolManager({ get_time: (_args: any) => ({ ok: true, now: '12:00' }) });
 
 const baseOpts = {
     apiKey: 'test-key',
@@ -41,6 +36,9 @@ async function connect(): Promise<InstanceType<typeof FakeWebSocket>> {
     const ws = createdSockets[createdSockets.length - 1];
     ws.__open();
     ws.__message({ type: 'session.created' });
+    // session.created awaits the instruction load before configuring the
+    // session, so wait for the session.update instead of a fixed tick.
+    await vi.waitFor(() => expect(ws.sentTypes()).toContain('session.update'));
     ws.__message({ type: 'session.updated' });
     await tick();
     return ws;
@@ -71,8 +69,8 @@ describe('OpenAIRealtimeProvider (fake WebSocket harness)', () => {
         const ws = createdSockets[createdSockets.length - 1];
         ws.__open();
         ws.__message({ type: 'session.created' });
-        await tick();
-        expect(ws.sentTypes()).toContain('session.update');
+        // session.created awaits the instruction load before replying.
+        await vi.waitFor(() => expect(ws.sentTypes()).toContain('session.update'));
 
         ws.__message({ type: 'session.updated' });
         await tick();
@@ -175,13 +173,9 @@ describe('OpenAIRealtimeProvider (fake WebSocket harness)', () => {
         // A tool whose handler closes the socket while running — the classic
         // "turn on the lights" + Wi-Fi drop mid-execution.
         let wsRef: InstanceType<typeof FakeWebSocket>;
-        const tm = {
-            getToolDefinitions: () => [],
-            getToolHandlers: () => ({
-                slow_tool: async () => { wsRef.close(); return { ok: true }; },
-            }),
-            setStandardZone: () => { },
-        };
+        const tm = fakeToolManager({
+            slow_tool: async () => { wsRef.close(); return { ok: true }; },
+        });
         const homey = new MockHomey();
         provider = new OpenAIRealtimeProvider(homey as any, tm as any, { ...baseOpts });
         const ws = await connect();
@@ -215,13 +209,9 @@ describe('OpenAIRealtimeProvider (fake WebSocket harness)', () => {
     });
 
     it('H-f — a throwing tool handler still feeds a structured error back to the model', async () => {
-        const tm = {
-            getToolDefinitions: () => [],
-            getToolHandlers: () => ({
-                broken_tool: async () => { throw new Error('device unreachable'); },
-            }),
-            setStandardZone: () => { },
-        };
+        const tm = fakeToolManager({
+            broken_tool: async () => { throw new Error('device unreachable'); },
+        });
         const homey = new MockHomey();
         provider = new OpenAIRealtimeProvider(homey as any, tm as any, { ...baseOpts });
         const ws = await connect();

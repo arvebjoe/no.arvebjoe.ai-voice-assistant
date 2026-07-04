@@ -6,14 +6,14 @@ vi.mock('@google/genai', () => import('./mocks/mock-genai.mjs'));
 import { GeminiLiveProvider } from '../src/llm/providers/gemini-live-provider.mjs';
 import { MockHomey } from './mocks/mock-homey.mjs';
 import { geminiSessions, __resetGenai, FakeLiveSession } from './mocks/mock-genai.mjs';
+import { fakeToolManager } from './mocks/mock-tool-manager.mjs';
 
 const tick = () => new Promise(r => setTimeout(r, 0));
 
-const toolManager = {
-    getToolDefinitions: () => [{ name: 'get_time', description: 'time', parameters: { type: 'object', properties: {} } }],
-    getToolHandlers: () => ({ get_time: (_args: any) => ({ ok: true, now: '12:00' }) }),
-    setStandardZone: () => { },
-};
+const toolManager = fakeToolManager(
+    { get_time: (_args: any) => ({ ok: true, now: '12:00' }) },
+    [{ name: 'get_time', description: 'time', parameters: { type: 'object', properties: {} } }],
+);
 
 const baseOpts = {
     apiKey: 'g-key',

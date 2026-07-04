@@ -438,6 +438,36 @@ sniff change, M1 short replies, C1 recovery all confirmed good.)_
 
 Build clean; full suite green (238 passing, 15 skipped).
 
+## Fixes applied (session 19 — Org 2: shared provider machinery)
+
+Exactly the reviewer's three prescriptions; behavior-preserving refactor (C2/M8/H-f/H-g
+semantics pinned by the existing provider tests, all passing unchanged in substance):
+
+- **`ReconnectPolicy` (`src/llm/reconnect-policy.mts`)** — one backoff campaign for both
+  providers: attempt counter, pending timer, exponential backoff with ±25% jitter capped at
+  30 s. schedule() coalesces onto a pending timer but stays callable while a campaign is
+  active — that's the C2-preserving property (a failed attempt's own close event schedules
+  the next try). Providers keep only the decision points: unexpected close → `schedule()`,
+  confirmed open → `reset()`, manual close/destroy → `reset()`, manual start → `clearTimer()`,
+  opportunistic kick → `schedule()` gated on `isActive`. Gemini inherits jitter and now also
+  emits `reconnected` after a successful reconnect (parity with OpenAI).
+- **`ToolManager.execute(name, args)`** — the lookup/run/error-wrap dance moved out of the
+  three provider call sites (OpenAI `maybeExecuteTool`, Gemini live `handleToolCalls`, Gemini
+  text loop). Never throws; unknown tool and thrown handler both return structured `{ error }`;
+  `failed` is true only on a throw (drives OpenAI's error-instruction continuation, unchanged).
+- **`InstructionState` (`src/llm/instruction-state.mts`)** — owns the async instruction-module
+  load both providers used to fire-and-forget from their constructors. `ensureLoaded()` (await
+  in-flight + retry once if empty) now guards OpenAI's `session.created` → `session.update`
+  and Gemini's `start()`/text path, so a session can no longer be configured with an empty
+  system prompt when the load races or transiently fails. `overrideText()` keeps the
+  `updateAllInstructions` seam; `module` getter serves `getErrorResponseInstructions`.
+- Tests: new `reconnect-policy.test.mts` (7), `instruction-state.test.mts` (6),
+  `tool-manager-execute.test.mts` (5); provider tests now share a `fakeToolManager` mock with
+  the real execute() contract; the two OpenAI handshake tests wait on the (now awaited)
+  session.update instead of a fixed tick.
+
+Build clean; full suite green (256 passing, 15 skipped).
+
 ---
 
 ## Findings checklist
@@ -485,7 +515,7 @@ Ticked = fix verified against the code on `code-review-1` (not just claimed in a
 - [x] **S6 (rest)** API keys masked (`type="password"` + Show/Hide, trim on save) (session 16)
 - [x] **S6 (rest)** ESP identity sniff narrowed to HelloResponse/DeviceInfoResponse (session 16) — substring match itself stays: it's the only identity a plaintext API offers; verify pairing on hardware
 - [ ] **Org 1** TurnStateMachine + AudioOutputPipeline extraction — future refactor
-- [ ] **Org 2** shared ReconnectPolicy / tool-execution / InstructionState — future refactor
+- [x] **Org 2** shared ReconnectPolicy / ToolManager.execute() / InstructionState (session 19) — providers keep only transport-specific code; instruction load now awaited before session config
 - [x] **Org 3** DeviceManager MAC→callback subscriptions, device resolved fresh per event (session 18) — fixed the register-before-fetch silent no-subscribe and the stale `zones`-hierarchy query bug along the way
 - [x] **Org:** typed accessor for `(this.homey as any).app.*` reaches — `AppServices` + `getAppServices()` (session 17)
 - [x] **Org:** @vitest/coverage-v8 dependency (session 14)

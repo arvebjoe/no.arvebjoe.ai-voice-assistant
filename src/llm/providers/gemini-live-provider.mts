@@ -4,7 +4,8 @@ import { GoogleGenAI, Modality } from "@google/genai";
 import { createLogger } from "../../helpers/logger.mjs";
 import { ToolManager } from "../tool-manager.mjs";
 import { IVoiceProvider, VoiceProviderEvents, VoiceProviderOptions } from "../voice-provider.mjs";
-import { loadInstructionModule, InstructionModule } from "../agent-instructions.mjs";
+import { InstructionState } from "../instruction-state.mjs";
+import { ReconnectPolicy } from "../reconnect-policy.mjs";
 import { pcmToFlacBuffer } from "../../helpers/audio-encoders.mjs";
 
 // Models are constants for now (no per-provider model setting yet). Swap here if
@@ -113,13 +114,12 @@ export class GeminiLiveProvider extends (EventEmitter as new () => TypedEmitter<
     private options: VoiceProviderOptions;
     private ai: GoogleGenAI | null = null;
     private session: any = null;
-    private instructionModule: InstructionModule | null = null;
-    private instructions = "";
+    private instructionState = new InstructionState(this.logger);
 
     private connected = false;
     private manuallyClosing = false;
-    private reconnectTimer: any = null;
-    private reconnectAttempts = 0;
+    // Reconnection campaign (shared backoff machinery — see ReconnectPolicy).
+    private reconnect: ReconnectPolicy;
 
     // Per-turn state: set when the user starts streaming audio; the first model
     // output marks the user's turn as over (-> 'silence' + final 'transcript.done').
@@ -138,21 +138,23 @@ export class GeminiLiveProvider extends (EventEmitter as new () => TypedEmitter<
         this.homey = homey;
         this.toolManager = toolManager;
         this.options = { ...opts };
-        void this.refreshInstructions();
+        this.reconnect = new ReconnectPolicy(homey, {
+            connect: () => this.start(),
+            onScheduled: (attempt, delay) => this.emit("reconnecting", attempt, delay),
+            onAttemptFailed: (attempt, error) => this.emit("reconnectFailed", attempt, error),
+        }, this.logger);
+        // Kick off the instruction load; start() awaits it before connecting.
+        void this.instructionState.reload(this.instructionParams());
     }
 
-    private async refreshInstructions(): Promise<void> {
-        try {
-            this.instructionModule = await loadInstructionModule(this.options.languageCode);
-            this.instructions = this.instructionModule.getDefaultInstructions(
-                this.options.languageName,
-                this.options.additionalInstructions,
-                this.options.supportsTimers,
-            );
-        } catch (e) {
-            this.logger.error("Failed to load instruction module:", e);
-            this.instructions = "";
-        }
+    /** The option fields the system prompt is built from. */
+    private instructionParams() {
+        return {
+            languageCode: this.options.languageCode,
+            languageName: this.options.languageName,
+            additionalInstructions: this.options.additionalInstructions,
+            supportsTimers: this.options.supportsTimers,
+        };
     }
 
     private client(): GoogleGenAI {
@@ -180,11 +182,11 @@ export class GeminiLiveProvider extends (EventEmitter as new () => TypedEmitter<
             return;
         }
         this.manuallyClosing = false;
-        if (this.reconnectTimer) {
-            this.homey.clearTimeout(this.reconnectTimer);
-            this.reconnectTimer = null;
-        }
-        if (!this.instructions) await this.refreshInstructions();
+        // A manual start() supersedes any scheduled reconnect attempt.
+        this.reconnect.clearTimer();
+        // Never configure the session with an empty prompt — await the
+        // constructor's load and retry once if it failed.
+        await this.instructionState.ensureLoaded(this.instructionParams());
 
         const voiceName = geminiVoiceName(this.options.voice);
         this.logger.info("Connecting Gemini Live session", "START", { voice: voiceName });
@@ -195,9 +197,13 @@ export class GeminiLiveProvider extends (EventEmitter as new () => TypedEmitter<
                     onopen: () => {
                         this.logger.info("Live session opened");
                         this.connected = true;
-                        this.reconnectAttempts = 0;
+                        const wasReconnect = this.reconnect.attemptCount > 0;
+                        this.reconnect.reset(); // Successful connection ends the campaign
                         this.emit("open");
                         this.emit("Healthy");
+                        if (wasReconnect) {
+                            this.emit("reconnected");
+                        }
                     },
                     onmessage: (message: any) => this.onMessage(message),
                     onerror: (e: any) => {
@@ -209,7 +215,7 @@ export class GeminiLiveProvider extends (EventEmitter as new () => TypedEmitter<
                         this.logger.info("Live session closed", undefined, { reason: e?.reason });
                         this.connected = false;
                         this.emit("close", e?.code ?? 1000, String(e?.reason ?? ""));
-                        if (!this.manuallyClosing) this.scheduleReconnect();
+                        if (!this.manuallyClosing) this.reconnect.schedule();
                     },
                 },
                 config: {
@@ -217,23 +223,20 @@ export class GeminiLiveProvider extends (EventEmitter as new () => TypedEmitter<
                     speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName } } },
                     inputAudioTranscription: {},
                     outputAudioTranscription: {},
-                    systemInstruction: this.instructions,
+                    systemInstruction: this.instructionState.text,
                     tools: this.toolsForGemini(),
                 },
             });
         } catch (e) {
             this.logger.error("Failed to connect Gemini Live", e);
             this.emit("error", e instanceof Error ? e : new Error(String(e)));
-            if (!this.manuallyClosing) this.scheduleReconnect();
+            if (!this.manuallyClosing) this.reconnect.schedule();
         }
     }
 
     close(code = 1000, reason = "client-close"): void {
         this.manuallyClosing = true;
-        if (this.reconnectTimer) {
-            this.homey.clearTimeout(this.reconnectTimer);
-            this.reconnectTimer = null;
-        }
+        this.reconnect.reset();
         try {
             this.session?.close?.();
         } catch { /* ignore */ }
@@ -247,23 +250,6 @@ export class GeminiLiveProvider extends (EventEmitter as new () => TypedEmitter<
         await new Promise((resolve) => this.homey.setTimeout(resolve, 100));
         this.manuallyClosing = false;
         await this.start();
-    }
-
-    private scheduleReconnect(): void {
-        if (this.manuallyClosing || this.reconnectTimer) return;
-        this.reconnectAttempts++;
-        const delay = Math.min(30000, 1000 * Math.pow(2, this.reconnectAttempts - 1));
-        this.logger.info(`Scheduling reconnect attempt ${this.reconnectAttempts} in ${delay}ms`, "RECONNECT");
-        this.emit("reconnecting", this.reconnectAttempts, delay);
-        this.reconnectTimer = this.homey.setTimeout(async () => {
-            this.reconnectTimer = null;
-            try {
-                await this.start();
-            } catch (e) {
-                this.emit("reconnectFailed", this.reconnectAttempts, e as Error);
-                this.scheduleReconnect();
-            }
-        }, delay);
     }
 
     isConnected(): boolean {
@@ -387,7 +373,6 @@ export class GeminiLiveProvider extends (EventEmitter as new () => TypedEmitter<
     }
 
     private async handleToolCalls(functionCalls: any[]): Promise<void> {
-        const handlers = this.toolManager.getToolHandlers();
         const functionResponses: any[] = [];
 
         for (const fc of functionCalls) {
@@ -395,13 +380,7 @@ export class GeminiLiveProvider extends (EventEmitter as new () => TypedEmitter<
             const args = fc?.args ?? {};
             this.emit("tool.called", { callId: fc?.id ?? name, name, args });
 
-            let output: any;
-            try {
-                const fn = handlers[name];
-                output = fn ? await fn(args) : { error: `Unknown tool: ${name}` };
-            } catch (e: any) {
-                output = { error: String(e?.message ?? e) };
-            }
+            const { output } = await this.toolManager.execute(name, args);
 
             functionResponses.push({
                 id: fc?.id,
@@ -441,9 +420,8 @@ export class GeminiLiveProvider extends (EventEmitter as new () => TypedEmitter<
      */
     async sendTextForTextResponse(question: string): Promise<void> {
         try {
-            if (!this.instructions) await this.refreshInstructions();
+            await this.instructionState.ensureLoaded(this.instructionParams());
             const ai = this.client();
-            const handlers = this.toolManager.getToolHandlers();
             const tools = this.toolsForGemini();
             const contents: any[] = [{ role: "user", parts: [{ text: question }] }];
 
@@ -452,7 +430,7 @@ export class GeminiLiveProvider extends (EventEmitter as new () => TypedEmitter<
                 const resp: any = await ai.models.generateContent({
                     model: GEMINI_TEXT_MODEL,
                     contents,
-                    config: { systemInstruction: this.instructions, tools },
+                    config: { systemInstruction: this.instructionState.text, tools },
                 });
 
                 const fcs: any[] = resp?.functionCalls ?? [];
@@ -461,13 +439,7 @@ export class GeminiLiveProvider extends (EventEmitter as new () => TypedEmitter<
                     const respParts: any[] = [];
                     for (const fc of fcs) {
                         this.emit("tool.called", { callId: fc?.id ?? fc?.name, name: fc?.name, args: fc?.args ?? {} });
-                        let output: any;
-                        try {
-                            const fn = handlers[fc.name];
-                            output = fn ? await fn(fc.args ?? {}) : { error: `Unknown tool: ${fc.name}` };
-                        } catch (e: any) {
-                            output = { error: String(e?.message ?? e) };
-                        }
+                        const { output } = await this.toolManager.execute(fc.name, fc.args ?? {});
                         respParts.push({ functionResponse: { name: fc.name, response: typeof output === "string" ? { text: output } : (output ?? {}) } });
                     }
                     contents.push({ role: "user", parts: respParts });
@@ -521,24 +493,24 @@ export class GeminiLiveProvider extends (EventEmitter as new () => TypedEmitter<
     async updateLanguage(newLanguageCode: string, newLanguageName: string): Promise<void> {
         this.options.languageCode = newLanguageCode;
         this.options.languageName = newLanguageName;
-        await this.refreshInstructions();
+        await this.instructionState.reload(this.instructionParams());
     }
 
     async updateAdditionalInstructions(newAdditionalInstructions: string | null): Promise<void> {
         this.options.additionalInstructions = newAdditionalInstructions;
-        await this.refreshInstructions();
+        await this.instructionState.reload(this.instructionParams());
     }
 
     async updateZone(newDeviceZone: string): Promise<void> {
         this.options.deviceZone = newDeviceZone;
         // Keep the tool manager's standard zone in sync (see OpenAI provider).
         this.toolManager.setStandardZone(newDeviceZone);
-        await this.refreshInstructions();
+        await this.instructionState.reload(this.instructionParams());
     }
 
     async updateTimerSupport(supportsTimers: boolean): Promise<void> {
         if (this.options.supportsTimers === supportsTimers) return;
         this.options.supportsTimers = supportsTimers;
-        await this.refreshInstructions();
+        await this.instructionState.reload(this.instructionParams());
     }
 }

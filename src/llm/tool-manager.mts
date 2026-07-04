@@ -71,6 +71,29 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
         return handlers;
     }
 
+    /**
+     * Execute a registered tool by name (Org 2: the lookup/run/error-wrap dance
+     * lives here instead of being copied into every provider). Never throws:
+     * an unknown tool or a throwing handler both come back as a structured
+     * `{ error }` output the model can explain to the user.
+     *
+     * `failed` is true only when the handler THREW — the OpenAI provider uses
+     * it to switch the continuation response to error instructions. An unknown
+     * tool keeps failed=false (historical behavior: the model just relays the
+     * error text).
+     */
+    async execute(name: string, args: any): Promise<{ output: any; failed: boolean }> {
+        const tool = this.tools.get(name);
+        if (!tool) {
+            return { output: { error: `Unknown tool: ${name}` }, failed: false };
+        }
+        try {
+            return { output: await tool.handler(args ?? {}), failed: false };
+        } catch (err: any) {
+            return { output: { error: String(err?.message ?? err) }, failed: true };
+        }
+    }
+
     getToolDefinitions(): Array<Omit<ToolDefinition, 'handler'>> {
         return Array.from(this.tools.values()).map(tool => ({
             type: tool.type,
