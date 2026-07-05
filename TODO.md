@@ -248,6 +248,14 @@ fresh config download: [`.esp_home/CUSTOMIZATIONS.md`](./.esp_home/CUSTOMIZATION
     TTS voice: the Voice dropdown offers OpenAI's standard voices; the free-text
     `openai_tts_voice` override wins for custom servers (e.g. Kokoro's `af_heart`). API key is
     optional (LAN servers) — a keyed server rejecting shows up in the health probe.
+  - [x] **Per-stage "Test" buttons in the settings page (2026-07-05).** Each stage section has a
+    Test button that POSTs the CURRENT (unsaved) form values to the app's new
+    `POST /test-local-stage` endpoint (route in `.homeycompose/app.json`; handler in `api.mts` →
+    `local/stage-tester.mts`) — the webview can't reach LAN services itself, so the test runs
+    from the Homey box. Not just a ping: one real mini-request per stage (STT transcribes 0.5 s
+    of silence, LLM answers "Reply with exactly: OK", TTS synthesizes "OK"), so wrong model ids,
+    rejected keys and bad voices surface, with latency and the underlying cause (ECONNREFUSED …)
+    shown inline. 30 s bound per test.
   - [ ] **Verify against real services on Windows** (whisper-asr-webservice + Ollama desktop +
     piper http docker); tune `SimpleVad` thresholds with a real PE mic.
   - [ ] Wake-word → reply latency measurement; consider Whisper streaming/partials, and Mistral's

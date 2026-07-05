@@ -1,4 +1,5 @@
 import { getVoicesForProvider, DEFAULT_VOICE_PROVIDER } from './src/llm/voice-provider-factory.mjs';
+import { testLocalStage, StageTestRequest, StageTestResult } from './src/llm/providers/local/stage-tester.mjs';
 
 /**
  * App Web API — called from the settings page via `Homey.api(...)`.
@@ -18,5 +19,15 @@ export default {
     async getVoices({ query }: { query: Record<string, string> }): Promise<{ value: string; name: string }[]> {
         const provider = query?.provider || DEFAULT_VOICE_PROVIDER;
         return getVoicesForProvider(provider, query?.tts || undefined);
+    },
+
+    /**
+     * POST /test-local-stage — test one local-pipeline stage (stt/llm/tts)
+     * against the CURRENT (possibly unsaved) settings-form values. Runs from
+     * the Homey box because the settings webview can't reach LAN services
+     * itself. Never throws — failures come back as { ok:false, message }.
+     */
+    async testLocalStage({ body }: { body: StageTestRequest }): Promise<StageTestResult> {
+        return testLocalStage(body);
     },
 };

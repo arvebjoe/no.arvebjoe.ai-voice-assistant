@@ -116,6 +116,42 @@
       margin-top: -8px;
       margin-bottom: 15px;
     }
+
+    /* Per-stage "Test" button + inline result line. */
+    .stage-test {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      margin: 4px 0 14px;
+    }
+
+    .stage-test-btn {
+      padding: 6px 14px;
+      font-size: 13px;
+      font-weight: 600;
+      border: 2px solid #ced4da;
+      border-radius: 4px;
+      background: #f8f9fa;
+      cursor: pointer;
+    }
+
+    .stage-test-btn:disabled {
+      opacity: 0.6;
+      cursor: wait;
+    }
+
+    .stage-test-result {
+      font-size: 13px;
+      flex: 1;
+    }
+
+    .stage-test-result.ok {
+      color: #1e7e34;
+    }
+
+    .stage-test-result.fail {
+      color: #c82333;
+    }
   </style>
 </head>
 
@@ -231,6 +267,10 @@
             (https://api.openai.com), Groq, speaches, … A bare host gets <code>/v1</code> appended automatically.</div>
         </div>
       </div>
+      <div class="stage-test">
+        <button type="button" class="stage-test-btn" data-stage="stt" id="stt_test_btn">Test</button>
+        <span class="stage-test-result" id="stt_test_result"></span>
+      </div>
 
       <div class="local-section-title">Language model</div>
       <div class="homey-form-group">
@@ -295,6 +335,10 @@
             appended automatically. Model is required.</div>
         </div>
       </div>
+      <div class="stage-test">
+        <button type="button" class="stage-test-btn" data-stage="llm" id="llm_test_btn">Test</button>
+        <span class="stage-test-result" id="llm_test_result"></span>
+      </div>
 
       <div class="local-section-title">Text-to-speech</div>
       <div class="homey-form-group">
@@ -358,6 +402,10 @@
             kokoro-fastapi, … For OpenAI pick a voice in the <b>Voice</b> dropdown above; for custom servers
             whose voices aren't OpenAI's, type the voice name here (it wins when set).</div>
         </div>
+      </div>
+      <div class="stage-test">
+        <button type="button" class="stage-test-btn" data-stage="tts" id="tts_test_btn">Test</button>
+        <span class="stage-test-result" id="tts_test_result"></span>
       </div>
     </div>
 
@@ -474,6 +522,64 @@
         localSettingsElement.style.display =
           providerSelectElement.value === "local" ? "" : "none";
       }
+
+      // Per-stage "Test" buttons: POST the CURRENT (unsaved) form values to the
+      // app, which runs one real mini-request against the backend from the
+      // Homey box (the webview itself can't reach LAN services).
+      function collectStageTest(stage) {
+        var v = function (id) { return document.getElementById(id).value.trim(); };
+        if (stage === "stt") {
+          var sttBackend = sttProviderSelectElement.value;
+          return {
+            stage: "stt", backend: sttBackend,
+            host: v("local_stt_host"), port: v("local_stt_port"),
+            model: sttBackend === "mistral" ? v("mistral_stt_model") : v("openai_stt_model"),
+            mistralApiKey: v("mistral_api_key"),
+            url: v("openai_stt_url"), key: v("openai_stt_key"),
+            language: languageSelectElement.value
+          };
+        }
+        if (stage === "llm") {
+          var llmBackend = llmProviderSelectElement.value;
+          return {
+            stage: "llm", backend: llmBackend,
+            host: v("local_llm_host"), port: v("local_llm_port"),
+            model: llmBackend === "mistral" ? v("mistral_model")
+              : llmBackend === "openai" ? v("openai_llm_model") : v("local_llm_model"),
+            mistralApiKey: v("mistral_api_key"),
+            url: v("openai_llm_url"), key: v("openai_llm_key")
+          };
+        }
+        var ttsBackend = ttsProviderSelectElement.value;
+        return {
+          stage: "tts", backend: ttsBackend,
+          host: v("local_tts_host"), port: v("local_tts_port"),
+          model: ttsBackend === "mistral" ? v("mistral_tts_model") : v("openai_tts_model"),
+          mistralApiKey: v("mistral_api_key"),
+          url: v("openai_tts_url"), key: v("openai_tts_key"),
+          voice: voiceSelectElement.value, voiceOverride: v("openai_tts_voice")
+        };
+      }
+
+      document.querySelectorAll(".stage-test-btn").forEach(function (btn) {
+        var result = document.getElementById(btn.getAttribute("data-stage") + "_test_result");
+        btn.addEventListener("click", function () {
+          btn.disabled = true;
+          result.className = "stage-test-result";
+          result.textContent = "Testing…";
+          Homey.api("POST", "/test-local-stage", collectStageTest(btn.getAttribute("data-stage")), function (err, res) {
+            btn.disabled = false;
+            if (err || !res) {
+              result.className = "stage-test-result fail";
+              result.textContent = "✗ " + (err || "No response from the app");
+              return;
+            }
+            result.className = "stage-test-result " + (res.ok ? "ok" : "fail");
+            var latency = res.latencyMs != null ? " (" + (res.latencyMs / 1000).toFixed(1) + "s)" : "";
+            result.textContent = (res.ok ? "✓ " : "✗ ") + res.message + latency;
+          });
+        });
+      });
 
       Homey.get("openai_api_key", function (err, apiKey) {
         if (err) return Homey.alert(err);
