@@ -19,6 +19,10 @@ import { MistralClient, MistralConfig } from "./local/mistral-client.mjs";
 import { MistralSttClient } from "./local/mistral-stt-client.mjs";
 import { MistralTtsClient, VOXTRAL_TTS_VOICES } from "./local/mistral-tts-client.mjs";
 import { PiperClient, LocalTtsConfig } from "./local/piper-client.mjs";
+import { OpenAiLlmClient, OpenAiLlmConfig } from "./local/openai-llm-client.mjs";
+import { OpenAiSttClient, OpenAiSttConfig } from "./local/openai-stt-client.mjs";
+import { OpenAiTtsClient, OpenAiTtsConfig } from "./local/openai-tts-client.mjs";
+import { OPENAI_TTS_VOICES } from "./local/openai-compat.mjs";
 
 // The app-wide reply-audio contract: audio.delta emits PCM16 mono 24 kHz
 // (see voice-provider.mts). Piper voices speak 16/22.05 kHz — resampled up.
@@ -36,9 +40,9 @@ const HEALTH_INTERVAL_MS = 60_000;
 export const LOCAL_DEFAULT_PORTS = { stt: 9000, llm: 11434, tts: 5000 } as const;
 
 /** Selectable backends per pipeline stage (settings: local_stt/llm/tts_provider). */
-export type LocalSttProviderId = 'whisper' | 'mistral';
-export type LocalLlmProviderId = 'ollama' | 'mistral';
-export type LocalTtsProviderId = 'piper' | 'mistral';
+export type LocalSttProviderId = 'whisper' | 'mistral' | 'openai';
+export type LocalLlmProviderId = 'ollama' | 'mistral' | 'openai';
+export type LocalTtsProviderId = 'piper' | 'mistral' | 'openai';
 
 type LocalConfigs = {
     sttProvider: LocalSttProviderId;
@@ -50,19 +54,28 @@ type LocalConfigs = {
     piper: LocalTtsConfig;
     mistralSttModel: string;
     mistralTtsModel: string;
+    openaiStt: OpenAiSttConfig;
+    openaiLlm: OpenAiLlmConfig;
+    openaiTts: Omit<OpenAiTtsConfig, 'voice'>;
 };
 
 /** Read the local-pipeline endpoint settings from the global settings store. */
 function readLocalConfigs(): LocalConfigs {
     const g = <T,>(key: string, fallback: T): T => settingsManager.getGlobal<T>(key, fallback);
     const s = (key: string): string => String(g(key, '') ?? '').trim();
+    // Backend selector: 'mistral' and 'openai' are valid for every stage;
+    // anything else (including empty) falls back to the stage's LAN default.
+    const stage = (key: string, fallback: string): string => {
+        const v = s(key);
+        return v === 'mistral' || v === 'openai' ? v : fallback;
+    };
     return {
-        sttProvider: s('local_stt_provider') === 'mistral' ? 'mistral' : 'whisper',
+        sttProvider: stage('local_stt_provider', 'whisper') as LocalSttProviderId,
         whisper: {
             host: s('local_stt_host'),
             port: Number(g('local_stt_port', LOCAL_DEFAULT_PORTS.stt)) || LOCAL_DEFAULT_PORTS.stt,
         },
-        llmProvider: s('local_llm_provider') === 'mistral' ? 'mistral' : 'ollama',
+        llmProvider: stage('local_llm_provider', 'ollama') as LocalLlmProviderId,
         ollama: {
             host: s('local_llm_host'),
             port: Number(g('local_llm_port', LOCAL_DEFAULT_PORTS.llm)) || LOCAL_DEFAULT_PORTS.llm,
@@ -72,35 +85,46 @@ function readLocalConfigs(): LocalConfigs {
             apiKey: s('mistral_api_key'),
             model: s('mistral_model'),
         },
-        ttsProvider: s('local_tts_provider') === 'mistral' ? 'mistral' : 'piper',
+        ttsProvider: stage('local_tts_provider', 'piper') as LocalTtsProviderId,
         piper: {
             host: s('local_tts_host'),
             port: Number(g('local_tts_port', LOCAL_DEFAULT_PORTS.tts)) || LOCAL_DEFAULT_PORTS.tts,
         },
         mistralSttModel: s('mistral_stt_model'),
         mistralTtsModel: s('mistral_tts_model'),
+        // Generic OpenAI-compatible backends: each stage may point at a
+        // different server (Groq STT + LM Studio LLM + OpenAI TTS, etc.).
+        openaiStt: { baseUrl: s('openai_stt_url'), apiKey: s('openai_stt_key'), model: s('openai_stt_model') },
+        openaiLlm: { baseUrl: s('openai_llm_url'), apiKey: s('openai_llm_key'), model: s('openai_llm_model') },
+        openaiTts: { baseUrl: s('openai_tts_url'), apiKey: s('openai_tts_key'), model: s('openai_tts_model'), voiceOverride: s('openai_tts_voice') },
     };
 }
 
 /** Build the STT stage for the selected backend. */
 function buildSttClient(configs: LocalConfigs): ISttClient {
-    return configs.sttProvider === 'mistral'
-        ? new MistralSttClient({ apiKey: configs.mistral.apiKey, model: configs.mistralSttModel })
-        : new WhisperClient(configs.whisper);
+    switch (configs.sttProvider) {
+        case 'mistral': return new MistralSttClient({ apiKey: configs.mistral.apiKey, model: configs.mistralSttModel });
+        case 'openai': return new OpenAiSttClient(configs.openaiStt);
+        default: return new WhisperClient(configs.whisper);
+    }
 }
 
 /** Build the LLM stage for the selected backend. */
 function buildLlmClient(configs: LocalConfigs): ILlmClient {
-    return configs.llmProvider === 'mistral'
-        ? new MistralClient(configs.mistral)
-        : new OllamaClient(configs.ollama);
+    switch (configs.llmProvider) {
+        case 'mistral': return new MistralClient(configs.mistral);
+        case 'openai': return new OpenAiLlmClient(configs.openaiLlm);
+        default: return new OllamaClient(configs.ollama);
+    }
 }
 
 /** Build the TTS stage for the selected backend. */
 function buildTtsClient(configs: LocalConfigs, voice: string): ITtsClient {
-    return configs.ttsProvider === 'mistral'
-        ? new MistralTtsClient({ apiKey: configs.mistral.apiKey, model: configs.mistralTtsModel, voice })
-        : new PiperClient(configs.piper);
+    switch (configs.ttsProvider) {
+        case 'mistral': return new MistralTtsClient({ apiKey: configs.mistral.apiKey, model: configs.mistralTtsModel, voice });
+        case 'openai': return new OpenAiTtsClient({ ...configs.openaiTts, voice });
+        default: return new PiperClient(configs.piper);
+    }
 }
 
 /**
@@ -252,6 +276,9 @@ export class LocalPipelineProvider extends (EventEmitter as new () => TypedEmitt
     static getAvailableVoices(ttsBackend?: string): { value: string; name: string }[] {
         const backend = ttsBackend ?? settingsManager.getGlobal<string>('local_tts_provider', 'piper');
         if (backend === 'mistral') return VOXTRAL_TTS_VOICES;
+        // Standard OpenAI voices; custom servers (Kokoro etc.) use the
+        // free-text voice override in the TTS section instead.
+        if (backend === 'openai') return OPENAI_TTS_VOICES;
         return [{ value: "server-default", name: "Piper server voice" }];
     }
 

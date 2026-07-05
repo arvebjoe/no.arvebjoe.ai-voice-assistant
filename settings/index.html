@@ -181,6 +181,7 @@
         <select class="homey-form-input" id="local_stt_provider">
           <option value="whisper">Whisper (local)</option>
           <option value="mistral">Mistral Voxtral (cloud API)</option>
+          <option value="openai">OpenAI-compatible (cloud or custom)</option>
         </select>
       </div>
       <div id="local_stt_whisper">
@@ -208,6 +209,28 @@
             Your voice recordings are sent to Mistral for transcription.</div>
         </div>
       </div>
+      <div id="local_stt_openai" style="display: none;">
+        <div class="homey-form-group">
+          <label class="homey-form-label" for="openai_stt_url">Base URL</label>
+          <input type="text" class="homey-form-input" id="openai_stt_url" autocomplete="off"
+            placeholder="e.g. https://api.groq.com/openai/v1" />
+        </div>
+        <div class="homey-form-group">
+          <label class="homey-form-label" for="openai_stt_key">API key (optional)</label>
+          <div class="secret-wrap">
+            <input type="password" class="homey-form-input" id="openai_stt_key" autocomplete="off"
+              placeholder="Leave empty for keyless local servers" />
+            <button type="button" class="secret-toggle" data-for="openai_stt_key">Show</button>
+          </div>
+        </div>
+        <div class="homey-form-group">
+          <label class="homey-form-label" for="openai_stt_model">Model</label>
+          <input type="text" class="homey-form-input" id="openai_stt_model" autocomplete="off"
+            placeholder="e.g. whisper-large-v3-turbo or gpt-4o-transcribe" />
+          <div class="help-text">Any server speaking OpenAI's <code>/audio/transcriptions</code> API: OpenAI
+            (https://api.openai.com), Groq, speaches, … A bare host gets <code>/v1</code> appended automatically.</div>
+        </div>
+      </div>
 
       <div class="local-section-title">Language model</div>
       <div class="homey-form-group">
@@ -215,6 +238,7 @@
         <select class="homey-form-input" id="local_llm_provider">
           <option value="ollama">Ollama (local)</option>
           <option value="mistral">Mistral (cloud API)</option>
+          <option value="openai">OpenAI-compatible (cloud or custom)</option>
         </select>
         <div class="help-text">Which model answers you. Ollama runs on your own machine; Mistral is a cloud API
           (only the text of the conversation goes to Mistral).</div>
@@ -248,6 +272,29 @@
             (e.g. <code>mistral-medium-latest</code>, <code>mistral-large-latest</code>).</div>
         </div>
       </div>
+      <div id="local_llm_openai" style="display: none;">
+        <div class="homey-form-group">
+          <label class="homey-form-label" for="openai_llm_url">Base URL</label>
+          <input type="text" class="homey-form-input" id="openai_llm_url" autocomplete="off"
+            placeholder="e.g. https://api.groq.com/openai/v1 or 192.168.1.50:1234" />
+        </div>
+        <div class="homey-form-group">
+          <label class="homey-form-label" for="openai_llm_key">API key (optional)</label>
+          <div class="secret-wrap">
+            <input type="password" class="homey-form-input" id="openai_llm_key" autocomplete="off"
+              placeholder="Leave empty for keyless local servers" />
+            <button type="button" class="secret-toggle" data-for="openai_llm_key">Show</button>
+          </div>
+        </div>
+        <div class="homey-form-group">
+          <label class="homey-form-label" for="openai_llm_model">Model</label>
+          <input type="text" class="homey-form-input" id="openai_llm_model" autocomplete="off"
+            placeholder="e.g. llama-3.3-70b-versatile or gpt-5-mini" />
+          <div class="help-text">Any server speaking OpenAI's <code>/chat/completions</code> API with tool calling:
+            OpenAI, Groq, OpenRouter, DeepSeek, LM Studio, llama.cpp, vLLM, … A bare host gets <code>/v1</code>
+            appended automatically. Model is required.</div>
+        </div>
+      </div>
 
       <div class="local-section-title">Text-to-speech</div>
       <div class="homey-form-group">
@@ -255,6 +302,7 @@
         <select class="homey-form-input" id="local_tts_provider">
           <option value="piper">Piper (local)</option>
           <option value="mistral">Mistral Voxtral (cloud API)</option>
+          <option value="openai">OpenAI-compatible (cloud or custom)</option>
         </select>
       </div>
       <div id="local_tts_piper">
@@ -281,6 +329,34 @@
           <div class="help-text">Mistral's Voxtral TTS. Empty = the server's current default; set an explicit id
             (e.g. <code>voxtral-mini-tts-2603</code>) to pin one. Pick one of Voxtral's preset voices in the
             <b>Voice</b> dropdown above.</div>
+        </div>
+      </div>
+      <div id="local_tts_openai" style="display: none;">
+        <div class="homey-form-group">
+          <label class="homey-form-label" for="openai_tts_url">Base URL</label>
+          <input type="text" class="homey-form-input" id="openai_tts_url" autocomplete="off"
+            placeholder="e.g. https://api.openai.com/v1 or 192.168.1.50:8880" />
+        </div>
+        <div class="homey-form-group">
+          <label class="homey-form-label" for="openai_tts_key">API key (optional)</label>
+          <div class="secret-wrap">
+            <input type="password" class="homey-form-input" id="openai_tts_key" autocomplete="off"
+              placeholder="Leave empty for keyless local servers" />
+            <button type="button" class="secret-toggle" data-for="openai_tts_key">Show</button>
+          </div>
+        </div>
+        <div class="homey-form-group">
+          <label class="homey-form-label" for="openai_tts_model">Model</label>
+          <input type="text" class="homey-form-input" id="openai_tts_model" autocomplete="off"
+            placeholder="e.g. gpt-4o-mini-tts or kokoro" />
+        </div>
+        <div class="homey-form-group">
+          <label class="homey-form-label" for="openai_tts_voice">Voice override (optional)</label>
+          <input type="text" class="homey-form-input" id="openai_tts_voice" autocomplete="off"
+            placeholder="e.g. af_heart for Kokoro — empty uses the Voice dropdown above" />
+          <div class="help-text">Any server speaking OpenAI's <code>/audio/speech</code> API: OpenAI itself,
+            kokoro-fastapi, … For OpenAI pick a voice in the <b>Voice</b> dropdown above; for custom servers
+            whose voices aren't OpenAI's, type the voice name here (it wins when set).</div>
         </div>
       </div>
     </div>
@@ -340,7 +416,10 @@
         "local_stt_provider", "local_stt_host", "local_stt_port", "mistral_stt_model",
         "local_llm_provider", "local_llm_host", "local_llm_port", "local_llm_model", "mistral_model",
         "local_tts_provider", "local_tts_host", "local_tts_port", "mistral_tts_model",
-        "mistral_api_key"
+        "mistral_api_key",
+        "openai_stt_url", "openai_stt_key", "openai_stt_model",
+        "openai_llm_url", "openai_llm_key", "openai_llm_model",
+        "openai_tts_url", "openai_tts_key", "openai_tts_model", "openai_tts_voice"
       ];
 
       // Per-stage backend selection: each stage shows either its LAN boxes or
@@ -351,17 +430,23 @@
       var ttsProviderSelectElement = document.getElementById("local_tts_provider");
 
       function refreshStageVisibility() {
-        var sttMistral = sttProviderSelectElement.value === "mistral";
-        var llmMistral = llmProviderSelectElement.value === "mistral";
-        var ttsMistral = ttsProviderSelectElement.value === "mistral";
-        document.getElementById("local_stt_whisper").style.display = sttMistral ? "none" : "";
-        document.getElementById("local_stt_mistral").style.display = sttMistral ? "" : "none";
-        document.getElementById("local_llm_ollama").style.display = llmMistral ? "none" : "";
-        document.getElementById("local_llm_mistral").style.display = llmMistral ? "" : "none";
-        document.getElementById("local_tts_piper").style.display = ttsMistral ? "none" : "";
-        document.getElementById("local_tts_mistral").style.display = ttsMistral ? "" : "none";
-        document.getElementById("local_mistral_key").style.display =
-          (sttMistral || llmMistral || ttsMistral) ? "" : "none";
+        // Each stage shows exactly one of its three backend blocks
+        // (<lan default> / mistral / openai) based on its dropdown.
+        var stages = [
+          { select: sttProviderSelectElement, blocks: { whisper: "local_stt_whisper", mistral: "local_stt_mistral", openai: "local_stt_openai" }, def: "whisper" },
+          { select: llmProviderSelectElement, blocks: { ollama: "local_llm_ollama", mistral: "local_llm_mistral", openai: "local_llm_openai" }, def: "ollama" },
+          { select: ttsProviderSelectElement, blocks: { piper: "local_tts_piper", mistral: "local_tts_mistral", openai: "local_tts_openai" }, def: "piper" }
+        ];
+        var anyMistral = false;
+        stages.forEach(function (stage) {
+          var value = stage.blocks[stage.select.value] ? stage.select.value : stage.def;
+          if (value === "mistral") anyMistral = true;
+          Object.keys(stage.blocks).forEach(function (backend) {
+            document.getElementById(stage.blocks[backend]).style.display = backend === value ? "" : "none";
+          });
+        });
+        // The shared Mistral key is only needed while some stage uses Mistral.
+        document.getElementById("local_mistral_key").style.display = anyMistral ? "" : "none";
       }
       sttProviderSelectElement.addEventListener("change", refreshStageVisibility);
       llmProviderSelectElement.addEventListener("change", refreshStageVisibility);

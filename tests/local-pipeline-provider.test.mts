@@ -6,6 +6,9 @@ import { MistralSttClient } from '../src/llm/providers/local/mistral-stt-client.
 import { MistralTtsClient } from '../src/llm/providers/local/mistral-tts-client.mjs';
 import { WhisperClient } from '../src/llm/providers/local/whisper-client.mjs';
 import { PiperClient } from '../src/llm/providers/local/piper-client.mjs';
+import { OpenAiLlmClient } from '../src/llm/providers/local/openai-llm-client.mjs';
+import { OpenAiSttClient } from '../src/llm/providers/local/openai-stt-client.mjs';
+import { OpenAiTtsClient } from '../src/llm/providers/local/openai-tts-client.mjs';
 import { settingsManager } from '../src/settings/settings-manager.mjs';
 import { MockHomey } from './mocks/mock-homey.mjs';
 import { fakeToolManager } from './mocks/mock-tool-manager.mjs';
@@ -325,6 +328,23 @@ describe('LocalPipelineProvider', () => {
         }
     });
 
+    it('switches all three stages to the generic OpenAI-compatible backend', async () => {
+        const p = new LocalPipelineProvider(homey as any, toolManager as any, { ...baseOpts });
+        try {
+            homey.setMockSetting('local_stt_provider', 'openai');
+            homey.setMockSetting('local_llm_provider', 'openai');
+            homey.setMockSetting('local_tts_provider', 'openai');
+            expect((p as any).stt).toBeInstanceOf(OpenAiSttClient);
+            expect((p as any).llm).toBeInstanceOf(OpenAiLlmClient);
+            expect((p as any).llm).not.toBeInstanceOf(MistralClient); // generic, not the subclass
+            expect((p as any).tts).toBeInstanceOf(OpenAiTtsClient);
+            // Keyless is a valid configuration for these backends.
+            expect(p.hasApiKey()).toBe(true);
+        } finally {
+            p.destroy();
+        }
+    });
+
     it('routes the selected voice to a Voxtral TTS stage via updateVoice', async () => {
         homey.setMockSetting('mistral_api_key', 'sk-test');
         homey.setMockSetting('local_tts_provider', 'mistral');
@@ -346,6 +366,8 @@ describe('LocalPipelineProvider', () => {
         expect(voxtral.map((v) => v.value)).toContain('neutral_female');
         // An explicit override (settings-page preview) wins over the saved setting.
         expect(LocalPipelineProvider.getAvailableVoices('piper').map((v) => v.value)).toEqual(['server-default']);
+        // The generic backend offers OpenAI's standard voices.
+        expect(LocalPipelineProvider.getAvailableVoices('openai').map((v) => v.value)).toContain('alloy');
     });
 
     it('emits missing_api_key on start when Mistral is selected without a key', async () => {

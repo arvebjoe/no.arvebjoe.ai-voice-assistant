@@ -234,6 +234,20 @@ fresh config download: [`.esp_home/CUSTOMIZATIONS.md`](./.esp_home/CUSTOMIZATION
     One shared `mistral_api_key` for all Mistral-backed stages; the settings page shows the key
     field when any stage picks Mistral, and each stage independently shows LAN host/port vs
     cloud model boxes. Any keyless Mistral stage → `missing_api_key`/`hasApiKey()=false`.
+  - [x] **Generic OpenAI-compatible backend for every stage (2026-07-05, untested against real
+    services).** Third option (`openai`) in each stage's dropdown, with per-stage base URL /
+    optional API key / model settings (`openai_stt_*`, `openai_llm_*`, `openai_tts_*` — stages
+    may point at different servers). One implementation covers OpenAI itself, Groq
+    (https://api.groq.com/openai/v1 — fastest tokens + dirt-cheap Whisper), OpenRouter, DeepSeek,
+    LM Studio / llama.cpp / vLLM / LocalAI / Ollama's `/v1` shim (LLM), speaches (STT), and
+    kokoro-fastapi (TTS). `local/openai-compat.mts` has the shared URL normalizer (bare host →
+    `http://…/v1`; explicit paths kept verbatim) + `/models` health probe (401/403 → key error,
+    404 tolerated); `openai-llm-client.mts` is the SSE chat client base class that
+    `MistralClient` now subclasses (Mistral = same dialect + pinned endpoint + 9-char id
+    sanitization); `openai-stt-client.mts`/`openai-tts-client.mts` mirror the audio endpoints.
+    TTS voice: the Voice dropdown offers OpenAI's standard voices; the free-text
+    `openai_tts_voice` override wins for custom servers (e.g. Kokoro's `af_heart`). API key is
+    optional (LAN servers) — a keyed server rejecting shows up in the health probe.
   - [ ] **Verify against real services on Windows** (whisper-asr-webservice + Ollama desktop +
     piper http docker); tune `SimpleVad` thresholds with a real PE mic.
   - [ ] Wake-word → reply latency measurement; consider Whisper streaming/partials, and Mistral's

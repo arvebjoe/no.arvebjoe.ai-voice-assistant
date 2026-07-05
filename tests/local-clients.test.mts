@@ -6,6 +6,10 @@ import { MistralSttClient } from '../src/llm/providers/local/mistral-stt-client.
 import { MistralTtsClient, voxtralVoiceName } from '../src/llm/providers/local/mistral-tts-client.mjs';
 import { generateToolCallId, sanitizeToolCallId } from '../src/llm/providers/local/llm-client.mjs';
 import { PiperClient } from '../src/llm/providers/local/piper-client.mjs';
+import { OpenAiLlmClient } from '../src/llm/providers/local/openai-llm-client.mjs';
+import { OpenAiSttClient } from '../src/llm/providers/local/openai-stt-client.mjs';
+import { OpenAiTtsClient } from '../src/llm/providers/local/openai-tts-client.mjs';
+import { normalizeOpenAiBaseUrl } from '../src/llm/providers/local/openai-compat.mjs';
 import { pcmToWav } from '../src/helpers/wav.mjs';
 
 /** fetch-mock helpers -------------------------------------------------------- */
@@ -291,6 +295,139 @@ describe('MistralClient', () => {
         const client = new MistralClient({ apiKey: 'bad', model: '' });
         fetchImpl = () => jsonResponse({ message: 'Unauthorized' }, 401);
         await expect(client.check()).rejects.toThrow(/API key was rejected/);
+    });
+});
+
+/** Generic OpenAI-compatible clients --------------------------------------------- */
+
+describe('normalizeOpenAiBaseUrl', () => {
+    it('appends /v1 to bare hosts and defaults the scheme', () => {
+        expect(normalizeOpenAiBaseUrl('192.168.1.50:1234')).toBe('http://192.168.1.50:1234/v1');
+        expect(normalizeOpenAiBaseUrl('https://api.openai.com')).toBe('https://api.openai.com/v1');
+        expect(normalizeOpenAiBaseUrl('https://api.openai.com/')).toBe('https://api.openai.com/v1');
+    });
+
+    it('keeps an explicit path verbatim (Groq style)', () => {
+        expect(normalizeOpenAiBaseUrl('https://api.groq.com/openai/v1')).toBe('https://api.groq.com/openai/v1');
+        expect(normalizeOpenAiBaseUrl('https://api.groq.com/openai/v1/')).toBe('https://api.groq.com/openai/v1');
+    });
+});
+
+describe('OpenAiLlmClient (generic)', () => {
+    it('streams from {base}/chat/completions without auth when keyless', async () => {
+        const client = new OpenAiLlmClient({ baseUrl: '192.168.1.50:1234', apiKey: '', model: 'qwen2.5-7b-instruct' });
+        fetchImpl = (url, init) => {
+            expect(url).toBe('http://192.168.1.50:1234/v1/chat/completions');
+            expect(init.headers.Authorization).toBeUndefined(); // LM Studio needs no key
+            expect(JSON.parse(init.body).model).toBe('qwen2.5-7b-instruct');
+            return sseResponse([{ choices: [{ delta: { content: 'hi' } }] }]);
+        };
+        const result = await client.chat([{ role: 'user', content: 'hei' }], []);
+        expect(result.content).toBe('hi');
+    });
+
+    it('passes tool-call ids through unmodified and generates missing ones', async () => {
+        const client = new OpenAiLlmClient({ baseUrl: 'https://api.groq.com/openai/v1', apiKey: 'gsk_x', model: 'llama-3.3-70b-versatile' });
+        fetchImpl = (url, init) => {
+            expect(url).toBe('https://api.groq.com/openai/v1/chat/completions');
+            expect(init.headers.Authorization).toBe('Bearer gsk_x');
+            return sseResponse([
+                { choices: [{ delta: { tool_calls: [{ index: 0, id: 'call_0123456789abcdef', function: { name: 'get_time', arguments: '{}' } }] } }] },
+                { choices: [{ delta: { tool_calls: [{ index: 1, function: { name: 'get_weather', arguments: '{}' } }] } }] },
+            ]);
+        };
+        const result = await client.chat([{ role: 'user', content: 'x' }], []);
+        // No 9-char coercion here — OpenAI-style ids go through verbatim…
+        expect(result.toolCalls[0].id).toBe('call_0123456789abcdef');
+        // …and a server that sends no id gets a generated one.
+        expect(result.toolCalls[1].id).toMatch(/^[a-zA-Z0-9]{9}$/);
+    });
+
+    it('requires base URL and model to be configured', () => {
+        expect(new OpenAiLlmClient({ baseUrl: '', apiKey: '', model: 'x' }).isConfigured()).toBe(false);
+        expect(new OpenAiLlmClient({ baseUrl: 'h:1', apiKey: '', model: '' }).isConfigured()).toBe(false);
+        expect(new OpenAiLlmClient({ baseUrl: 'h:1', apiKey: '', model: 'x' }).isConfigured()).toBe(true);
+        expect(new OpenAiLlmClient({ baseUrl: 'h:1', apiKey: '', model: 'x' }).hasCredentials()).toBe(true);
+    });
+
+    it('check() flags a rejected key', async () => {
+        const client = new OpenAiLlmClient({ baseUrl: 'https://api.openai.com', apiKey: 'bad', model: 'gpt-5-mini' });
+        fetchImpl = (url) => {
+            expect(url).toBe('https://api.openai.com/v1/models');
+            return jsonResponse({ error: 'invalid_api_key' }, 401);
+        };
+        await expect(client.check()).rejects.toThrow(/rejected the API key/);
+    });
+});
+
+describe('OpenAiSttClient (generic)', () => {
+    const pcm = Buffer.alloc(3200);
+
+    it('uploads to {base}/audio/transcriptions with model + language', async () => {
+        const client = new OpenAiSttClient({ baseUrl: 'https://api.groq.com/openai/v1', apiKey: 'gsk_x', model: 'whisper-large-v3-turbo' });
+        fetchImpl = (url, init) => {
+            expect(url).toBe('https://api.groq.com/openai/v1/audio/transcriptions');
+            expect(init.headers.Authorization).toBe('Bearer gsk_x');
+            const form = init.body as FormData;
+            expect(form.get('model')).toBe('whisper-large-v3-turbo');
+            expect(form.get('language')).toBe('no');
+            expect(form.get('file')).toBeTruthy();
+            return jsonResponse({ text: ' slå av lyset ' });
+        };
+        expect(await client.transcribe(pcm, 'no')).toBe('slå av lyset');
+    });
+
+    it('omits model and auth when not configured (LAN server)', async () => {
+        const client = new OpenAiSttClient({ baseUrl: '10.0.0.5:8000', apiKey: '', model: '' });
+        fetchImpl = (url, init) => {
+            expect(url).toBe('http://10.0.0.5:8000/v1/audio/transcriptions');
+            expect(init.headers.Authorization).toBeUndefined();
+            expect((init.body as FormData).get('model')).toBeNull();
+            return jsonResponse({ text: 'ok' });
+        };
+        expect(await client.transcribe(pcm, 'en')).toBe('ok');
+    });
+});
+
+describe('OpenAiTtsClient (generic)', () => {
+    const wav = pcmToWav(Buffer.alloc(24000 * 2), 24000, 1);
+
+    it('synthesizes via {base}/audio/speech using the dropdown voice', async () => {
+        const client = new OpenAiTtsClient({ baseUrl: 'https://api.openai.com', apiKey: 'sk-x', model: 'gpt-4o-mini-tts', voice: 'nova', voiceOverride: '' });
+        fetchImpl = (url, init) => {
+            expect(url).toBe('https://api.openai.com/v1/audio/speech');
+            const body = JSON.parse(init.body);
+            expect(body).toMatchObject({ model: 'gpt-4o-mini-tts', input: 'Hei.', voice: 'nova', response_format: 'wav' });
+            return binaryResponse(wav);
+        };
+        const { sampleRate } = await client.synthesize('Hei.');
+        expect(sampleRate).toBe(24000);
+    });
+
+    it('voice override wins verbatim (custom servers like Kokoro)', async () => {
+        const client = new OpenAiTtsClient({ baseUrl: '10.0.0.5:8880', apiKey: '', model: 'kokoro', voice: 'nova', voiceOverride: 'af_heart' });
+        fetchImpl = (url, init) => {
+            expect(JSON.parse(init.body).voice).toBe('af_heart');
+            expect(init.headers.Authorization).toBeUndefined();
+            return binaryResponse(wav);
+        };
+        await client.synthesize('test');
+    });
+
+    it('falls back to alloy for non-OpenAI dropdown voices', async () => {
+        const client = new OpenAiTtsClient({ baseUrl: 'api.openai.com', apiKey: 'sk', model: 'tts-1', voice: 'server-default', voiceOverride: '' });
+        fetchImpl = (url, init) => {
+            expect(JSON.parse(init.body).voice).toBe('alloy');
+            return binaryResponse(wav);
+        };
+        await client.synthesize('test');
+
+        client.setVoice('shimmer'); // a real OpenAI voice from the dropdown
+        fetchImpl = (url, init) => {
+            expect(JSON.parse(init.body).voice).toBe('shimmer');
+            return binaryResponse(wav);
+        };
+        await client.synthesize('again');
     });
 });
 
