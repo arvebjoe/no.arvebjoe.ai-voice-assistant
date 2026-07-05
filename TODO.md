@@ -248,6 +248,19 @@ fresh config download: [`.esp_home/CUSTOMIZATIONS.md`](./.esp_home/CUSTOMIZATION
     TTS voice: the Voice dropdown offers OpenAI's standard voices; the free-text
     `openai_tts_voice` override wins for custom servers (e.g. Kokoro's `af_heart`). API key is
     optional (LAN servers) — a keyed server rejecting shows up in the health probe.
+  - [x] **Wyoming-protocol STT backend (2026-07-05) — for `rhasspy/wyoming-faster-whisper` on
+    TCP port 10300.** Real-world testing showed the user's "faster-whisper" docker is the Home
+    Assistant Wyoming build — raw TCP with newline-JSON events + binary PCM payloads, NOT HTTP,
+    so the HTTP `WhisperClient` can never reach it (that was the connect failure in the log).
+    New `local/wyoming-protocol.mts` (framing per
+    `docs/home-assistant-voice-preview-edition/wyoming-protocol.md`: header line with optional
+    `data_length` side-band JSON + `payload_length` binary) and `local/wyoming-stt-client.mts`
+    (`transcribe`→`audio-start`/`audio-chunk`×N/`audio-stop`→`transcript`, streaming
+    transcript-chunk/-stop also handled; health check = `describe`→`info` with an `asr` entry).
+    Fourth STT dropdown option "Wyoming — faster-whisper (local)" with its own
+    `wyoming_stt_host`/`wyoming_stt_port` settings (default 10300); Test button supported.
+    The protocol module is reusable — wyoming-piper TTS (port 10200) would be a small follow-up
+    if needed.
   - [x] **Per-stage "Test" buttons in the settings page (2026-07-05).** Each stage section has a
     Test button that POSTs the CURRENT (unsaved) form values to the app's new
     `POST /test-local-stage` endpoint (route in `.homeycompose/app.json`; handler in `api.mts` →

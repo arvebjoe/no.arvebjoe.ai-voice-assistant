@@ -9,6 +9,7 @@ import { PiperClient } from '../src/llm/providers/local/piper-client.mjs';
 import { OpenAiLlmClient } from '../src/llm/providers/local/openai-llm-client.mjs';
 import { OpenAiSttClient } from '../src/llm/providers/local/openai-stt-client.mjs';
 import { OpenAiTtsClient } from '../src/llm/providers/local/openai-tts-client.mjs';
+import { WyomingSttClient } from '../src/llm/providers/local/wyoming-stt-client.mjs';
 import { settingsManager } from '../src/settings/settings-manager.mjs';
 import { MockHomey } from './mocks/mock-homey.mjs';
 import { fakeToolManager } from './mocks/mock-tool-manager.mjs';
@@ -323,6 +324,21 @@ describe('LocalPipelineProvider', () => {
             expect((p as any).stt).toBeInstanceOf(WhisperClient);
             expect((p as any).tts).toBeInstanceOf(PiperClient);
             expect(p.hasApiKey()).toBe(true);
+        } finally {
+            p.destroy();
+        }
+    });
+
+    it('switches the STT stage to the Wyoming backend (keyless LAN)', async () => {
+        const p = new LocalPipelineProvider(homey as any, toolManager as any, { ...baseOpts });
+        try {
+            homey.setMockSetting('wyoming_stt_host', '10.0.0.9');
+            homey.setMockSetting('local_stt_provider', 'wyoming');
+            expect((p as any).stt).toBeInstanceOf(WyomingSttClient);
+            expect(p.hasApiKey()).toBe(true);
+
+            homey.setMockSetting('local_stt_provider', 'whisper');
+            expect((p as any).stt).toBeInstanceOf(WhisperClient);
         } finally {
             p.destroy();
         }

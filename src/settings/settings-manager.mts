@@ -129,7 +129,9 @@ export class SettingsManager {
       // Generic OpenAI-compatible backends (per-stage base URL / key / model)
       'openai_stt_url', 'openai_stt_key', 'openai_stt_model',
       'openai_llm_url', 'openai_llm_key', 'openai_llm_model',
-      'openai_tts_url', 'openai_tts_key', 'openai_tts_model', 'openai_tts_voice'];
+      'openai_tts_url', 'openai_tts_key', 'openai_tts_model', 'openai_tts_voice',
+      // Wyoming protocol STT (wyoming-faster-whisper, TCP port 10300)
+      'wyoming_stt_host', 'wyoming_stt_port'];
 
     for (const k of knownKeys) {
       this.globals[k] = this.homey.settings.get(k);

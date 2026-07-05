@@ -215,7 +215,8 @@
       <div class="homey-form-group">
         <label class="homey-form-label" for="local_stt_provider">STT backend</label>
         <select class="homey-form-input" id="local_stt_provider">
-          <option value="whisper">Whisper (local)</option>
+          <option value="whisper">Whisper — HTTP (local)</option>
+          <option value="wyoming">Wyoming — faster-whisper (local)</option>
           <option value="mistral">Mistral Voxtral (cloud API)</option>
           <option value="openai">OpenAI-compatible (cloud or custom)</option>
         </select>
@@ -235,6 +236,23 @@
         <div class="help-text local-section-help">A Whisper server, e.g. the <code>onerahmet/openai-whisper-asr-webservice</code>
           docker image (port 9000). OpenAI-compatible servers (speaches / faster-whisper-server) and whisper.cpp also work —
           the endpoint style is detected automatically. No authentication — keep it on your trusted LAN.</div>
+      </div>
+      <div id="local_stt_wyoming" style="display: none;">
+        <div class="local-host-port">
+          <div class="homey-form-group">
+            <label class="homey-form-label" for="wyoming_stt_host">Host</label>
+            <input type="text" class="homey-form-input" id="wyoming_stt_host" autocomplete="off"
+              placeholder="e.g. 192.168.1.50" />
+          </div>
+          <div class="homey-form-group">
+            <label class="homey-form-label" for="wyoming_stt_port">Port</label>
+            <input type="number" class="homey-form-input" id="wyoming_stt_port" min="1" max="65535"
+              placeholder="10300" />
+          </div>
+        </div>
+        <div class="help-text local-section-help">A Wyoming-protocol STT server (raw TCP, not HTTP) — e.g. the
+          <code>rhasspy/wyoming-whisper</code> / faster-whisper docker from the Home Assistant ecosystem,
+          which listens on port 10300. The model and language are whatever the server was started with.</div>
       </div>
       <div id="local_stt_mistral" style="display: none;">
         <div class="homey-form-group">
@@ -462,6 +480,7 @@
       // global setting key of the same id.
       var localSettingIds = [
         "local_stt_provider", "local_stt_host", "local_stt_port", "mistral_stt_model",
+        "wyoming_stt_host", "wyoming_stt_port",
         "local_llm_provider", "local_llm_host", "local_llm_port", "local_llm_model", "mistral_model",
         "local_tts_provider", "local_tts_host", "local_tts_port", "mistral_tts_model",
         "mistral_api_key",
@@ -481,7 +500,7 @@
         // Each stage shows exactly one of its three backend blocks
         // (<lan default> / mistral / openai) based on its dropdown.
         var stages = [
-          { select: sttProviderSelectElement, blocks: { whisper: "local_stt_whisper", mistral: "local_stt_mistral", openai: "local_stt_openai" }, def: "whisper" },
+          { select: sttProviderSelectElement, blocks: { whisper: "local_stt_whisper", wyoming: "local_stt_wyoming", mistral: "local_stt_mistral", openai: "local_stt_openai" }, def: "whisper" },
           { select: llmProviderSelectElement, blocks: { ollama: "local_llm_ollama", mistral: "local_llm_mistral", openai: "local_llm_openai" }, def: "ollama" },
           { select: ttsProviderSelectElement, blocks: { piper: "local_tts_piper", mistral: "local_tts_mistral", openai: "local_tts_openai" }, def: "piper" }
         ];
@@ -532,7 +551,8 @@
           var sttBackend = sttProviderSelectElement.value;
           return {
             stage: "stt", backend: sttBackend,
-            host: v("local_stt_host"), port: v("local_stt_port"),
+            host: sttBackend === "wyoming" ? v("wyoming_stt_host") : v("local_stt_host"),
+            port: sttBackend === "wyoming" ? v("wyoming_stt_port") : v("local_stt_port"),
             model: sttBackend === "mistral" ? v("mistral_stt_model") : v("openai_stt_model"),
             mistralApiKey: v("mistral_api_key"),
             url: v("openai_stt_url"), key: v("openai_stt_key"),

@@ -23,6 +23,7 @@ import { OpenAiLlmClient, OpenAiLlmConfig } from "./local/openai-llm-client.mjs"
 import { OpenAiSttClient, OpenAiSttConfig } from "./local/openai-stt-client.mjs";
 import { OpenAiTtsClient, OpenAiTtsConfig } from "./local/openai-tts-client.mjs";
 import { OPENAI_TTS_VOICES } from "./local/openai-compat.mjs";
+import { WyomingSttClient, WyomingSttConfig } from "./local/wyoming-stt-client.mjs";
 
 // The app-wide reply-audio contract: audio.delta emits PCM16 mono 24 kHz
 // (see voice-provider.mts). Piper voices speak 16/22.05 kHz — resampled up.
@@ -37,16 +38,17 @@ const MAX_TOOL_ROUNDS = 5;
 const HEALTH_INTERVAL_MS = 60_000;
 
 /** Default ports of the supported services. */
-export const LOCAL_DEFAULT_PORTS = { stt: 9000, llm: 11434, tts: 5000 } as const;
+export const LOCAL_DEFAULT_PORTS = { stt: 9000, llm: 11434, tts: 5000, wyomingStt: 10300 } as const;
 
 /** Selectable backends per pipeline stage (settings: local_stt/llm/tts_provider). */
-export type LocalSttProviderId = 'whisper' | 'mistral' | 'openai';
+export type LocalSttProviderId = 'whisper' | 'wyoming' | 'mistral' | 'openai';
 export type LocalLlmProviderId = 'ollama' | 'mistral' | 'openai';
 export type LocalTtsProviderId = 'piper' | 'mistral' | 'openai';
 
 type LocalConfigs = {
     sttProvider: LocalSttProviderId;
     whisper: LocalSttConfig;
+    wyomingStt: WyomingSttConfig;
     llmProvider: LocalLlmProviderId;
     ollama: LocalLlmConfig;
     mistral: MistralConfig;
@@ -63,19 +65,23 @@ type LocalConfigs = {
 function readLocalConfigs(): LocalConfigs {
     const g = <T,>(key: string, fallback: T): T => settingsManager.getGlobal<T>(key, fallback);
     const s = (key: string): string => String(g(key, '') ?? '').trim();
-    // Backend selector: 'mistral' and 'openai' are valid for every stage;
-    // anything else (including empty) falls back to the stage's LAN default.
-    const stage = (key: string, fallback: string): string => {
+    // Backend selector: anything not in the stage's valid list (including
+    // empty) falls back to the stage's LAN default.
+    const stage = (key: string, valid: string[], fallback: string): string => {
         const v = s(key);
-        return v === 'mistral' || v === 'openai' ? v : fallback;
+        return valid.includes(v) ? v : fallback;
     };
     return {
-        sttProvider: stage('local_stt_provider', 'whisper') as LocalSttProviderId,
+        sttProvider: stage('local_stt_provider', ['whisper', 'wyoming', 'mistral', 'openai'], 'whisper') as LocalSttProviderId,
         whisper: {
             host: s('local_stt_host'),
             port: Number(g('local_stt_port', LOCAL_DEFAULT_PORTS.stt)) || LOCAL_DEFAULT_PORTS.stt,
         },
-        llmProvider: stage('local_llm_provider', 'ollama') as LocalLlmProviderId,
+        wyomingStt: {
+            host: s('wyoming_stt_host'),
+            port: Number(g('wyoming_stt_port', LOCAL_DEFAULT_PORTS.wyomingStt)) || LOCAL_DEFAULT_PORTS.wyomingStt,
+        },
+        llmProvider: stage('local_llm_provider', ['ollama', 'mistral', 'openai'], 'ollama') as LocalLlmProviderId,
         ollama: {
             host: s('local_llm_host'),
             port: Number(g('local_llm_port', LOCAL_DEFAULT_PORTS.llm)) || LOCAL_DEFAULT_PORTS.llm,
@@ -85,7 +91,7 @@ function readLocalConfigs(): LocalConfigs {
             apiKey: s('mistral_api_key'),
             model: s('mistral_model'),
         },
-        ttsProvider: stage('local_tts_provider', 'piper') as LocalTtsProviderId,
+        ttsProvider: stage('local_tts_provider', ['piper', 'mistral', 'openai'], 'piper') as LocalTtsProviderId,
         piper: {
             host: s('local_tts_host'),
             port: Number(g('local_tts_port', LOCAL_DEFAULT_PORTS.tts)) || LOCAL_DEFAULT_PORTS.tts,
@@ -103,6 +109,7 @@ function readLocalConfigs(): LocalConfigs {
 /** Build the STT stage for the selected backend. */
 function buildSttClient(configs: LocalConfigs): ISttClient {
     switch (configs.sttProvider) {
+        case 'wyoming': return new WyomingSttClient(configs.wyomingStt);
         case 'mistral': return new MistralSttClient({ apiKey: configs.mistral.apiKey, model: configs.mistralSttModel });
         case 'openai': return new OpenAiSttClient(configs.openaiStt);
         default: return new WhisperClient(configs.whisper);
