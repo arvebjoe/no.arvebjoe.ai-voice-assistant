@@ -509,6 +509,42 @@
     },
     {
       "name": {
+        "en": "ThirdReality Voice & Music Assistant"
+      },
+      "class": "other",
+      "discovery": "esphome",
+      "capabilities": [
+        "volume_set",
+        "volume_mute"
+      ],
+      "platforms": [
+        "local"
+      ],
+      "connectivity": [
+        "lan"
+      ],
+      "images": {
+        "small": "/drivers/thirdreality-voice--music-assistant/assets/images/small.png",
+        "large": "/drivers/thirdreality-voice--music-assistant/assets/images/large.png",
+        "xlarge": "/drivers/thirdreality-voice--music-assistant/assets/images/xlarge.png"
+      },
+      "pair": [
+        {
+          "id": "list_devices",
+          "template": "list_devices",
+          "navigation": {
+            "next": "add_devices"
+          }
+        },
+        {
+          "id": "add_devices",
+          "template": "add_devices"
+        }
+      ],
+      "id": "thirdreality-voice--music-assistant"
+    },
+    {
+      "name": {
         "en": "Xiaozhi AI"
       },
       "class": "other",
