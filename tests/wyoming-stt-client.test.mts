@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import net from 'node:net';
 import { WyomingSttClient } from '../src/llm/providers/local/wyoming-stt-client.mjs';
+import { WyomingTtsClient } from '../src/llm/providers/local/wyoming-tts-client.mjs';
 
 /**
  * In-process fake Wyoming server: real TCP, real newline-JSON framing with
@@ -131,6 +132,41 @@ describe('WyomingSttClient', () => {
     it('rejects cleanly when nothing listens on the port', async () => {
         const client = new WyomingSttClient({ host: '127.0.0.1', port: 1 }); // nothing there
         await expect(client.transcribe(Buffer.alloc(320), 'en')).rejects.toThrow();
+    });
+
+    it('WyomingTtsClient: synthesize collects the audio-chunk stream into PCM', async () => {
+        server = new FakeWyomingServer();
+        await server.start();
+        const clip = Buffer.alloc(22050); // 0.5 s @22050 PCM16 mono
+        server.onEvent = (event, send) => {
+            if (event.type === 'synthesize') {
+                expect(event.data.text).toBe('Hei på deg.');
+                send('audio-start', { rate: 22050, width: 2, channels: 1 });
+                send('audio-chunk', { rate: 22050, width: 2, channels: 1 }, clip.subarray(0, 10000));
+                send('audio-chunk', { rate: 22050, width: 2, channels: 1 }, clip.subarray(10000));
+                send('audio-stop', {});
+            }
+        };
+
+        const client = new WyomingTtsClient({ host: '127.0.0.1', port: server.port });
+        const { pcm, sampleRate } = await client.synthesize('Hei på deg.');
+        expect(sampleRate).toBe(22050);
+        expect(pcm.length).toBe(clip.length);
+    });
+
+    it('WyomingTtsClient: check() requires a tts-capable info', async () => {
+        server = new FakeWyomingServer();
+        await server.start();
+        server.onEvent = (event, send) => {
+            if (event.type === 'describe') send('info', { asr: [{ name: 'faster-whisper' }], tts: [] });
+        };
+        const client = new WyomingTtsClient({ host: '127.0.0.1', port: server.port });
+        await expect(client.check()).rejects.toThrow(/no TTS/);
+
+        server.onEvent = (event, send) => {
+            if (event.type === 'describe') send('info', { tts: [{ name: 'piper', installed: true }] });
+        };
+        await expect(client.check()).resolves.toBeUndefined();
     });
 
     it('parses events that arrive with data_length side-band JSON', async () => {

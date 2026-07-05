@@ -11,6 +11,7 @@ import { OpenAiLlmClient } from './openai-llm-client.mjs';
 import { OpenAiSttClient } from './openai-stt-client.mjs';
 import { OpenAiTtsClient } from './openai-tts-client.mjs';
 import { WyomingSttClient } from './wyoming-stt-client.mjs';
+import { WyomingTtsClient } from './wyoming-tts-client.mjs';
 import { LOCAL_DEFAULT_PORTS } from '../local-pipeline-provider.mjs';
 
 /**
@@ -82,6 +83,7 @@ function buildLlmClient(req: StageTestRequest): ILlmClient {
 
 function buildTtsClient(req: StageTestRequest): ITtsClient {
     switch (req.backend) {
+        case 'wyoming': return new WyomingTtsClient({ host: str(req.host), port: num(req.port, LOCAL_DEFAULT_PORTS.wyomingTts) });
         case 'mistral': return new MistralTtsClient({ apiKey: str(req.mistralApiKey), model: str(req.model), voice: str(req.voice) });
         case 'openai': return new OpenAiTtsClient({
             baseUrl: str(req.url), apiKey: str(req.key), model: str(req.model),

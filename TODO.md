@@ -259,8 +259,13 @@ fresh config download: [`.esp_home/CUSTOMIZATIONS.md`](./.esp_home/CUSTOMIZATION
     transcript-chunk/-stop also handled; health check = `describe`→`info` with an `asr` entry).
     Fourth STT dropdown option "Wyoming — faster-whisper (local)" with its own
     `wyoming_stt_host`/`wyoming_stt_port` settings (default 10300); Test button supported.
-    The protocol module is reusable — wyoming-piper TTS (port 10200) would be a small follow-up
-    if needed.
+  - [x] **Wyoming-protocol TTS backend (2026-07-05) — for `rhasspy/wyoming-piper` on TCP port
+    10200** (the user's Piper turned out to be the Wyoming build too).
+    `local/wyoming-tts-client.mts` on the same protocol module: `synthesize {text}` →
+    `audio-start`/`audio-chunk`×N/`audio-stop` collected into PCM at the announced rate; health
+    check = `describe`→`info` with a `tts` entry. TTS dropdown option "Wyoming — Piper (local)"
+    with `wyoming_tts_host`/`wyoming_tts_port` (default 10200); voice is server-side like HTTP
+    Piper; Test button supported.
   - [x] **Per-stage "Test" buttons in the settings page (2026-07-05).** Each stage section has a
     Test button that POSTs the CURRENT (unsaved) form values to the app's new
     `POST /test-local-stage` endpoint (route in `.homeycompose/app.json`; handler in `api.mts` →

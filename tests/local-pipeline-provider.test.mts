@@ -10,6 +10,7 @@ import { OpenAiLlmClient } from '../src/llm/providers/local/openai-llm-client.mj
 import { OpenAiSttClient } from '../src/llm/providers/local/openai-stt-client.mjs';
 import { OpenAiTtsClient } from '../src/llm/providers/local/openai-tts-client.mjs';
 import { WyomingSttClient } from '../src/llm/providers/local/wyoming-stt-client.mjs';
+import { WyomingTtsClient } from '../src/llm/providers/local/wyoming-tts-client.mjs';
 import { settingsManager } from '../src/settings/settings-manager.mjs';
 import { MockHomey } from './mocks/mock-homey.mjs';
 import { fakeToolManager } from './mocks/mock-tool-manager.mjs';
@@ -329,16 +330,23 @@ describe('LocalPipelineProvider', () => {
         }
     });
 
-    it('switches the STT stage to the Wyoming backend (keyless LAN)', async () => {
+    it('switches the STT and TTS stages to the Wyoming backends (keyless LAN)', async () => {
         const p = new LocalPipelineProvider(homey as any, toolManager as any, { ...baseOpts });
         try {
             homey.setMockSetting('wyoming_stt_host', '10.0.0.9');
             homey.setMockSetting('local_stt_provider', 'wyoming');
+            homey.setMockSetting('wyoming_tts_host', '10.0.0.9');
+            homey.setMockSetting('local_tts_provider', 'wyoming');
             expect((p as any).stt).toBeInstanceOf(WyomingSttClient);
+            expect((p as any).tts).toBeInstanceOf(WyomingTtsClient);
             expect(p.hasApiKey()).toBe(true);
+            // Wyoming Piper's voice is server-side, same as HTTP Piper.
+            expect(LocalPipelineProvider.getAvailableVoices('wyoming').map((v) => v.value)).toEqual(['server-default']);
 
             homey.setMockSetting('local_stt_provider', 'whisper');
+            homey.setMockSetting('local_tts_provider', 'piper');
             expect((p as any).stt).toBeInstanceOf(WhisperClient);
+            expect((p as any).tts).toBeInstanceOf(PiperClient);
         } finally {
             p.destroy();
         }

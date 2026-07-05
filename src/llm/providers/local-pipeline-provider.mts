@@ -24,6 +24,7 @@ import { OpenAiSttClient, OpenAiSttConfig } from "./local/openai-stt-client.mjs"
 import { OpenAiTtsClient, OpenAiTtsConfig } from "./local/openai-tts-client.mjs";
 import { OPENAI_TTS_VOICES } from "./local/openai-compat.mjs";
 import { WyomingSttClient, WyomingSttConfig } from "./local/wyoming-stt-client.mjs";
+import { WyomingTtsClient, WyomingTtsConfig } from "./local/wyoming-tts-client.mjs";
 
 // The app-wide reply-audio contract: audio.delta emits PCM16 mono 24 kHz
 // (see voice-provider.mts). Piper voices speak 16/22.05 kHz — resampled up.
@@ -38,12 +39,12 @@ const MAX_TOOL_ROUNDS = 5;
 const HEALTH_INTERVAL_MS = 60_000;
 
 /** Default ports of the supported services. */
-export const LOCAL_DEFAULT_PORTS = { stt: 9000, llm: 11434, tts: 5000, wyomingStt: 10300 } as const;
+export const LOCAL_DEFAULT_PORTS = { stt: 9000, llm: 11434, tts: 5000, wyomingStt: 10300, wyomingTts: 10200 } as const;
 
 /** Selectable backends per pipeline stage (settings: local_stt/llm/tts_provider). */
 export type LocalSttProviderId = 'whisper' | 'wyoming' | 'mistral' | 'openai';
 export type LocalLlmProviderId = 'ollama' | 'mistral' | 'openai';
-export type LocalTtsProviderId = 'piper' | 'mistral' | 'openai';
+export type LocalTtsProviderId = 'piper' | 'wyoming' | 'mistral' | 'openai';
 
 type LocalConfigs = {
     sttProvider: LocalSttProviderId;
@@ -54,6 +55,7 @@ type LocalConfigs = {
     mistral: MistralConfig;
     ttsProvider: LocalTtsProviderId;
     piper: LocalTtsConfig;
+    wyomingTts: WyomingTtsConfig;
     mistralSttModel: string;
     mistralTtsModel: string;
     openaiStt: OpenAiSttConfig;
@@ -91,10 +93,14 @@ function readLocalConfigs(): LocalConfigs {
             apiKey: s('mistral_api_key'),
             model: s('mistral_model'),
         },
-        ttsProvider: stage('local_tts_provider', ['piper', 'mistral', 'openai'], 'piper') as LocalTtsProviderId,
+        ttsProvider: stage('local_tts_provider', ['piper', 'wyoming', 'mistral', 'openai'], 'piper') as LocalTtsProviderId,
         piper: {
             host: s('local_tts_host'),
             port: Number(g('local_tts_port', LOCAL_DEFAULT_PORTS.tts)) || LOCAL_DEFAULT_PORTS.tts,
+        },
+        wyomingTts: {
+            host: s('wyoming_tts_host'),
+            port: Number(g('wyoming_tts_port', LOCAL_DEFAULT_PORTS.wyomingTts)) || LOCAL_DEFAULT_PORTS.wyomingTts,
         },
         mistralSttModel: s('mistral_stt_model'),
         mistralTtsModel: s('mistral_tts_model'),
@@ -128,6 +134,7 @@ function buildLlmClient(configs: LocalConfigs): ILlmClient {
 /** Build the TTS stage for the selected backend. */
 function buildTtsClient(configs: LocalConfigs, voice: string): ITtsClient {
     switch (configs.ttsProvider) {
+        case 'wyoming': return new WyomingTtsClient(configs.wyomingTts);
         case 'mistral': return new MistralTtsClient({ apiKey: configs.mistral.apiKey, model: configs.mistralTtsModel, voice });
         case 'openai': return new OpenAiTtsClient({ ...configs.openaiTts, voice });
         default: return new PiperClient(configs.piper);

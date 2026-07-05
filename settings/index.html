@@ -362,7 +362,8 @@
       <div class="homey-form-group">
         <label class="homey-form-label" for="local_tts_provider">TTS backend</label>
         <select class="homey-form-input" id="local_tts_provider">
-          <option value="piper">Piper (local)</option>
+          <option value="piper">Piper — HTTP (local)</option>
+          <option value="wyoming">Wyoming — Piper (local)</option>
           <option value="mistral">Mistral Voxtral (cloud API)</option>
           <option value="openai">OpenAI-compatible (cloud or custom)</option>
         </select>
@@ -382,6 +383,23 @@
         <div class="help-text local-section-help">A Piper HTTP server (port 5000), e.g. <code>artibex/piper-http</code> or
           <code>python -m piper.http_server</code>. The spoken voice is the model the server was started with.
           No authentication — keep it on your trusted LAN.</div>
+      </div>
+      <div id="local_tts_wyoming" style="display: none;">
+        <div class="local-host-port">
+          <div class="homey-form-group">
+            <label class="homey-form-label" for="wyoming_tts_host">Host</label>
+            <input type="text" class="homey-form-input" id="wyoming_tts_host" autocomplete="off"
+              placeholder="e.g. 192.168.1.50" />
+          </div>
+          <div class="homey-form-group">
+            <label class="homey-form-label" for="wyoming_tts_port">Port</label>
+            <input type="number" class="homey-form-input" id="wyoming_tts_port" min="1" max="65535"
+              placeholder="10200" />
+          </div>
+        </div>
+        <div class="help-text local-section-help">A Wyoming-protocol TTS server (raw TCP, not HTTP) — e.g. the
+          <code>rhasspy/wyoming-piper</code> docker from the Home Assistant ecosystem, which listens on
+          port 10200. The spoken voice is the model the server was started with.</div>
       </div>
       <div id="local_tts_mistral" style="display: none;">
         <div class="homey-form-group">
@@ -483,6 +501,7 @@
         "wyoming_stt_host", "wyoming_stt_port",
         "local_llm_provider", "local_llm_host", "local_llm_port", "local_llm_model", "mistral_model",
         "local_tts_provider", "local_tts_host", "local_tts_port", "mistral_tts_model",
+        "wyoming_tts_host", "wyoming_tts_port",
         "mistral_api_key",
         "openai_stt_url", "openai_stt_key", "openai_stt_model",
         "openai_llm_url", "openai_llm_key", "openai_llm_model",
@@ -502,7 +521,7 @@
         var stages = [
           { select: sttProviderSelectElement, blocks: { whisper: "local_stt_whisper", wyoming: "local_stt_wyoming", mistral: "local_stt_mistral", openai: "local_stt_openai" }, def: "whisper" },
           { select: llmProviderSelectElement, blocks: { ollama: "local_llm_ollama", mistral: "local_llm_mistral", openai: "local_llm_openai" }, def: "ollama" },
-          { select: ttsProviderSelectElement, blocks: { piper: "local_tts_piper", mistral: "local_tts_mistral", openai: "local_tts_openai" }, def: "piper" }
+          { select: ttsProviderSelectElement, blocks: { piper: "local_tts_piper", wyoming: "local_tts_wyoming", mistral: "local_tts_mistral", openai: "local_tts_openai" }, def: "piper" }
         ];
         var anyMistral = false;
         stages.forEach(function (stage) {
@@ -573,7 +592,8 @@
         var ttsBackend = ttsProviderSelectElement.value;
         return {
           stage: "tts", backend: ttsBackend,
-          host: v("local_tts_host"), port: v("local_tts_port"),
+          host: ttsBackend === "wyoming" ? v("wyoming_tts_host") : v("local_tts_host"),
+          port: ttsBackend === "wyoming" ? v("wyoming_tts_port") : v("local_tts_port"),
           model: ttsBackend === "mistral" ? v("mistral_tts_model") : v("openai_tts_model"),
           mistralApiKey: v("mistral_api_key"),
           url: v("openai_tts_url"), key: v("openai_tts_key"),
