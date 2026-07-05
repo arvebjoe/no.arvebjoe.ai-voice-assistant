@@ -356,11 +356,12 @@ describe('MistralTtsClient', () => {
             expect(init.headers.Authorization).toBe('Bearer sk-test');
             const body = JSON.parse(init.body);
             expect(body).toMatchObject({
-                model: 'voxtral-tts-latest', // default
                 input: 'Hei på deg.',
-                voice: 'casual_male',
+                voice_id: 'casual_male', // API field is voice_id (per Mistral's OpenAPI spec)
                 response_format: 'wav',
             });
+            // model is optional — omitted, the server default applies.
+            expect(body).not.toHaveProperty('model');
             return binaryResponse(wav24k);
         };
 
@@ -369,10 +370,19 @@ describe('MistralTtsClient', () => {
         expect(pcm.length).toBe(24000 * 2);
     });
 
+    it('pins the model when one is configured', async () => {
+        const client = new MistralTtsClient({ apiKey: 'sk-test', model: 'voxtral-mini-tts-2603', voice: 'neutral_male' });
+        fetchImpl = (url, init) => {
+            expect(JSON.parse(init.body).model).toBe('voxtral-mini-tts-2603');
+            return binaryResponse(wav24k);
+        };
+        await client.synthesize('test');
+    });
+
     it('falls back to the default voice for non-Voxtral voice names', async () => {
         const client = new MistralTtsClient({ apiKey: 'sk', model: '', voice: 'server-default' });
         fetchImpl = (url, init) => {
-            expect(JSON.parse(init.body).voice).toBe('neutral_female');
+            expect(JSON.parse(init.body).voice_id).toBe('neutral_female');
             return binaryResponse(wav24k);
         };
         await client.synthesize('test');
@@ -380,7 +390,7 @@ describe('MistralTtsClient', () => {
         // setVoice flows a valid preset through unchanged.
         client.setVoice('fr_female');
         fetchImpl = (url, init) => {
-            expect(JSON.parse(init.body).voice).toBe('fr_female');
+            expect(JSON.parse(init.body).voice_id).toBe('fr_female');
             return binaryResponse(wav24k);
         };
         await client.synthesize('encore');

@@ -5,22 +5,26 @@ import { ITtsClient } from './tts-client.mjs';
 /**
  * ITtsClient for Mistral's Voxtral TTS API.
  *
- * POST https://api.mistral.ai/v1/audio/speech — JSON { model, input, voice,
- * response_format:'wav' }, binary WAV back (24 kHz mono, which happens to be
- * the app's reply contract already — the provider's resample is a no-op).
- * Unlike Piper (voice fixed server-side), Voxtral picks a preset voice per
- * request, so the app's `selected_voice` setting flows through setVoice().
+ * POST https://api.mistral.ai/v1/audio/speech — JSON { input, voice_id,
+ * response_format:'wav' [, model] }, binary WAV back (24 kHz mono, which
+ * happens to be the app's reply contract already — the provider's resample is
+ * a no-op). Request shape verified against Mistral's official SDK (generated
+ * from their OpenAPI spec): the voice field is `voice_id` (a preset name or a
+ * custom voice id), `response_format` ∈ pcm/wav/mp3/flac/opus, and `model` is
+ * OPTIONAL — omitted, the server applies its own current default, so no model
+ * id is hardcoded here (`mistral_tts_model` overrides when set, e.g.
+ * `voxtral-mini-tts-2603`). Unlike Piper (voice fixed server-side), Voxtral
+ * picks a voice per request, so `selected_voice` flows through setVoice().
  */
 
 export interface MistralTtsConfig {
     apiKey: string;
-    /** Model id. Empty = DEFAULT_MISTRAL_TTS_MODEL. */
+    /** Model id. Empty = omit and let the server pick its default TTS model. */
     model: string;
     /** Preset voice; anything unknown falls back to DEFAULT_MISTRAL_TTS_VOICE. */
     voice: string;
 }
 
-export const DEFAULT_MISTRAL_TTS_MODEL = 'voxtral-tts-latest';
 export const DEFAULT_MISTRAL_TTS_VOICE = 'neutral_female';
 
 /** Voxtral's 20 built-in preset voices (offered in the settings voice dropdown). */
@@ -75,12 +79,8 @@ export class MistralTtsClient implements ITtsClient {
         this.config = { ...config };
     }
 
-    private get model(): string {
-        return this.config.model || DEFAULT_MISTRAL_TTS_MODEL;
-    }
-
     describe(): string {
-        return `mistral-tts=${this.model}`;
+        return `mistral-tts=${this.config.model || 'server-default-model'}`;
     }
 
     isConfigured(): boolean {
@@ -106,6 +106,14 @@ export class MistralTtsClient implements ITtsClient {
     }
 
     async synthesize(text: string, signal?: AbortSignal): Promise<{ pcm: Buffer; sampleRate: number }> {
+        const body: any = {
+            input: text,
+            voice_id: voxtralVoiceName(this.config.voice),
+            response_format: 'wav',
+        };
+        // Optional per the API spec — omitted, the server's default TTS model runs.
+        if (this.config.model) body.model = this.config.model;
+
         const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
         const res = await fetch(`${MISTRAL_BASE_URL}/v1/audio/speech`, {
             method: 'POST',
@@ -113,12 +121,7 @@ export class MistralTtsClient implements ITtsClient {
                 'Content-Type': 'application/json',
                 Authorization: `Bearer ${this.config.apiKey}`,
             },
-            body: JSON.stringify({
-                model: this.model,
-                input: text,
-                voice: voxtralVoiceName(this.config.voice),
-                response_format: 'wav',
-            }),
+            body: JSON.stringify(body),
             signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
         });
         if (!res.ok) {

@@ -222,8 +222,13 @@ fresh config download: [`.esp_home/CUSTOMIZATIONS.md`](./.esp_home/CUSTOMIZATION
     `mistral` (`local/mistral-stt-client.mts`, `POST /v1/audio/transcriptions` multipart, default
     model `voxtral-mini-latest`, override `mistral_stt_model`); `local_tts_provider` = `piper`
     (default) or `mistral` (`local/mistral-tts-client.mts`, `POST /v1/audio/speech` →
-    WAV 24 kHz mono = the seam contract exactly, default model `voxtral-tts-latest`, override
-    `mistral_tts_model`). Voxtral TTS has 20 preset voices (+ OpenAI-name aliases) — the main
+    WAV 24 kHz mono = the seam contract exactly). TTS request shape verified 2026-07-05 against
+    Mistral's official Python SDK (generated from their OpenAPI spec): the voice field is
+    **`voice_id`** (not `voice`), and **`model` is optional** — omitted, the server's default TTS
+    model runs (we omit unless `mistral_tts_model` is set; a concrete pin would be
+    `voxtral-mini-tts-2603`). The spec also exposes `GET /v1/audio/voices` (presets + customs) —
+    candidate for a dynamic voice dropdown later. Voxtral TTS has 20 preset voices (+ OpenAI-name
+    aliases) — the main
     Voice dropdown now switches to them when the TTS backend is Mistral
     (`LocalPipelineProvider.getAvailableVoices(ttsBackend?)`, `/voices?provider=local&tts=…`).
     One shared `mistral_api_key` for all Mistral-backed stages; the settings page shows the key
