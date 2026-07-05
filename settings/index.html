@@ -176,24 +176,55 @@
         docker image (port 9000). OpenAI-compatible servers (speaches / faster-whisper-server) and whisper.cpp also work —
         the endpoint style is detected automatically.</div>
 
-      <div class="local-section-title">Language model — Ollama</div>
-      <div class="local-host-port">
-        <div class="homey-form-group">
-          <label class="homey-form-label" for="local_llm_host">Host</label>
-          <input type="text" class="homey-form-input" id="local_llm_host" autocomplete="off"
-            placeholder="e.g. 192.168.1.50" />
+      <div class="local-section-title">Language model</div>
+      <div class="homey-form-group">
+        <label class="homey-form-label" for="local_llm_provider">LLM backend</label>
+        <select class="homey-form-input" id="local_llm_provider">
+          <option value="ollama">Ollama (local)</option>
+          <option value="mistral">Mistral (cloud API)</option>
+        </select>
+        <div class="help-text">Which model answers you. Ollama runs on your own machine; Mistral is a cloud API
+          (speech still stays local via Whisper/Piper — only the text of the conversation goes to Mistral).</div>
+      </div>
+
+      <div id="local_llm_ollama">
+        <div class="local-host-port">
+          <div class="homey-form-group">
+            <label class="homey-form-label" for="local_llm_host">Host</label>
+            <input type="text" class="homey-form-input" id="local_llm_host" autocomplete="off"
+              placeholder="e.g. 192.168.1.50" />
+          </div>
+          <div class="homey-form-group">
+            <label class="homey-form-label" for="local_llm_port">Port</label>
+            <input type="number" class="homey-form-input" id="local_llm_port" min="1" max="65535" placeholder="11434" />
+          </div>
         </div>
         <div class="homey-form-group">
-          <label class="homey-form-label" for="local_llm_port">Port</label>
-          <input type="number" class="homey-form-input" id="local_llm_port" min="1" max="65535" placeholder="11434" />
+          <label class="homey-form-label" for="local_llm_model">Model</label>
+          <input type="text" class="homey-form-input" id="local_llm_model" autocomplete="off"
+            placeholder="Leave empty to use the first installed model" />
+          <div class="help-text">An Ollama model that supports tool calling (e.g. <code>qwen3</code>, <code>llama3.1</code>,
+            <code>gpt-oss</code>). Empty = the first model from <code>ollama list</code>.</div>
         </div>
       </div>
-      <div class="homey-form-group">
-        <label class="homey-form-label" for="local_llm_model">Model</label>
-        <input type="text" class="homey-form-input" id="local_llm_model" autocomplete="off"
-          placeholder="Leave empty to use the first installed model" />
-        <div class="help-text">An Ollama model that supports tool calling (e.g. <code>qwen3</code>, <code>llama3.1</code>,
-          <code>gpt-oss</code>). Empty = the first model from <code>ollama list</code>.</div>
+
+      <div id="local_llm_mistral" style="display: none;">
+        <div class="homey-form-group">
+          <label class="homey-form-label" for="mistral_api_key">Mistral API key</label>
+          <div class="secret-wrap">
+            <input type="password" class="homey-form-input" id="mistral_api_key" autocomplete="off"
+              placeholder="Enter your Mistral API key here..." />
+            <button type="button" class="secret-toggle" data-for="mistral_api_key">Show</button>
+          </div>
+          <div class="help-text">Visit https://console.mistral.ai to get one</div>
+        </div>
+        <div class="homey-form-group">
+          <label class="homey-form-label" for="mistral_model">Model</label>
+          <input type="text" class="homey-form-input" id="mistral_model" autocomplete="off"
+            placeholder="mistral-small-latest" />
+          <div class="help-text">Empty = <code>mistral-small-latest</code>. Any tool-calling Mistral model works
+            (e.g. <code>mistral-medium-latest</code>, <code>mistral-large-latest</code>).</div>
+        </div>
       </div>
 
       <div class="local-section-title">Text-to-speech — Piper</div>
@@ -262,13 +293,24 @@
       var saveElement = document.getElementById("save");
       var localSettingsElement = document.getElementById("local_settings");
 
-      // Local (Whisper/Ollama/Piper) endpoint settings: text/number inputs that
-      // load and save 1:1 with a global setting key of the same id.
+      // Local pipeline settings: inputs/selects that load and save 1:1 with a
+      // global setting key of the same id.
       var localSettingIds = [
         "local_stt_host", "local_stt_port",
+        "local_llm_provider",
         "local_llm_host", "local_llm_port", "local_llm_model",
+        "mistral_api_key", "mistral_model",
         "local_tts_host", "local_tts_port"
       ];
+
+      // Ollama shows host/port/model; Mistral shows API key + model.
+      var llmProviderSelectElement = document.getElementById("local_llm_provider");
+      function refreshLlmBackendVisibility() {
+        var mistral = llmProviderSelectElement.value === "mistral";
+        document.getElementById("local_llm_ollama").style.display = mistral ? "none" : "";
+        document.getElementById("local_llm_mistral").style.display = mistral ? "" : "none";
+      }
+      llmProviderSelectElement.addEventListener("change", refreshLlmBackendVisibility);
 
       localSettingIds.forEach(function (id) {
         Homey.get(id, function (err, value) {
@@ -276,6 +318,7 @@
           if (value !== null && value !== undefined && value !== "") {
             document.getElementById(id).value = value;
           }
+          if (id === "local_llm_provider") refreshLlmBackendVisibility();
         });
       });
 

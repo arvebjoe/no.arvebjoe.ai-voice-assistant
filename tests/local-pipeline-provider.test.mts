@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { LocalPipelineProvider, ThinkTagFilter } from '../src/llm/providers/local-pipeline-provider.mjs';
+import { MistralClient } from '../src/llm/providers/local/mistral-client.mjs';
+import { OllamaClient } from '../src/llm/providers/local/ollama-client.mjs';
 import { settingsManager } from '../src/settings/settings-manager.mjs';
 import { MockHomey } from './mocks/mock-homey.mjs';
 import { fakeToolManager } from './mocks/mock-tool-manager.mjs';
@@ -80,8 +82,11 @@ async function makeProvider(): Promise<LocalPipelineProvider> {
 
     const stub = { configure: () => { }, isConfigured: () => true, check: async () => { }, baseUrl: 'stub' };
     (provider as any).stt = { ...stub, transcribe: sttTranscribe };
-    (provider as any).llm = { ...stub, resolveModel: async () => 'qwen3', chat: llmChat };
+    (provider as any).llm = { ...stub, hasCredentials: () => true, describe: () => 'stub-llm', resolveModel: async () => 'qwen3', chat: llmChat };
     (provider as any).tts = { ...stub, synthesize: ttsSynthesize };
+    // A settings-driven config change would rebuild this.llm and wipe the stubs;
+    // pin the stubbed clients for the duration of the test.
+    (provider as any).onGlobalSettings = () => { };
 
     await provider.start();
     return provider;
@@ -185,7 +190,7 @@ describe('LocalPipelineProvider', () => {
         llmChat
             .mockImplementationOnce(async () => ({
                 content: '',
-                toolCalls: [{ function: { name: 'get_time', arguments: { zone: 'Office' } } }],
+                toolCalls: [{ id: 'abc123XYZ', name: 'get_time', args: { zone: 'Office' } }],
             }))
             .mockImplementationOnce(async (_msgs: any[], _tools: any[], onDelta?: (d: string) => void) => {
                 onDelta?.('It is noon.');
@@ -202,14 +207,15 @@ describe('LocalPipelineProvider', () => {
         feedAll(provider, silence(900));
         await done;
 
-        expect(called).toHaveBeenCalledWith(expect.objectContaining({ name: 'get_time', args: { zone: 'Office' } }));
+        expect(called).toHaveBeenCalledWith(expect.objectContaining({ callId: 'abc123XYZ', name: 'get_time', args: { zone: 'Office' } }));
         expect(completed).toHaveBeenCalledWith(expect.objectContaining({ name: 'get_time', result: { ok: true, now: '12:00' } }));
 
-        // Round 2 saw the assistant tool_calls message and the tool result.
+        // Round 2 saw the assistant tool-calls message and the keyed tool result.
         const round2: any[] = llmChat.mock.calls[1][0];
         const toolMsg = round2.find((m) => m.role === 'tool');
         expect(toolMsg).toBeTruthy();
-        expect(toolMsg.tool_name).toBe('get_time');
+        expect(toolMsg.toolName).toBe('get_time');
+        expect(toolMsg.toolCallId).toBe('abc123XYZ');
         expect(JSON.parse(toolMsg.content)).toEqual({ ok: true, now: '12:00' });
     });
 
@@ -269,6 +275,39 @@ describe('LocalPipelineProvider', () => {
         feedAll(provider, silence(900));
         const [e] = await err;
         expect(String(e.message)).toContain('whisper down');
+    });
+
+    it('defaults the LLM backend to Ollama and switches to Mistral on a settings change', async () => {
+        // makeProvider pins stubs via onGlobalSettings; build a fresh, unpinned one.
+        const p = new LocalPipelineProvider(homey as any, toolManager as any, { ...baseOpts });
+        try {
+            expect((p as any).llm).toBeInstanceOf(OllamaClient);
+            homey.setMockSetting('mistral_api_key', 'sk-test');
+            homey.setMockSetting('local_llm_provider', 'mistral');
+            expect((p as any).llm).toBeInstanceOf(MistralClient);
+            expect(p.hasApiKey()).toBe(true);
+
+            homey.setMockSetting('local_llm_provider', 'ollama');
+            expect((p as any).llm).toBeInstanceOf(OllamaClient);
+        } finally {
+            p.destroy();
+        }
+    });
+
+    it('emits missing_api_key on start when Mistral is selected without a key', async () => {
+        homey.setMockSetting('local_llm_provider', 'mistral');
+        homey.setMockSetting('mistral_api_key', '');
+        const p = new LocalPipelineProvider(homey as any, toolManager as any, { ...baseOpts });
+        try {
+            expect(p.hasApiKey()).toBe(false);
+            const spy = vi.fn();
+            (p as any).on('missing_api_key', spy);
+            await p.start();
+            expect(spy).toHaveBeenCalledTimes(1);
+            expect(p.isConnected()).toBe(false);
+        } finally {
+            p.destroy();
+        }
     });
 
     it('marks unconnected and emits Unhealthy when a health probe fails', async () => {

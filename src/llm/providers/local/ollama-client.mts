@@ -1,11 +1,16 @@
 import { createLogger } from '../../../helpers/logger.mjs';
+import { ChatMessage, ChatToolCall, ILlmClient, LlmChatResult, LlmToolDef, generateToolCallId } from './llm-client.mjs';
 
 /**
- * HTTP client for a local Ollama instance (desktop app or docker, port 11434).
+ * ILlmClient for a local Ollama instance (desktop app or docker, port 11434).
  *
  * Uses the native /api/chat endpoint with streaming NDJSON and function-call
  * tools. When no model is configured the first locally installed model
  * (GET /api/tags) is used, so "install Ollama, pull one model" just works.
+ *
+ * Wire mapping (neutral seam -> Ollama): assistant tool calls carry arguments
+ * as objects and no ids (ids are generated locally so the provider's history
+ * stays keyed); tool results go back as { role:'tool', tool_name, content }.
  */
 
 export interface LocalLlmConfig {
@@ -15,26 +20,10 @@ export interface LocalLlmConfig {
     model: string;
 }
 
-export interface OllamaMessage {
-    role: 'system' | 'user' | 'assistant' | 'tool';
-    content: string;
-    tool_calls?: OllamaToolCall[];
-    tool_name?: string;
-}
-
-export interface OllamaToolCall {
-    function: { name: string; arguments: any };
-}
-
-export interface OllamaChatResult {
-    content: string;
-    toolCalls: OllamaToolCall[];
-}
-
 const CHAT_TIMEOUT_MS = 120_000; // first token can wait on a cold model load
 const PROBE_TIMEOUT_MS = 3_000;
 
-export class OllamaClient {
+export class OllamaClient implements ILlmClient {
     private config: LocalLlmConfig;
     private resolvedModel: string | null = null;
     private logger = createLogger('OLLAMA', true);
@@ -54,8 +43,17 @@ export class OllamaClient {
         return `http://${this.config.host}:${this.config.port}`;
     }
 
+    describe(): string {
+        return `ollama=${this.baseUrl}`;
+    }
+
     isConfigured(): boolean {
         return !!this.config.host && !!this.config.port;
+    }
+
+    /** Ollama needs no credentials. */
+    hasCredentials(): boolean {
+        return true;
     }
 
     /** Health probe: the server answers /api/version when it's up. */
@@ -81,20 +79,31 @@ export class OllamaClient {
         return name;
     }
 
-    /**
-     * One /api/chat round, streamed. `onDelta` fires per content token; tool
-     * calls are collected and returned with the final content. The tool-call
-     * follow-up round (feeding results back) is the caller's loop.
-     */
+    /** Neutral seam message -> Ollama /api/chat wire format. */
+    private toWire(m: ChatMessage): any {
+        switch (m.role) {
+            case 'assistant':
+                return m.toolCalls?.length
+                    ? { role: 'assistant', content: m.content, tool_calls: m.toolCalls.map((c) => ({ function: { name: c.name, arguments: c.args } })) }
+                    : { role: 'assistant', content: m.content };
+            case 'tool':
+                return { role: 'tool', tool_name: m.toolName, content: m.content };
+            default:
+                return { role: m.role, content: m.content };
+        }
+    }
+
     async chat(
-        messages: OllamaMessage[],
-        tools: any[],
+        messages: ChatMessage[],
+        tools: LlmToolDef[],
         onDelta?: (delta: string) => void,
         signal?: AbortSignal,
-    ): Promise<OllamaChatResult> {
+    ): Promise<LlmChatResult> {
         const model = await this.resolveModel();
-        const body: any = { model, messages, stream: true };
-        if (tools.length) body.tools = tools;
+        const body: any = { model, messages: messages.map((m) => this.toWire(m)), stream: true };
+        if (tools.length) {
+            body.tools = tools.map((t) => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.parameters } }));
+        }
 
         const timeout = AbortSignal.timeout(CHAT_TIMEOUT_MS);
         const res = await fetch(`${this.baseUrl}/api/chat`, {
@@ -109,7 +118,7 @@ export class OllamaClient {
         }
 
         let content = '';
-        const toolCalls: OllamaToolCall[] = [];
+        const toolCalls: ChatToolCall[] = [];
         let lineBuf = '';
         const decoder = new TextDecoder();
 
@@ -131,7 +140,13 @@ export class OllamaClient {
             const calls = msg?.message?.tool_calls;
             if (Array.isArray(calls)) {
                 for (const c of calls) {
-                    if (c?.function?.name) toolCalls.push(c);
+                    if (c?.function?.name) {
+                        toolCalls.push({
+                            id: generateToolCallId(), // Ollama sends none
+                            name: c.function.name,
+                            args: c.function.arguments ?? {},
+                        });
+                    }
                 }
             }
         };

@@ -206,10 +206,23 @@ fresh config download: [`.esp_home/CUSTOMIZATIONS.md`](./.esp_home/CUSTOMIZATION
   (`local/ollama-client.mts`, strips `<think>` blocks from reasoning models) → Piper TTS
   (`local/piper-client.mts`, `POST /synthesize` with `POST /` fallback), sentence-by-sentence while
   the LLM streams, resampled to the 24 kHz seam contract. Health probes + reconnect campaign +
-  60 s idle re-probe drive device availability. No auth (this round) — LAN only.
+  60 s idle re-probe drive device availability. No auth for the LAN services (this round).
+  - [x] **Mistral as an alternative LLM backend (2026-07-05).** Mistral has no unified realtime
+    speech-to-speech API (their docs compose voice agents as STT→LLM→TTS; they DO ship separate
+    Voxtral Realtime STT + Voxtral TTS since Feb/Mar 2026 — see "later" below). So the pipeline's
+    LLM stage is now pluggable behind `ILlmClient` (`local/llm-client.mts`, backend-neutral
+    messages/tool calls): `local_llm_provider` setting = `ollama` (default) or `mistral`
+    (`local/mistral-client.mts`, `/v1/chat/completions` SSE streaming + tool calling; gotcha:
+    Mistral validates `tool_call_id` as EXACTLY 9 chars `[a-zA-Z0-9]`, hence
+    `sanitizeToolCallId`/`generateToolCallId`). Settings page: LLM backend pulldown — Ollama shows
+    host/port/model, Mistral shows API key (`mistral_api_key`) + model (`mistral_model`, default
+    `mistral-small-latest`). STT/TTS stay local, so only conversation text goes to Mistral.
   - [ ] **Verify against real services on Windows** (whisper-asr-webservice + Ollama desktop +
     piper http docker); tune `SimpleVad` thresholds with a real PE mic.
   - [ ] Wake-word → reply latency measurement; consider Whisper streaming/partials.
+  - [ ] **Voxtral option:** Mistral's Voxtral Realtime (STT, sub-200 ms, $0.006/min, also
+    open-weights) and Voxtral TTS could become alternative STT/TTS backends behind the same
+    per-stage seam the LLM now has.
   - [ ] Optional auth (API keys / basic auth) for the three endpoints.
   - [ ] Per-request Piper voice selection (needs `GET /voices` + a voice dropdown).
   - Reference videos:

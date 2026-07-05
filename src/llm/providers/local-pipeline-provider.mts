@@ -11,7 +11,9 @@ import { settingsManager, GlobalSettings } from "../../settings/settings-manager
 import { isBlankOrHallucinatedTranscript } from "../transcript-hallucinations.mjs";
 import { SimpleVad } from "./local/simple-vad.mjs";
 import { WhisperClient, LocalSttConfig } from "./local/whisper-client.mjs";
-import { OllamaClient, OllamaMessage, LocalLlmConfig } from "./local/ollama-client.mjs";
+import { ChatMessage, ILlmClient } from "./local/llm-client.mjs";
+import { OllamaClient, LocalLlmConfig } from "./local/ollama-client.mjs";
+import { MistralClient, MistralConfig } from "./local/mistral-client.mjs";
 import { PiperClient, LocalTtsConfig } from "./local/piper-client.mjs";
 
 // The app-wide reply-audio contract: audio.delta emits PCM16 mono 24 kHz
@@ -29,24 +31,48 @@ const HEALTH_INTERVAL_MS = 60_000;
 /** Default ports of the supported services. */
 export const LOCAL_DEFAULT_PORTS = { stt: 9000, llm: 11434, tts: 5000 } as const;
 
+/** Selectable LLM backends inside the pipeline ('local_llm_provider' setting). */
+export type LocalLlmProviderId = 'ollama' | 'mistral';
+
+type LocalConfigs = {
+    stt: LocalSttConfig;
+    llmProvider: LocalLlmProviderId;
+    ollama: LocalLlmConfig;
+    mistral: MistralConfig;
+    tts: LocalTtsConfig;
+};
+
 /** Read the local-pipeline endpoint settings from the global settings store. */
-function readLocalConfigs(): { stt: LocalSttConfig; llm: LocalLlmConfig; tts: LocalTtsConfig } {
+function readLocalConfigs(): LocalConfigs {
     const g = <T,>(key: string, fallback: T): T => settingsManager.getGlobal<T>(key, fallback);
+    const llmProvider = String(g('local_llm_provider', 'ollama') ?? 'ollama').trim() as LocalLlmProviderId;
     return {
         stt: {
             host: String(g('local_stt_host', '') ?? '').trim(),
             port: Number(g('local_stt_port', LOCAL_DEFAULT_PORTS.stt)) || LOCAL_DEFAULT_PORTS.stt,
         },
-        llm: {
+        llmProvider: llmProvider === 'mistral' ? 'mistral' : 'ollama',
+        ollama: {
             host: String(g('local_llm_host', '') ?? '').trim(),
             port: Number(g('local_llm_port', LOCAL_DEFAULT_PORTS.llm)) || LOCAL_DEFAULT_PORTS.llm,
             model: String(g('local_llm_model', '') ?? '').trim(),
+        },
+        mistral: {
+            apiKey: String(g('mistral_api_key', '') ?? '').trim(),
+            model: String(g('mistral_model', '') ?? '').trim(),
         },
         tts: {
             host: String(g('local_tts_host', '') ?? '').trim(),
             port: Number(g('local_tts_port', LOCAL_DEFAULT_PORTS.tts)) || LOCAL_DEFAULT_PORTS.tts,
         },
     };
+}
+
+/** Build the LLM stage for the selected backend. */
+function buildLlmClient(configs: LocalConfigs): ILlmClient {
+    return configs.llmProvider === 'mistral'
+        ? new MistralClient(configs.mistral)
+        : new OllamaClient(configs.ollama);
 }
 
 /**
@@ -202,7 +228,7 @@ export class LocalPipelineProvider extends (EventEmitter as new () => TypedEmitt
     private reconnect: ReconnectPolicy;
 
     private stt: WhisperClient;
-    private llm: OllamaClient;
+    private llm: ILlmClient;
     private tts: PiperClient;
     private settingsUnsubscribe?: () => void;
 
@@ -216,9 +242,9 @@ export class LocalPipelineProvider extends (EventEmitter as new () => TypedEmitt
     private vad = new SimpleVad();
     // Conversation context (user/assistant/tool messages, no system — that is
     // prepended fresh each round so instruction reloads apply immediately).
-    private messages: OllamaMessage[] = [];
+    // Backend-neutral (see llm-client.mts), so it survives an LLM backend switch.
+    private messages: ChatMessage[] = [];
     private turnAbort: AbortController | null = null;
-    private callCounter = 0;
     // Snapshot of the endpoint settings the clients were last configured with,
     // so a settings save that touches something else doesn't re-probe health.
     private lastConfigJson = '';
@@ -232,7 +258,7 @@ export class LocalPipelineProvider extends (EventEmitter as new () => TypedEmitt
         const configs = readLocalConfigs();
         this.lastConfigJson = JSON.stringify(configs);
         this.stt = new WhisperClient(configs.stt);
-        this.llm = new OllamaClient(configs.llm);
+        this.llm = buildLlmClient(configs);
         this.tts = new PiperClient(configs.tts);
 
         this.reconnect = new ReconnectPolicy(homey, {
@@ -264,8 +290,10 @@ export class LocalPipelineProvider extends (EventEmitter as new () => TypedEmitt
         const changed = json !== this.lastConfigJson;
         this.lastConfigJson = json;
         this.stt.configure(configs.stt);
-        this.llm.configure(configs.llm);
         this.tts.configure(configs.tts);
+        // The LLM stage is rebuilt on change (it may switch backend entirely);
+        // clients are stateless besides caches, so this is cheap.
+        if (changed) this.llm = buildLlmClient(configs);
         if (changed && !this.manuallyClosing) {
             this.logger.info('Local endpoint settings changed — re-checking service health');
             void this.start();
@@ -279,8 +307,16 @@ export class LocalPipelineProvider extends (EventEmitter as new () => TypedEmitt
         this.reconnect.clearTimer();
         await this.instructionState.ensureLoaded(this.instructionParams());
 
+        if (!this.llm.hasCredentials()) {
+            // Only the Mistral backend can land here: key-driven, so the device's
+            // "set API key in app settings" notification is the right message.
+            this.logger.warn('LLM backend needs an API key — set the Mistral key in the app settings');
+            this.setConnected(false);
+            this.emit("missing_api_key");
+            return; // no reconnect campaign: nothing changes until the settings do
+        }
         if (!this.stt.isConfigured() || !this.llm.isConfigured() || !this.tts.isConfigured()) {
-            this.logger.warn('Local pipeline not configured — set the STT/LLM/TTS hosts in the app settings');
+            this.logger.warn('Local pipeline not configured — set the STT/LLM/TTS endpoints in the app settings');
             this.setConnected(false);
             return; // no reconnect campaign: nothing changes until the settings do
         }
@@ -288,7 +324,8 @@ export class LocalPipelineProvider extends (EventEmitter as new () => TypedEmitt
         try {
             await Promise.all([
                 this.stt.check(),
-                this.llm.check().then(() => this.llm.resolveModel()),
+                // resolveModel is Ollama's auto-pick; other backends don't have it.
+                this.llm.check().then(() => (this.llm as any).resolveModel?.()),
                 this.tts.check(),
             ]);
             const wasReconnect = this.reconnect.attemptCount > 0;
@@ -297,7 +334,7 @@ export class LocalPipelineProvider extends (EventEmitter as new () => TypedEmitt
             this.emit("open");
             this.emit("Healthy");
             if (wasReconnect) this.emit("reconnected");
-            this.logger.info(`Local pipeline healthy (whisper=${this.stt.baseUrl}, ollama=${this.llm.baseUrl}, piper=${this.tts.baseUrl})`);
+            this.logger.info(`Local pipeline healthy (whisper=${this.stt.baseUrl}, ${this.llm.describe()}, piper=${this.tts.baseUrl})`);
         } catch (e: any) {
             this.logger.error('Local pipeline health check failed', e);
             this.setConnected(false);
@@ -335,9 +372,13 @@ export class LocalPipelineProvider extends (EventEmitter as new () => TypedEmitt
         return this.connected;
     }
 
-    /** No key needed — never gate on one. */
+    /**
+     * True unless the selected LLM backend needs an API key and none is set
+     * (Mistral). The Ollama/Whisper/Piper stages are keyless, so this drives
+     * the device's missing-key vs not-connected error sound correctly.
+     */
     hasApiKey(): boolean {
-        return true;
+        return this.llm.hasCredentials();
     }
 
     private setConnected(value: boolean): void {
@@ -436,9 +477,9 @@ export class LocalPipelineProvider extends (EventEmitter as new () => TypedEmitt
         const abort = new AbortController();
         this.turnAbort = abort;
 
+        // Neutral tool defs — each ILlmClient wraps them in its own wire format.
         const tools = this.toolManager.getToolDefinitions().map((d: any) => ({
-            type: 'function',
-            function: { name: d.name, description: d.description, parameters: d.parameters },
+            name: d.name, description: d.description, parameters: d.parameters,
         }));
 
         const speaker = mode === 'audio'
@@ -462,7 +503,7 @@ export class LocalPipelineProvider extends (EventEmitter as new () => TypedEmitt
 
         try {
             for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
-                const system: OllamaMessage = { role: 'system', content: this.instructionState.text };
+                const system: ChatMessage = { role: 'system', content: this.instructionState.text };
                 const { content, toolCalls } = await this.llm.chat(
                     [system, ...this.messages],
                     tools,
@@ -475,17 +516,15 @@ export class LocalPipelineProvider extends (EventEmitter as new () => TypedEmitt
                     break;
                 }
 
-                this.messages.push({ role: 'assistant', content, tool_calls: toolCalls });
+                this.messages.push({ role: 'assistant', content, toolCalls });
                 for (const call of toolCalls) {
-                    const name = call.function.name;
-                    const args = call.function.arguments ?? {};
-                    const callId = `local-call-${++this.callCounter}`;
-                    this.emit("tool.called", { callId, name, args });
-                    const { output } = await this.toolManager.execute(name, args);
-                    this.emit("tool.completed", { callId, name, result: output });
+                    this.emit("tool.called", { callId: call.id, name: call.name, args: call.args });
+                    const { output } = await this.toolManager.execute(call.name, call.args);
+                    this.emit("tool.completed", { callId: call.id, name: call.name, result: output });
                     this.messages.push({
                         role: 'tool',
-                        tool_name: name,
+                        toolCallId: call.id,
+                        toolName: call.name,
                         content: typeof output === 'string' ? output : JSON.stringify(output ?? {}),
                     });
                 }
