@@ -3,7 +3,7 @@
 // and lets the LLM mutate capability values via setCapabilityValue (kept in
 // memory + logged so you can confirm the assistant did what you asked).
 import { EventEmitter } from 'node:events';
-import { config } from '../config.mjs';
+import { config, getSatellites, EmulatorSatellite } from '../config.mjs';
 import { createLogger } from '../../src/helpers/logger.mjs';
 
 const log = createLogger('EMU-World', false);
@@ -30,19 +30,26 @@ class FakeWorld {
     }
     for (const d of config.devices ?? []) this.addDevice(d);
 
-    // Auto-inject the PE itself as a Homey device so the device manager's
+    // Auto-inject every satellite as a Homey device so the device manager's
     // zone registration (find by data.id === mac) resolves to a real zone.
-    const pe = config.pe;
-    if (pe) {
-      this.addDevice({
-        id: pe.mac,
-        name: pe.name ?? 'Voice PE',
-        zone: pe.zone,
-        class: 'other',
-        capabilities: { onoff: false, volume_set: 0.5, volume_mute: false },
-        dataId: pe.mac,
-      });
+    for (const sat of getSatellites()) {
+      this.registerSatellite(sat);
     }
+  }
+
+  /**
+   * Make a satellite visible to the fake HomeyAPI (zone lookup by mac). Also
+   * called at runtime when `discover` adds a satellite to a live session.
+   */
+  registerSatellite(sat: EmulatorSatellite): void {
+    this.addDevice({
+      id: sat.mac,
+      name: sat.name ?? 'Voice Satellite',
+      zone: sat.zone,
+      class: 'other',
+      capabilities: { onoff: false, volume_set: 0.5, volume_mute: false },
+      dataId: sat.mac,
+    });
   }
 
   private addDevice(d: any): void {

@@ -1,9 +1,10 @@
 // Homey Emulator (HE) entry point.
 //
 // Boots the AI Voice Assistant app as a plain Node process: constructs the fake
-// `homey` context, the App, the PE driver, and one PE device pointing at the IP
-// in settings.json, then drops you into an interactive console to drive the LLM
-// and inspect the dummy devices.
+// `homey` context, the App, and one driver + device per satellite configured in
+// settings.json, then drops you into an interactive console to drive the LLM
+// and inspect the dummy devices. Satellites can also be found on the LAN and
+// added from the console (`discover`).
 //
 // Run via:  npm run emulator
 // (which is: node --import tsx --import ./emulator/register.mjs ./emulator/main.mts)
@@ -11,16 +12,64 @@ import { createInterface } from 'node:readline';
 import { getHomey } from './runtime/homey-context.mjs';
 import { world } from './runtime/fake-world.mjs';
 import { startAudioServer } from './runtime/audio-server.mjs';
-import { config, settingsPath } from './config.mjs';
+import { config, getSatellites, settingsPath, EmulatorSatellite } from './config.mjs';
+import { runDiscovery } from './runtime/discovery.mjs';
+import { listRecordings, loadRecording, resolveRecording, recordingsDir } from './runtime/recordings.mjs';
+import { injectRecording } from './runtime/mic-injector.mjs';
 
 import App from '../app.mjs';
 import PEDriver from '../drivers/home-assistant-voice-preview-edition/driver.mjs';
 import PEDevice from '../drivers/home-assistant-voice-preview-edition/device.mjs';
+import XiaozhiDriver from '../drivers/xiaozhi-ai/driver.mjs';
+import XiaozhiDevice from '../drivers/xiaozhi-ai/device.mjs';
 
-// Capabilities the PE driver declares (drivers/.../driver.compose.json).
-const PE_CAPABILITIES = [
+// Capabilities the drivers declare (drivers/.../driver.compose.json).
+const SAT_CAPABILITIES = [
   'volume_set', 'onoff', 'volume_mute', 'timer_active', 'timer_remaining', 'timer_name',
 ];
+
+interface BootedSatellite {
+  sat: EmulatorSatellite;
+  device: any;
+}
+
+// One driver instance per assistant type (mirrors the app: the flow-card
+// listeners are registered once, guarded inside VoiceAssistantDriver).
+const driverCache: Record<string, any> = {};
+
+async function getDriver(type: string): Promise<any> {
+  if (!driverCache[type]) {
+    const DriverClass: any = type === 'xiaozhi' ? XiaozhiDriver : PEDriver;
+    const driver = new DriverClass({ discovery: { getDiscoveryResults: () => ({}) } });
+    await driver.onInit();
+    driverCache[type] = driver;
+  }
+  return driverCache[type];
+}
+
+async function bootSatellite(sat: EmulatorSatellite): Promise<BootedSatellite> {
+  const type = sat.type ?? 'pe';
+  const driver = await getDriver(type);
+  const DeviceClass: any = type === 'xiaozhi' ? XiaozhiDevice : PEDevice;
+
+  const device = new DeviceClass({
+    driver,
+    data: { id: sat.mac, name: sat.name },
+    store: {
+      address: sat.address,
+      port: sat.port ?? 6053,
+      mac: sat.mac,
+      deviceType: type,
+      platform: 'esp32',
+      serviceName: sat.name,
+    },
+    settings: sat.settings ?? {},
+    capabilities: SAT_CAPABILITIES,
+  });
+  await device.onInit();
+  console.log(`Booted satellite: ${sat.name} (${type}) @ ${sat.address}:${sat.port ?? 6053}`);
+  return { sat, device };
+}
 
 async function main(): Promise<void> {
   const homey = getHomey();
@@ -40,41 +89,29 @@ async function main(): Promise<void> {
   homey.app = app;
   await app.onInit();
 
-  // 2. Driver — registers the Flow-card run-listeners once.
-  const driver: any = new (PEDriver as any)({
-    discovery: { getDiscoveryResults: () => ({}) },
-  });
-  await driver.onInit();
+  // 2. One driver + device per configured satellite.
+  const booted: BootedSatellite[] = [];
+  for (const sat of getSatellites()) {
+    booted.push(await bootSatellite(sat));
+  }
 
-  // 3. The PE device, pointing at the real satellite's IP.
-  const pe = config.pe;
-  const device: any = new (PEDevice as any)({
-    driver,
-    data: { id: pe.mac, name: pe.name },
-    store: {
-      address: pe.address,
-      port: pe.port ?? 6053,
-      mac: pe.mac,
-      deviceType: 'pe',
-      platform: 'esp32',
-      serviceName: pe.name,
-    },
-    settings: pe.settings ?? {},
-    capabilities: PE_CAPABILITIES,
-  });
-  await device.onInit();
-
-  printBanner(pe);
-  startRepl(device, homey);
+  printBanner(booted);
+  startRepl(booted, homey);
 }
 
 const settle = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
-function printBanner(pe: any): void {
+function printBanner(booted: BootedSatellite[]): void {
   console.log('\n---------------------------------------------------------------');
-  console.log(`PE device  : ${pe.name}  @ ${pe.address}:${pe.port ?? 6053}  (mac ${pe.mac})`);
-  console.log('The ESP client will keep retrying if the PE is unreachable.');
-  console.log("Wait for 'Agent connection opened' before using ask/say.");
+  if (booted.length === 0) {
+    console.log('No satellites configured — run `discover` to find and add one.');
+  } else {
+    for (const { sat } of booted) {
+      console.log(`Satellite  : ${sat.name} (${sat.type})  @ ${sat.address}:${sat.port ?? 6053}  (mac ${sat.mac})`);
+    }
+    console.log('The ESP client will keep retrying if a satellite is unreachable.');
+    console.log("Wait for 'Agent connection opened' before using ask/say/mic.");
+  }
   console.log('---------------------------------------------------------------');
   printHelp();
 }
@@ -82,9 +119,14 @@ function printBanner(pe: any): void {
 function printHelp(): void {
   console.log(`
 Commands:
-  ask <text>        Ask the assistant; prints the text reply (tests tool calls, no PE/mic needed)
-  say <text>        Send text to the assistant and play the spoken reply on the PE
-  speak <text>      Direct TTS of <text> to the PE (no LLM)
+  ask <text>        Ask the assistant; prints the text reply (tests tool calls, no satellite/mic needed)
+  say <text>        Send text to the assistant and play the spoken reply on the satellite
+  speak <text>      Direct TTS of <text> to the satellite (no LLM)
+  mic <file>        Feed a recording (emulator/recordings/*.flac|wav) into the mic pipeline, as if spoken
+  mic               List available recordings
+  discover [sec]    Scan the LAN for ESPHome voice satellites and add them to settings.json
+  sats              List configured satellites; the ▶ marks the one ask/say/speak/mic target
+  use <name|#>      Switch the active satellite
   devices           List all dummy devices and their current capability values
   zones             List zones
   state <name|id>   Show one device's capabilities
@@ -94,8 +136,17 @@ Commands:
 `);
 }
 
-function startRepl(device: any, homey: any): void {
+function startRepl(booted: BootedSatellite[], homey: any): void {
   const rl = createInterface({ input: process.stdin, output: process.stdout, prompt: 'HE> ' });
+  let activeIndex = 0;
+
+  const active = (): BootedSatellite | null => booted[activeIndex] ?? null;
+  const requireActive = (): BootedSatellite | null => {
+    const a = active();
+    if (!a) console.log('No satellite configured — run `discover` first.');
+    return a;
+  };
+
   rl.prompt();
 
   rl.on('line', async (line) => {
@@ -113,7 +164,9 @@ function startRepl(device: any, homey: any): void {
           break;
         case 'ask': {
           if (!arg) { console.log('usage: ask <text>'); break; }
-          const reply = await device.askAgentOutputToText(arg);
+          const a = requireActive();
+          if (!a) break;
+          const reply = await a.device.askAgentOutputToText(arg);
           // askAgentOutputToText resolves on text.done, but a tool call produces
           // a final response.done ("Conversation completed") right after. Let it
           // flush so that trailing log lands above the reply, not under the prompt.
@@ -123,14 +176,83 @@ function startRepl(device: any, homey: any): void {
         }
         case 'say': {
           if (!arg) { console.log('usage: say <text>'); break; }
-          await device.askAgentOutputToSpeaker(arg);
-          console.log('(sent — reply will play on the PE)');
+          const a = requireActive();
+          if (!a) break;
+          await a.device.askAgentOutputToSpeaker(arg);
+          console.log('(sent — reply will play on the satellite)');
           break;
         }
         case 'speak': {
           if (!arg) { console.log('usage: speak <text>'); break; }
-          await device.speakText(arg);
-          console.log('(spoken on the PE)');
+          const a = requireActive();
+          if (!a) break;
+          await a.device.speakText(arg);
+          console.log('(spoken on the satellite)');
+          break;
+        }
+        case 'mic': {
+          if (!arg) {
+            const files = listRecordings();
+            console.log(files.length
+              ? `Recordings in ${recordingsDir}:\n  ${files.join('\n  ')}`
+              : `No recordings found. Drop .flac/.wav files into ${recordingsDir}`);
+            break;
+          }
+          const a = requireActive();
+          if (!a) break;
+          const path = resolveRecording(arg);
+          if (!path) { console.log(`No recording matching '${arg}' (try 'mic' to list them)`); break; }
+          const rec = await loadRecording(path);
+          console.log(`Injecting ${arg}: ${rec.durationMs} ms (source ${rec.sourceRate} Hz, ${rec.sourceChannels} ch) — streaming as mic audio...`);
+          const result = await injectRecording(a.device, rec.pcm);
+          console.log(result.ok
+            ? `(recording sent, ${result.sentMs} ms incl. padding — transcript and reply follow in the log)`
+            : `Cannot inject: ${result.reason}`);
+          break;
+        }
+        case 'discover':
+        case 'discovery': {
+          const seconds = arg ? Number(arg) : 4;
+          if (!Number.isFinite(seconds) || seconds < 1 || seconds > 60) {
+            console.log('usage: discover [seconds 1-60]');
+            break;
+          }
+          const added = await runDiscovery(rl, homey, seconds);
+          const norm = (m: string) => m.replace(/[^0-9a-f]/gi, '').toLowerCase();
+          const fresh = added.filter((sat) => {
+            const running = booted.some((b) => norm(b.sat.mac) === norm(sat.mac));
+            if (running) console.log(`${sat.name} is already running — settings.json updated only.`);
+            return !running;
+          });
+          if (fresh.length > 0) {
+            // Make the new satellites visible to the fake HomeyAPI and refresh
+            // the DeviceManager catalog so zone registration resolves at boot.
+            for (const sat of fresh) world.registerSatellite(sat);
+            await homey.app?.deviceManager?.fetchData?.();
+            for (const sat of fresh) booted.push(await bootSatellite(sat));
+          }
+          break;
+        }
+        case 'sats':
+        case 'satellites': {
+          if (booted.length === 0) { console.log('No satellites configured — run `discover`.'); break; }
+          booted.forEach((b, i) => {
+            const mark = i === activeIndex ? '▶' : ' ';
+            const avail = b.device.getAvailable?.() ? 'online' : 'offline';
+            console.log(` ${mark} [${i + 1}] ${b.sat.name} (${b.sat.type})  @ ${b.sat.address}:${b.sat.port ?? 6053}  — ${avail}`);
+          });
+          break;
+        }
+        case 'use': {
+          if (!arg) { console.log('usage: use <name|#>'); break; }
+          const byIndex = Number(arg);
+          let idx = Number.isInteger(byIndex) ? byIndex - 1 : -1;
+          if (idx < 0 || idx >= booted.length) {
+            idx = booted.findIndex((b) => b.sat.name.toLowerCase().includes(arg.toLowerCase()));
+          }
+          if (idx < 0 || idx >= booted.length) { console.log(`No satellite matching '${arg}' (see 'sats')`); break; }
+          activeIndex = idx;
+          console.log(`Active satellite: ${booted[idx].sat.name}`);
           break;
         }
         case 'devices':

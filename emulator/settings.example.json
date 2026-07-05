@@ -17,14 +17,17 @@
   },
   "geolocation": { "latitude": 59.9139, "longitude": 10.7522 },
   "timezone": "Europe/Oslo",
-  "pe": {
-    "name": "Living Room PE",
-    "mac": "AA:BB:CC:DD:EE:FF",
-    "address": "192.168.1.50",
-    "port": 6053,
-    "zone": "z-living",
-    "settings": { "initial_audio_skip": 350, "followup_audio_skip": 150 }
-  },
+  "satellites": [
+    {
+      "name": "Living Room PE",
+      "type": "pe",
+      "mac": "AA:BB:CC:DD:EE:FF",
+      "address": "192.168.1.50",
+      "port": 6053,
+      "zone": "z-living",
+      "settings": { "initial_audio_skip": 350, "followup_audio_skip": 150 }
+    }
+  ],
   "zones": [
     { "id": "z-home", "name": "Home", "parent": null },
     { "id": "z-living", "name": "Living Room", "parent": "z-home" },

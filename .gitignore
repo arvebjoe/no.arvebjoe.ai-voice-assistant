@@ -7,3 +7,7 @@
 
 # Emulator local config (holds the OpenAI API key)
 /emulator/settings.json
+
+# Emulator voice clips for the `mic` command (usually personal recordings)
+/emulator/recordings/*.flac
+/emulator/recordings/*.wav

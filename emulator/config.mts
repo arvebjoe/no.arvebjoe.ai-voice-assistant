@@ -23,21 +23,29 @@ export interface EmulatorDevice {
   dataId?: string;
 }
 
-export interface EmulatorPe {
+export interface EmulatorSatellite {
   name: string;
   mac: string;
   address: string;
   port?: number;
-  /** Zone id (from `zones`) the PE lives in. */
+  /** Zone id (from `zones`) the satellite lives in. */
   zone: string;
+  /** Which driver to boot it with: 'pe' (default) or 'xiaozhi'. */
+  type?: 'pe' | 'xiaozhi';
   settings?: Record<string, any>;
 }
+
+/** Legacy single-satellite field; superseded by `satellites`. */
+export type EmulatorPe = EmulatorSatellite;
 
 export interface EmulatorConfig {
   global: Record<string, any>;
   geolocation?: { latitude: number; longitude: number };
   timezone?: string;
-  pe: EmulatorPe;
+  /** Legacy: a single PE satellite. Used only when `satellites` is absent/empty. */
+  pe?: EmulatorPe;
+  /** The voice satellites to boot. The `discover` console command appends here. */
+  satellites?: EmulatorSatellite[];
   zones: EmulatorZone[];
   devices: EmulatorDevice[];
   /**
@@ -65,6 +73,18 @@ try {
 }
 
 export const config: EmulatorConfig = raw;
+
+/**
+ * The effective satellite list: `satellites` when present, else the legacy
+ * single `pe` entry. Types default to 'pe'. Everything that boots or lists
+ * satellites should go through this instead of reading config.pe directly.
+ */
+export function getSatellites(): EmulatorSatellite[] {
+  const list = (config.satellites && config.satellites.length > 0)
+    ? config.satellites
+    : (config.pe ? [config.pe] : []);
+  return list.map((s) => ({ ...s, type: s.type ?? 'pe', port: s.port ?? 6053 }));
+}
 
 // Mark this process as emulator-hosted. App code uses this to authorize
 // dev-only features that must never activate on a real Homey — e.g.
