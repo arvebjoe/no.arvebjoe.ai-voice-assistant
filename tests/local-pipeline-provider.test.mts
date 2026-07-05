@@ -2,6 +2,10 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { LocalPipelineProvider, ThinkTagFilter } from '../src/llm/providers/local-pipeline-provider.mjs';
 import { MistralClient } from '../src/llm/providers/local/mistral-client.mjs';
 import { OllamaClient } from '../src/llm/providers/local/ollama-client.mjs';
+import { MistralSttClient } from '../src/llm/providers/local/mistral-stt-client.mjs';
+import { MistralTtsClient } from '../src/llm/providers/local/mistral-tts-client.mjs';
+import { WhisperClient } from '../src/llm/providers/local/whisper-client.mjs';
+import { PiperClient } from '../src/llm/providers/local/piper-client.mjs';
 import { settingsManager } from '../src/settings/settings-manager.mjs';
 import { MockHomey } from './mocks/mock-homey.mjs';
 import { fakeToolManager } from './mocks/mock-tool-manager.mjs';
@@ -80,9 +84,9 @@ async function makeProvider(): Promise<LocalPipelineProvider> {
     // 100 ms of quiet PCM at Piper's typical 22.05 kHz
     ttsSynthesize = vi.fn(async () => ({ pcm: Buffer.alloc(2205 * 2), sampleRate: 22050 }));
 
-    const stub = { configure: () => { }, isConfigured: () => true, check: async () => { }, baseUrl: 'stub' };
+    const stub = { configure: () => { }, isConfigured: () => true, hasCredentials: () => true, describe: () => 'stub', check: async () => { } };
     (provider as any).stt = { ...stub, transcribe: sttTranscribe };
-    (provider as any).llm = { ...stub, hasCredentials: () => true, describe: () => 'stub-llm', resolveModel: async () => 'qwen3', chat: llmChat };
+    (provider as any).llm = { ...stub, resolveModel: async () => 'qwen3', chat: llmChat };
     (provider as any).tts = { ...stub, synthesize: ttsSynthesize };
     // A settings-driven config change would rebuild this.llm and wipe the stubs;
     // pin the stubbed clients for the duration of the test.
@@ -292,6 +296,56 @@ describe('LocalPipelineProvider', () => {
         } finally {
             p.destroy();
         }
+    });
+
+    it('switches the STT and TTS stages to Voxtral on settings changes', async () => {
+        const p = new LocalPipelineProvider(homey as any, toolManager as any, { ...baseOpts });
+        try {
+            expect((p as any).stt).toBeInstanceOf(WhisperClient);
+            expect((p as any).tts).toBeInstanceOf(PiperClient);
+
+            homey.setMockSetting('mistral_api_key', 'sk-test');
+            homey.setMockSetting('local_stt_provider', 'mistral');
+            homey.setMockSetting('local_tts_provider', 'mistral');
+            expect((p as any).stt).toBeInstanceOf(MistralSttClient);
+            expect((p as any).tts).toBeInstanceOf(MistralTtsClient);
+            expect(p.hasApiKey()).toBe(true);
+
+            // Without a key, any Mistral-backed stage flips hasApiKey false.
+            homey.setMockSetting('mistral_api_key', '');
+            expect(p.hasApiKey()).toBe(false);
+
+            homey.setMockSetting('local_stt_provider', 'whisper');
+            homey.setMockSetting('local_tts_provider', 'piper');
+            expect((p as any).stt).toBeInstanceOf(WhisperClient);
+            expect((p as any).tts).toBeInstanceOf(PiperClient);
+            expect(p.hasApiKey()).toBe(true);
+        } finally {
+            p.destroy();
+        }
+    });
+
+    it('routes the selected voice to a Voxtral TTS stage via updateVoice', async () => {
+        homey.setMockSetting('mistral_api_key', 'sk-test');
+        homey.setMockSetting('local_tts_provider', 'mistral');
+        const p = new LocalPipelineProvider(homey as any, toolManager as any, { ...baseOpts });
+        try {
+            p.updateVoice('fr_female');
+            expect(((p as any).tts as any).config.voice).toBe('fr_female');
+        } finally {
+            p.destroy();
+        }
+    });
+
+    it('offers voices matching the TTS backend', () => {
+        // Saved setting decides when no override is passed.
+        expect(LocalPipelineProvider.getAvailableVoices().map((v) => v.value)).toEqual(['server-default']);
+        homey.setMockSetting('local_tts_provider', 'mistral');
+        const voxtral = LocalPipelineProvider.getAvailableVoices();
+        expect(voxtral.length).toBe(20);
+        expect(voxtral.map((v) => v.value)).toContain('neutral_female');
+        // An explicit override (settings-page preview) wins over the saved setting.
+        expect(LocalPipelineProvider.getAvailableVoices('piper').map((v) => v.value)).toEqual(['server-default']);
     });
 
     it('emits missing_api_key on start when Mistral is selected without a key', async () => {

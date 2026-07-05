@@ -10,10 +10,14 @@ import { resamplePcm16Mono } from "../../helpers/wav.mjs";
 import { settingsManager, GlobalSettings } from "../../settings/settings-manager.mjs";
 import { isBlankOrHallucinatedTranscript } from "../transcript-hallucinations.mjs";
 import { SimpleVad } from "./local/simple-vad.mjs";
+import { ISttClient } from "./local/stt-client.mjs";
+import { ITtsClient } from "./local/tts-client.mjs";
 import { WhisperClient, LocalSttConfig } from "./local/whisper-client.mjs";
 import { ChatMessage, ILlmClient } from "./local/llm-client.mjs";
 import { OllamaClient, LocalLlmConfig } from "./local/ollama-client.mjs";
 import { MistralClient, MistralConfig } from "./local/mistral-client.mjs";
+import { MistralSttClient } from "./local/mistral-stt-client.mjs";
+import { MistralTtsClient, VOXTRAL_TTS_VOICES } from "./local/mistral-tts-client.mjs";
 import { PiperClient, LocalTtsConfig } from "./local/piper-client.mjs";
 
 // The app-wide reply-audio contract: audio.delta emits PCM16 mono 24 kHz
@@ -31,41 +35,58 @@ const HEALTH_INTERVAL_MS = 60_000;
 /** Default ports of the supported services. */
 export const LOCAL_DEFAULT_PORTS = { stt: 9000, llm: 11434, tts: 5000 } as const;
 
-/** Selectable LLM backends inside the pipeline ('local_llm_provider' setting). */
+/** Selectable backends per pipeline stage (settings: local_stt/llm/tts_provider). */
+export type LocalSttProviderId = 'whisper' | 'mistral';
 export type LocalLlmProviderId = 'ollama' | 'mistral';
+export type LocalTtsProviderId = 'piper' | 'mistral';
 
 type LocalConfigs = {
-    stt: LocalSttConfig;
+    sttProvider: LocalSttProviderId;
+    whisper: LocalSttConfig;
     llmProvider: LocalLlmProviderId;
     ollama: LocalLlmConfig;
     mistral: MistralConfig;
-    tts: LocalTtsConfig;
+    ttsProvider: LocalTtsProviderId;
+    piper: LocalTtsConfig;
+    mistralSttModel: string;
+    mistralTtsModel: string;
 };
 
 /** Read the local-pipeline endpoint settings from the global settings store. */
 function readLocalConfigs(): LocalConfigs {
     const g = <T,>(key: string, fallback: T): T => settingsManager.getGlobal<T>(key, fallback);
-    const llmProvider = String(g('local_llm_provider', 'ollama') ?? 'ollama').trim() as LocalLlmProviderId;
+    const s = (key: string): string => String(g(key, '') ?? '').trim();
     return {
-        stt: {
-            host: String(g('local_stt_host', '') ?? '').trim(),
+        sttProvider: s('local_stt_provider') === 'mistral' ? 'mistral' : 'whisper',
+        whisper: {
+            host: s('local_stt_host'),
             port: Number(g('local_stt_port', LOCAL_DEFAULT_PORTS.stt)) || LOCAL_DEFAULT_PORTS.stt,
         },
-        llmProvider: llmProvider === 'mistral' ? 'mistral' : 'ollama',
+        llmProvider: s('local_llm_provider') === 'mistral' ? 'mistral' : 'ollama',
         ollama: {
-            host: String(g('local_llm_host', '') ?? '').trim(),
+            host: s('local_llm_host'),
             port: Number(g('local_llm_port', LOCAL_DEFAULT_PORTS.llm)) || LOCAL_DEFAULT_PORTS.llm,
-            model: String(g('local_llm_model', '') ?? '').trim(),
+            model: s('local_llm_model'),
         },
         mistral: {
-            apiKey: String(g('mistral_api_key', '') ?? '').trim(),
-            model: String(g('mistral_model', '') ?? '').trim(),
+            apiKey: s('mistral_api_key'),
+            model: s('mistral_model'),
         },
-        tts: {
-            host: String(g('local_tts_host', '') ?? '').trim(),
+        ttsProvider: s('local_tts_provider') === 'mistral' ? 'mistral' : 'piper',
+        piper: {
+            host: s('local_tts_host'),
             port: Number(g('local_tts_port', LOCAL_DEFAULT_PORTS.tts)) || LOCAL_DEFAULT_PORTS.tts,
         },
+        mistralSttModel: s('mistral_stt_model'),
+        mistralTtsModel: s('mistral_tts_model'),
     };
+}
+
+/** Build the STT stage for the selected backend. */
+function buildSttClient(configs: LocalConfigs): ISttClient {
+    return configs.sttProvider === 'mistral'
+        ? new MistralSttClient({ apiKey: configs.mistral.apiKey, model: configs.mistralSttModel })
+        : new WhisperClient(configs.whisper);
 }
 
 /** Build the LLM stage for the selected backend. */
@@ -73,6 +94,13 @@ function buildLlmClient(configs: LocalConfigs): ILlmClient {
     return configs.llmProvider === 'mistral'
         ? new MistralClient(configs.mistral)
         : new OllamaClient(configs.ollama);
+}
+
+/** Build the TTS stage for the selected backend. */
+function buildTtsClient(configs: LocalConfigs, voice: string): ITtsClient {
+    return configs.ttsProvider === 'mistral'
+        ? new MistralTtsClient({ apiKey: configs.mistral.apiKey, model: configs.mistralTtsModel, voice })
+        : new PiperClient(configs.piper);
 }
 
 /**
@@ -215,8 +243,15 @@ export class LocalPipelineProvider extends (EventEmitter as new () => TypedEmitt
     // always undefined/'' and the device's key-change check stays inert.
     readonly apiKeySettingKey = "local_api_key";
 
-    /** The voice is whatever the Piper server was started with. */
-    static getAvailableVoices(): { value: string; name: string }[] {
+    /**
+     * Voices depend on the selected TTS backend: Piper's voice is fixed
+     * server-side (single placeholder entry), Voxtral offers preset voices.
+     * `ttsBackend` lets the settings page preview an unsaved dropdown choice;
+     * omitted, the saved setting decides.
+     */
+    static getAvailableVoices(ttsBackend?: string): { value: string; name: string }[] {
+        const backend = ttsBackend ?? settingsManager.getGlobal<string>('local_tts_provider', 'piper');
+        if (backend === 'mistral') return VOXTRAL_TTS_VOICES;
         return [{ value: "server-default", name: "Piper server voice" }];
     }
 
@@ -227,9 +262,9 @@ export class LocalPipelineProvider extends (EventEmitter as new () => TypedEmitt
     private instructionState = new InstructionState(this.logger);
     private reconnect: ReconnectPolicy;
 
-    private stt: WhisperClient;
+    private stt: ISttClient;
     private llm: ILlmClient;
-    private tts: PiperClient;
+    private tts: ITtsClient;
     private settingsUnsubscribe?: () => void;
 
     private connected = false;
@@ -257,9 +292,9 @@ export class LocalPipelineProvider extends (EventEmitter as new () => TypedEmitt
 
         const configs = readLocalConfigs();
         this.lastConfigJson = JSON.stringify(configs);
-        this.stt = new WhisperClient(configs.stt);
+        this.stt = buildSttClient(configs);
         this.llm = buildLlmClient(configs);
-        this.tts = new PiperClient(configs.tts);
+        this.tts = buildTtsClient(configs, this.options.voice);
 
         this.reconnect = new ReconnectPolicy(homey, {
             connect: () => this.start(),
@@ -287,14 +322,15 @@ export class LocalPipelineProvider extends (EventEmitter as new () => TypedEmitt
     private onGlobalSettings(_globals: GlobalSettings): void {
         const configs = readLocalConfigs();
         const json = JSON.stringify(configs);
-        const changed = json !== this.lastConfigJson;
+        if (json === this.lastConfigJson) return;
         this.lastConfigJson = json;
-        this.stt.configure(configs.stt);
-        this.tts.configure(configs.tts);
-        // The LLM stage is rebuilt on change (it may switch backend entirely);
-        // clients are stateless besides caches, so this is cheap.
-        if (changed) this.llm = buildLlmClient(configs);
-        if (changed && !this.manuallyClosing) {
+        // All three stages are rebuilt on change (any of them may switch
+        // backend entirely); clients are stateless besides caches, so this is
+        // cheap and avoids per-backend configure() plumbing.
+        this.stt = buildSttClient(configs);
+        this.llm = buildLlmClient(configs);
+        this.tts = buildTtsClient(configs, this.options.voice);
+        if (!this.manuallyClosing) {
             this.logger.info('Local endpoint settings changed — re-checking service health');
             void this.start();
         }
@@ -307,10 +343,10 @@ export class LocalPipelineProvider extends (EventEmitter as new () => TypedEmitt
         this.reconnect.clearTimer();
         await this.instructionState.ensureLoaded(this.instructionParams());
 
-        if (!this.llm.hasCredentials()) {
-            // Only the Mistral backend can land here: key-driven, so the device's
+        if (!this.stt.hasCredentials() || !this.llm.hasCredentials() || !this.tts.hasCredentials()) {
+            // Only Mistral-backed stages can land here: key-driven, so the device's
             // "set API key in app settings" notification is the right message.
-            this.logger.warn('LLM backend needs an API key — set the Mistral key in the app settings');
+            this.logger.warn('A pipeline stage needs an API key — set the Mistral key in the app settings');
             this.setConnected(false);
             this.emit("missing_api_key");
             return; // no reconnect campaign: nothing changes until the settings do
@@ -334,7 +370,7 @@ export class LocalPipelineProvider extends (EventEmitter as new () => TypedEmitt
             this.emit("open");
             this.emit("Healthy");
             if (wasReconnect) this.emit("reconnected");
-            this.logger.info(`Local pipeline healthy (whisper=${this.stt.baseUrl}, ${this.llm.describe()}, piper=${this.tts.baseUrl})`);
+            this.logger.info(`Local pipeline healthy (${this.stt.describe()}, ${this.llm.describe()}, ${this.tts.describe()})`);
         } catch (e: any) {
             this.logger.error('Local pipeline health check failed', e);
             this.setConnected(false);
@@ -373,12 +409,12 @@ export class LocalPipelineProvider extends (EventEmitter as new () => TypedEmitt
     }
 
     /**
-     * True unless the selected LLM backend needs an API key and none is set
-     * (Mistral). The Ollama/Whisper/Piper stages are keyless, so this drives
-     * the device's missing-key vs not-connected error sound correctly.
+     * True unless a selected backend needs an API key and none is set (any
+     * Mistral-backed stage). The LAN stages are keyless, so this drives the
+     * device's missing-key vs not-connected error sound correctly.
      */
     hasApiKey(): boolean {
-        return this.llm.hasCredentials();
+        return this.stt.hasCredentials() && this.llm.hasCredentials() && this.tts.hasCredentials();
     }
 
     private setConnected(value: boolean): void {
@@ -587,8 +623,11 @@ export class LocalPipelineProvider extends (EventEmitter as new () => TypedEmitt
         // No API key in the local pipeline.
     }
 
-    updateVoice(_newVoice: string): void {
-        // The Piper server owns the voice (started with -m <model>); nothing to do.
+    updateVoice(newVoice: string): void {
+        this.options.voice = newVoice;
+        // Piper's voice is fixed server-side (no setVoice); Voxtral picks a
+        // preset voice per request, so the setting flows through here.
+        this.tts.setVoice?.(newVoice);
     }
 
     async updateLanguage(newLanguageCode: string, newLanguageName: string): Promise<void> {

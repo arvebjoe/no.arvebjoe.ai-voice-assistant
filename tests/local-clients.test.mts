@@ -2,6 +2,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { WhisperClient } from '../src/llm/providers/local/whisper-client.mjs';
 import { OllamaClient } from '../src/llm/providers/local/ollama-client.mjs';
 import { MistralClient } from '../src/llm/providers/local/mistral-client.mjs';
+import { MistralSttClient } from '../src/llm/providers/local/mistral-stt-client.mjs';
+import { MistralTtsClient, voxtralVoiceName } from '../src/llm/providers/local/mistral-tts-client.mjs';
 import { generateToolCallId, sanitizeToolCallId } from '../src/llm/providers/local/llm-client.mjs';
 import { PiperClient } from '../src/llm/providers/local/piper-client.mjs';
 import { pcmToWav } from '../src/helpers/wav.mjs';
@@ -305,6 +307,90 @@ describe('tool-call id helpers', () => {
         expect(a).toMatch(/^[a-zA-Z0-9]{9}$/);
         expect(sanitizeToolCallId('local-call-1')).toBe(a);
         expect(sanitizeToolCallId('local-call-2')).not.toBe(a);
+    });
+});
+
+/** MistralSttClient (Voxtral transcription) -------------------------------------- */
+
+describe('MistralSttClient', () => {
+    const pcm = Buffer.alloc(3200); // 100 ms of silence @16k
+
+    it('uploads a WAV to /v1/audio/transcriptions with model + language', async () => {
+        const client = new MistralSttClient({ apiKey: 'sk-test', model: '' });
+        fetchImpl = (url, init) => {
+            expect(url).toBe('https://api.mistral.ai/v1/audio/transcriptions');
+            expect(init.headers.Authorization).toBe('Bearer sk-test');
+            expect(init.headers['x-api-key']).toBe('sk-test');
+            const form = init.body as FormData;
+            expect(form.get('model')).toBe('voxtral-mini-latest'); // default
+            expect(form.get('language')).toBe('no');
+            expect(form.get('file')).toBeTruthy();
+            return jsonResponse({ text: ' skru på lyset ', language: 'no' });
+        };
+
+        expect(await client.transcribe(pcm, 'no')).toBe('skru på lyset');
+    });
+
+    it('reports missing credentials without a key', () => {
+        const client = new MistralSttClient({ apiKey: '', model: '' });
+        expect(client.isConfigured()).toBe(false);
+        expect(client.hasCredentials()).toBe(false);
+    });
+
+    it('surfaces HTTP errors with detail', async () => {
+        const client = new MistralSttClient({ apiKey: 'sk', model: 'voxtral-mini-2507' });
+        fetchImpl = () => jsonResponse({ message: 'quota exceeded' }, 429);
+        await expect(client.transcribe(pcm, 'en')).rejects.toThrow(/HTTP 429/);
+    });
+});
+
+/** MistralTtsClient (Voxtral TTS) ------------------------------------------------ */
+
+describe('MistralTtsClient', () => {
+    const wav24k = pcmToWav(Buffer.alloc(24000 * 2), 24000, 1); // 1 s @24k
+
+    it('synthesizes via /v1/audio/speech and returns 24 kHz PCM', async () => {
+        const client = new MistralTtsClient({ apiKey: 'sk-test', model: '', voice: 'casual_male' });
+        fetchImpl = (url, init) => {
+            expect(url).toBe('https://api.mistral.ai/v1/audio/speech');
+            expect(init.headers.Authorization).toBe('Bearer sk-test');
+            const body = JSON.parse(init.body);
+            expect(body).toMatchObject({
+                model: 'voxtral-tts-latest', // default
+                input: 'Hei på deg.',
+                voice: 'casual_male',
+                response_format: 'wav',
+            });
+            return binaryResponse(wav24k);
+        };
+
+        const { pcm, sampleRate } = await client.synthesize('Hei på deg.');
+        expect(sampleRate).toBe(24000);
+        expect(pcm.length).toBe(24000 * 2);
+    });
+
+    it('falls back to the default voice for non-Voxtral voice names', async () => {
+        const client = new MistralTtsClient({ apiKey: 'sk', model: '', voice: 'server-default' });
+        fetchImpl = (url, init) => {
+            expect(JSON.parse(init.body).voice).toBe('neutral_female');
+            return binaryResponse(wav24k);
+        };
+        await client.synthesize('test');
+
+        // setVoice flows a valid preset through unchanged.
+        client.setVoice('fr_female');
+        fetchImpl = (url, init) => {
+            expect(JSON.parse(init.body).voice).toBe('fr_female');
+            return binaryResponse(wav24k);
+        };
+        await client.synthesize('encore');
+    });
+
+    it('voxtralVoiceName accepts presets and OpenAI aliases, rejects the rest', () => {
+        expect(voxtralVoiceName('neutral_male')).toBe('neutral_male');
+        expect(voxtralVoiceName('alloy')).toBe('alloy'); // legacy OpenAI name still works
+        expect(voxtralVoiceName('Kore')).toBe('neutral_female'); // Gemini leftover
+        expect(voxtralVoiceName(undefined)).toBe('neutral_female');
     });
 });
 

@@ -23,16 +23,18 @@ const API_KEY_SETTING: Record<string, string> = {
 /**
  * Voices each provider offers, for the settings UI. Each provider owns its own
  * list (single source of truth); unknown ids fall back to the default provider's
- * list so the dropdown is never empty.
+ * list so the dropdown is never empty. The local provider's list depends on its
+ * TTS backend — `localTtsBackend` lets the settings page preview an unsaved
+ * dropdown choice (omitted = the saved setting decides).
  */
-export function getVoicesForProvider(providerId: string): { value: string; name: string }[] {
+export function getVoicesForProvider(providerId: string, localTtsBackend?: string): { value: string; name: string }[] {
     switch (providerId) {
         case 'openai-realtime':
             return OpenAIRealtimeProvider.getAvailableVoices();
         case 'gemini-realtime':
             return GeminiLiveProvider.getAvailableVoices();
         case 'local':
-            return LocalPipelineProvider.getAvailableVoices();
+            return LocalPipelineProvider.getAvailableVoices(localTtsBackend);
         default:
             return OpenAIRealtimeProvider.getAvailableVoices();
     }

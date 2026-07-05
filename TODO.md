@@ -208,22 +208,33 @@ fresh config download: [`.esp_home/CUSTOMIZATIONS.md`](./.esp_home/CUSTOMIZATION
   the LLM streams, resampled to the 24 kHz seam contract. Health probes + reconnect campaign +
   60 s idle re-probe drive device availability. No auth for the LAN services (this round).
   - [x] **Mistral as an alternative LLM backend (2026-07-05).** Mistral has no unified realtime
-    speech-to-speech API (their docs compose voice agents as STT→LLM→TTS; they DO ship separate
-    Voxtral Realtime STT + Voxtral TTS since Feb/Mar 2026 — see "later" below). So the pipeline's
+    speech-to-speech API (their docs compose voice agents as STT→LLM→TTS). So the pipeline's
     LLM stage is now pluggable behind `ILlmClient` (`local/llm-client.mts`, backend-neutral
     messages/tool calls): `local_llm_provider` setting = `ollama` (default) or `mistral`
     (`local/mistral-client.mts`, `/v1/chat/completions` SSE streaming + tool calling; gotcha:
     Mistral validates `tool_call_id` as EXACTLY 9 chars `[a-zA-Z0-9]`, hence
     `sanitizeToolCallId`/`generateToolCallId`). Settings page: LLM backend pulldown — Ollama shows
     host/port/model, Mistral shows API key (`mistral_api_key`) + model (`mistral_model`, default
-    `mistral-small-latest`). STT/TTS stay local, so only conversation text goes to Mistral.
+    `mistral-small-latest`).
+  - [x] **Mistral Voxtral as alternative STT and TTS backends (2026-07-05, untested against the
+    real API).** Same seam treatment for the other two stages (`ISttClient`/`ITtsClient` in
+    `local/stt-client.mts`/`tts-client.mts`): `local_stt_provider` = `whisper` (default) or
+    `mistral` (`local/mistral-stt-client.mts`, `POST /v1/audio/transcriptions` multipart, default
+    model `voxtral-mini-latest`, override `mistral_stt_model`); `local_tts_provider` = `piper`
+    (default) or `mistral` (`local/mistral-tts-client.mts`, `POST /v1/audio/speech` →
+    WAV 24 kHz mono = the seam contract exactly, default model `voxtral-tts-latest`, override
+    `mistral_tts_model`). Voxtral TTS has 20 preset voices (+ OpenAI-name aliases) — the main
+    Voice dropdown now switches to them when the TTS backend is Mistral
+    (`LocalPipelineProvider.getAvailableVoices(ttsBackend?)`, `/voices?provider=local&tts=…`).
+    One shared `mistral_api_key` for all Mistral-backed stages; the settings page shows the key
+    field when any stage picks Mistral, and each stage independently shows LAN host/port vs
+    cloud model boxes. Any keyless Mistral stage → `missing_api_key`/`hasApiKey()=false`.
   - [ ] **Verify against real services on Windows** (whisper-asr-webservice + Ollama desktop +
     piper http docker); tune `SimpleVad` thresholds with a real PE mic.
-  - [ ] Wake-word → reply latency measurement; consider Whisper streaming/partials.
-  - [ ] **Voxtral option:** Mistral's Voxtral Realtime (STT, sub-200 ms, $0.006/min, also
-    open-weights) and Voxtral TTS could become alternative STT/TTS backends behind the same
-    per-stage seam the LLM now has.
-  - [ ] Optional auth (API keys / basic auth) for the three endpoints.
+  - [ ] Wake-word → reply latency measurement; consider Whisper streaming/partials, and Mistral's
+    **Voxtral Realtime** WebSocket STT (sub-200 ms, $0.006/min, also open-weights) as an upgrade
+    over the batch transcription endpoint used now.
+  - [ ] Optional auth (API keys / basic auth) for the LAN endpoints.
   - [ ] Per-request Piper voice selection (needs `GET /voices` + a voice dropdown).
   - Reference videos:
     - [Build a Simple AI Agent with gpt-oss-20b](https://www.youtube.com/watch?v=e2sgwsC92Bc)

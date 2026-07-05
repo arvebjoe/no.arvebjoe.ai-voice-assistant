@@ -1,8 +1,9 @@
 import { pcmToWav } from '../../../helpers/wav.mjs';
 import { createLogger } from '../../../helpers/logger.mjs';
+import { ISttClient } from './stt-client.mjs';
 
 /**
- * HTTP client for a locally hosted Whisper STT server.
+ * ISttClient for a locally hosted Whisper STT server.
  *
  * "Whisper in Docker" is not one API, so the client auto-detects among the
  * three common server flavors (first successful call wins, then cached):
@@ -23,7 +24,7 @@ export interface LocalSttConfig {
 const REQUEST_TIMEOUT_MS = 30_000;
 const PROBE_TIMEOUT_MS = 3_000;
 
-export class WhisperClient {
+export class WhisperClient implements ISttClient {
     private config: LocalSttConfig;
     private style: WhisperEndpointStyle | null = null;
     private logger = createLogger('WHISPER', true);
@@ -43,8 +44,17 @@ export class WhisperClient {
         return `http://${this.config.host}:${this.config.port}`;
     }
 
+    describe(): string {
+        return `whisper=${this.baseUrl}`;
+    }
+
     isConfigured(): boolean {
         return !!this.config.host && !!this.config.port;
+    }
+
+    /** A LAN Whisper server needs no credentials. */
+    hasCredentials(): boolean {
+        return true;
     }
 
     /** Reachability probe — any HTTP answer (even 404) means the server is up. */

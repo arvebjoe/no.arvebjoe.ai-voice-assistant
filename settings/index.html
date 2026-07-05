@@ -158,23 +158,56 @@
       <div class="help-text">Which backend handles speech &amp; language. Cloud providers need the matching API key above; the local provider needs the server addresses below.</div>
     </div>
 
-    <!-- Local pipeline endpoints — only shown when the 'local' provider is selected. -->
+    <!-- Local pipeline endpoints — only shown when the 'local' provider is selected.
+         Each stage (STT / LLM / TTS) picks its own backend: a LAN service or Mistral's cloud API. -->
     <div id="local_settings" style="display: none;">
-      <div class="local-section-title">Speech-to-text — Whisper</div>
-      <div class="local-host-port">
+
+      <!-- Shared Mistral credentials — shown when ANY stage below selects Mistral. -->
+      <div id="local_mistral_key" style="display: none;">
+        <div class="local-section-title">Mistral API key</div>
         <div class="homey-form-group">
-          <label class="homey-form-label" for="local_stt_host">Host</label>
-          <input type="text" class="homey-form-input" id="local_stt_host" autocomplete="off"
-            placeholder="e.g. 192.168.1.50" />
-        </div>
-        <div class="homey-form-group">
-          <label class="homey-form-label" for="local_stt_port">Port</label>
-          <input type="number" class="homey-form-input" id="local_stt_port" min="1" max="65535" placeholder="9000" />
+          <div class="secret-wrap">
+            <input type="password" class="homey-form-input" id="mistral_api_key" autocomplete="off"
+              placeholder="Enter your Mistral API key here..." />
+            <button type="button" class="secret-toggle" data-for="mistral_api_key">Show</button>
+          </div>
+          <div class="help-text">One key for every Mistral-backed stage below. Visit https://console.mistral.ai to get one.</div>
         </div>
       </div>
-      <div class="help-text local-section-help">A Whisper server, e.g. the <code>onerahmet/openai-whisper-asr-webservice</code>
-        docker image (port 9000). OpenAI-compatible servers (speaches / faster-whisper-server) and whisper.cpp also work —
-        the endpoint style is detected automatically.</div>
+
+      <div class="local-section-title">Speech-to-text</div>
+      <div class="homey-form-group">
+        <label class="homey-form-label" for="local_stt_provider">STT backend</label>
+        <select class="homey-form-input" id="local_stt_provider">
+          <option value="whisper">Whisper (local)</option>
+          <option value="mistral">Mistral Voxtral (cloud API)</option>
+        </select>
+      </div>
+      <div id="local_stt_whisper">
+        <div class="local-host-port">
+          <div class="homey-form-group">
+            <label class="homey-form-label" for="local_stt_host">Host</label>
+            <input type="text" class="homey-form-input" id="local_stt_host" autocomplete="off"
+              placeholder="e.g. 192.168.1.50" />
+          </div>
+          <div class="homey-form-group">
+            <label class="homey-form-label" for="local_stt_port">Port</label>
+            <input type="number" class="homey-form-input" id="local_stt_port" min="1" max="65535" placeholder="9000" />
+          </div>
+        </div>
+        <div class="help-text local-section-help">A Whisper server, e.g. the <code>onerahmet/openai-whisper-asr-webservice</code>
+          docker image (port 9000). OpenAI-compatible servers (speaches / faster-whisper-server) and whisper.cpp also work —
+          the endpoint style is detected automatically. No authentication — keep it on your trusted LAN.</div>
+      </div>
+      <div id="local_stt_mistral" style="display: none;">
+        <div class="homey-form-group">
+          <label class="homey-form-label" for="mistral_stt_model">Model</label>
+          <input type="text" class="homey-form-input" id="mistral_stt_model" autocomplete="off"
+            placeholder="voxtral-mini-latest" />
+          <div class="help-text">Mistral's Voxtral transcription API. Empty = <code>voxtral-mini-latest</code>.
+            Your voice recordings are sent to Mistral for transcription.</div>
+        </div>
+      </div>
 
       <div class="local-section-title">Language model</div>
       <div class="homey-form-group">
@@ -184,9 +217,8 @@
           <option value="mistral">Mistral (cloud API)</option>
         </select>
         <div class="help-text">Which model answers you. Ollama runs on your own machine; Mistral is a cloud API
-          (speech still stays local via Whisper/Piper — only the text of the conversation goes to Mistral).</div>
+          (only the text of the conversation goes to Mistral).</div>
       </div>
-
       <div id="local_llm_ollama">
         <div class="local-host-port">
           <div class="homey-form-group">
@@ -207,17 +239,7 @@
             <code>gpt-oss</code>). Empty = the first model from <code>ollama list</code>.</div>
         </div>
       </div>
-
       <div id="local_llm_mistral" style="display: none;">
-        <div class="homey-form-group">
-          <label class="homey-form-label" for="mistral_api_key">Mistral API key</label>
-          <div class="secret-wrap">
-            <input type="password" class="homey-form-input" id="mistral_api_key" autocomplete="off"
-              placeholder="Enter your Mistral API key here..." />
-            <button type="button" class="secret-toggle" data-for="mistral_api_key">Show</button>
-          </div>
-          <div class="help-text">Visit https://console.mistral.ai to get one</div>
-        </div>
         <div class="homey-form-group">
           <label class="homey-form-label" for="mistral_model">Model</label>
           <input type="text" class="homey-form-input" id="mistral_model" autocomplete="off"
@@ -227,21 +249,39 @@
         </div>
       </div>
 
-      <div class="local-section-title">Text-to-speech — Piper</div>
-      <div class="local-host-port">
-        <div class="homey-form-group">
-          <label class="homey-form-label" for="local_tts_host">Host</label>
-          <input type="text" class="homey-form-input" id="local_tts_host" autocomplete="off"
-            placeholder="e.g. 192.168.1.50" />
+      <div class="local-section-title">Text-to-speech</div>
+      <div class="homey-form-group">
+        <label class="homey-form-label" for="local_tts_provider">TTS backend</label>
+        <select class="homey-form-input" id="local_tts_provider">
+          <option value="piper">Piper (local)</option>
+          <option value="mistral">Mistral Voxtral (cloud API)</option>
+        </select>
+      </div>
+      <div id="local_tts_piper">
+        <div class="local-host-port">
+          <div class="homey-form-group">
+            <label class="homey-form-label" for="local_tts_host">Host</label>
+            <input type="text" class="homey-form-input" id="local_tts_host" autocomplete="off"
+              placeholder="e.g. 192.168.1.50" />
+          </div>
+          <div class="homey-form-group">
+            <label class="homey-form-label" for="local_tts_port">Port</label>
+            <input type="number" class="homey-form-input" id="local_tts_port" min="1" max="65535" placeholder="5000" />
+          </div>
         </div>
+        <div class="help-text local-section-help">A Piper HTTP server (port 5000), e.g. <code>artibex/piper-http</code> or
+          <code>python -m piper.http_server</code>. The spoken voice is the model the server was started with.
+          No authentication — keep it on your trusted LAN.</div>
+      </div>
+      <div id="local_tts_mistral" style="display: none;">
         <div class="homey-form-group">
-          <label class="homey-form-label" for="local_tts_port">Port</label>
-          <input type="number" class="homey-form-input" id="local_tts_port" min="1" max="65535" placeholder="5000" />
+          <label class="homey-form-label" for="mistral_tts_model">Model</label>
+          <input type="text" class="homey-form-input" id="mistral_tts_model" autocomplete="off"
+            placeholder="voxtral-tts-latest" />
+          <div class="help-text">Mistral's Voxtral TTS. Empty = <code>voxtral-tts-latest</code>.
+            Pick one of Voxtral's preset voices in the <b>Voice</b> dropdown above.</div>
         </div>
       </div>
-      <div class="help-text local-section-help">A Piper HTTP server (port 5000), e.g. <code>artibex/piper-http</code> or
-        <code>python -m piper.http_server</code>. The spoken voice is the model the server was started with.
-        No authentication is used — keep these services on your trusted LAN.</div>
     </div>
 
     <div class="homey-form-group">
@@ -296,21 +336,40 @@
       // Local pipeline settings: inputs/selects that load and save 1:1 with a
       // global setting key of the same id.
       var localSettingIds = [
-        "local_stt_host", "local_stt_port",
-        "local_llm_provider",
-        "local_llm_host", "local_llm_port", "local_llm_model",
-        "mistral_api_key", "mistral_model",
-        "local_tts_host", "local_tts_port"
+        "local_stt_provider", "local_stt_host", "local_stt_port", "mistral_stt_model",
+        "local_llm_provider", "local_llm_host", "local_llm_port", "local_llm_model", "mistral_model",
+        "local_tts_provider", "local_tts_host", "local_tts_port", "mistral_tts_model",
+        "mistral_api_key"
       ];
 
-      // Ollama shows host/port/model; Mistral shows API key + model.
+      // Per-stage backend selection: each stage shows either its LAN boxes or
+      // its Mistral boxes, and the shared Mistral key appears when any stage
+      // picked Mistral.
+      var sttProviderSelectElement = document.getElementById("local_stt_provider");
       var llmProviderSelectElement = document.getElementById("local_llm_provider");
-      function refreshLlmBackendVisibility() {
-        var mistral = llmProviderSelectElement.value === "mistral";
-        document.getElementById("local_llm_ollama").style.display = mistral ? "none" : "";
-        document.getElementById("local_llm_mistral").style.display = mistral ? "" : "none";
+      var ttsProviderSelectElement = document.getElementById("local_tts_provider");
+
+      function refreshStageVisibility() {
+        var sttMistral = sttProviderSelectElement.value === "mistral";
+        var llmMistral = llmProviderSelectElement.value === "mistral";
+        var ttsMistral = ttsProviderSelectElement.value === "mistral";
+        document.getElementById("local_stt_whisper").style.display = sttMistral ? "none" : "";
+        document.getElementById("local_stt_mistral").style.display = sttMistral ? "" : "none";
+        document.getElementById("local_llm_ollama").style.display = llmMistral ? "none" : "";
+        document.getElementById("local_llm_mistral").style.display = llmMistral ? "" : "none";
+        document.getElementById("local_tts_piper").style.display = ttsMistral ? "none" : "";
+        document.getElementById("local_tts_mistral").style.display = ttsMistral ? "" : "none";
+        document.getElementById("local_mistral_key").style.display =
+          (sttMistral || llmMistral || ttsMistral) ? "" : "none";
       }
-      llmProviderSelectElement.addEventListener("change", refreshLlmBackendVisibility);
+      sttProviderSelectElement.addEventListener("change", refreshStageVisibility);
+      llmProviderSelectElement.addEventListener("change", refreshStageVisibility);
+      // The TTS backend also decides which voices exist (Piper: server-side
+      // voice; Voxtral: preset voices) — swap the Voice dropdown along with it.
+      ttsProviderSelectElement.addEventListener("change", function () {
+        refreshStageVisibility();
+        refreshVoices(providerSelectElement.value, voiceSelectElement.value, ttsProviderSelectElement.value);
+      });
 
       localSettingIds.forEach(function (id) {
         Homey.get(id, function (err, value) {
@@ -318,7 +377,9 @@
           if (value !== null && value !== undefined && value !== "") {
             document.getElementById(id).value = value;
           }
-          if (id === "local_llm_provider") refreshLlmBackendVisibility();
+          if (id === "local_stt_provider" || id === "local_llm_provider" || id === "local_tts_provider") {
+            refreshStageVisibility();
+          }
         });
       });
 
@@ -351,8 +412,15 @@
       // Fill the voice dropdown with the voices the given provider offers.
       // `selected` is preserved if it's valid for that provider, else the first
       // voice is chosen (the backend validates/falls back per provider too).
-      function refreshVoices(provider, selected) {
-        Homey.api("GET", "/voices?provider=" + encodeURIComponent(provider), null, function (err, voices) {
+      // For the local provider the list depends on the TTS backend: pass the
+      // dropdown's (possibly unsaved) choice so the preview matches; on the
+      // initial load it's omitted and the saved setting decides server-side.
+      function refreshVoices(provider, selected, ttsOverride) {
+        var url = "/voices?provider=" + encodeURIComponent(provider);
+        if (provider === "local" && ttsOverride) {
+          url += "&tts=" + encodeURIComponent(ttsOverride);
+        }
+        Homey.api("GET", url, null, function (err, voices) {
           if (err) return Homey.alert(err);
           voiceSelectElement.innerHTML = "";
           (voices || []).forEach(function (v) {
@@ -383,7 +451,7 @@
       // Switching provider swaps the available voices; keep the current pick if
       // it's still valid for the newly selected provider.
       providerSelectElement.addEventListener("change", function () {
-        refreshVoices(providerSelectElement.value, voiceSelectElement.value);
+        refreshVoices(providerSelectElement.value, voiceSelectElement.value, ttsProviderSelectElement.value);
         refreshLocalVisibility();
       });
 

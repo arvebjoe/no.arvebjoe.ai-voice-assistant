@@ -10,12 +10,13 @@ import { getVoicesForProvider, DEFAULT_VOICE_PROVIDER } from './src/llm/voice-pr
  */
 export default {
     /**
-     * GET /voices?provider=<id> — the voices the given provider offers, so the
-     * settings UI can repopulate the voice dropdown when the provider changes.
-     * Each provider owns its own list (see getVoicesForProvider).
+     * GET /voices?provider=<id>[&tts=<backend>] — the voices the given provider
+     * offers, so the settings UI can repopulate the voice dropdown when the
+     * provider (or, for the local provider, its TTS backend) changes. Each
+     * provider owns its own list (see getVoicesForProvider).
      */
     async getVoices({ query }: { query: Record<string, string> }): Promise<{ value: string; name: string }[]> {
         const provider = query?.provider || DEFAULT_VOICE_PROVIDER;
-        return getVoicesForProvider(provider);
+        return getVoicesForProvider(provider, query?.tts || undefined);
     },
 };

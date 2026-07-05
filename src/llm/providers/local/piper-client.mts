@@ -1,8 +1,9 @@
 import { wavToPcm, toMonoPcm16 } from '../../../helpers/wav.mjs';
 import { createLogger } from '../../../helpers/logger.mjs';
+import { ITtsClient } from './tts-client.mjs';
 
 /**
- * HTTP client for a locally hosted Piper TTS server (default port 5000).
+ * ITtsClient for a locally hosted Piper TTS server (default port 5000).
  *
  * Two request shapes cover the common deployments (auto-detected, cached):
  *   - POST /synthesize {text}   (OHF-Voice piper1-gpl `python -m piper.http_server`)
@@ -24,7 +25,7 @@ const PROBE_TIMEOUT_MS = 3_000;
 
 type PiperRoute = '/synthesize' | '/';
 
-export class PiperClient {
+export class PiperClient implements ITtsClient {
     private config: LocalTtsConfig;
     private route: PiperRoute | null = null;
     private logger = createLogger('PIPER', true);
@@ -44,8 +45,17 @@ export class PiperClient {
         return `http://${this.config.host}:${this.config.port}`;
     }
 
+    describe(): string {
+        return `piper=${this.baseUrl}`;
+    }
+
     isConfigured(): boolean {
         return !!this.config.host && !!this.config.port;
+    }
+
+    /** A LAN Piper server needs no credentials. */
+    hasCredentials(): boolean {
+        return true;
     }
 
     /** Reachability probe — any HTTP answer (even 404) means the server is up. */
