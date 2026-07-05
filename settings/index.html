@@ -295,6 +295,7 @@
         <label class="homey-form-label" for="local_llm_provider">LLM backend</label>
         <select class="homey-form-input" id="local_llm_provider">
           <option value="ollama">Ollama (local)</option>
+          <option value="lmstudio">LM Studio (local)</option>
           <option value="mistral">Mistral (cloud API)</option>
           <option value="openai">OpenAI-compatible (cloud or custom)</option>
         </select>
@@ -319,6 +320,27 @@
             placeholder="Leave empty to use the first installed model" />
           <div class="help-text">An Ollama model that supports tool calling (e.g. <code>qwen3</code>, <code>llama3.1</code>,
             <code>gpt-oss</code>). Empty = the first model from <code>ollama list</code>.</div>
+        </div>
+      </div>
+      <div id="local_llm_lmstudio" style="display: none;">
+        <div class="local-host-port">
+          <div class="homey-form-group">
+            <label class="homey-form-label" for="lmstudio_host">Host</label>
+            <input type="text" class="homey-form-input" id="lmstudio_host" autocomplete="off"
+              placeholder="e.g. 192.168.1.50" />
+          </div>
+          <div class="homey-form-group">
+            <label class="homey-form-label" for="lmstudio_port">Port</label>
+            <input type="number" class="homey-form-input" id="lmstudio_port" min="1" max="65535"
+              placeholder="1234" />
+          </div>
+        </div>
+        <div class="homey-form-group">
+          <label class="homey-form-label" for="lmstudio_model">Model</label>
+          <input type="text" class="homey-form-input" id="lmstudio_model" autocomplete="off"
+            placeholder="Leave empty to use the loaded model" />
+          <div class="help-text">The LM Studio desktop app's local server (enable it in LM Studio → Developer,
+            port 1234). Pick a tool-calling model. Empty = the first model LM Studio reports.</div>
         </div>
       </div>
       <div id="local_llm_mistral" style="display: none;">
@@ -500,6 +522,7 @@
         "local_stt_provider", "local_stt_host", "local_stt_port", "mistral_stt_model",
         "wyoming_stt_host", "wyoming_stt_port",
         "local_llm_provider", "local_llm_host", "local_llm_port", "local_llm_model", "mistral_model",
+        "lmstudio_host", "lmstudio_port", "lmstudio_model",
         "local_tts_provider", "local_tts_host", "local_tts_port", "mistral_tts_model",
         "wyoming_tts_host", "wyoming_tts_port",
         "mistral_api_key",
@@ -520,7 +543,7 @@
         // (<lan default> / mistral / openai) based on its dropdown.
         var stages = [
           { select: sttProviderSelectElement, blocks: { whisper: "local_stt_whisper", wyoming: "local_stt_wyoming", mistral: "local_stt_mistral", openai: "local_stt_openai" }, def: "whisper" },
-          { select: llmProviderSelectElement, blocks: { ollama: "local_llm_ollama", mistral: "local_llm_mistral", openai: "local_llm_openai" }, def: "ollama" },
+          { select: llmProviderSelectElement, blocks: { ollama: "local_llm_ollama", lmstudio: "local_llm_lmstudio", mistral: "local_llm_mistral", openai: "local_llm_openai" }, def: "ollama" },
           { select: ttsProviderSelectElement, blocks: { piper: "local_tts_piper", wyoming: "local_tts_wyoming", mistral: "local_tts_mistral", openai: "local_tts_openai" }, def: "piper" }
         ];
         var anyMistral = false;
@@ -582,9 +605,11 @@
           var llmBackend = llmProviderSelectElement.value;
           return {
             stage: "llm", backend: llmBackend,
-            host: v("local_llm_host"), port: v("local_llm_port"),
+            host: llmBackend === "lmstudio" ? v("lmstudio_host") : v("local_llm_host"),
+            port: llmBackend === "lmstudio" ? v("lmstudio_port") : v("local_llm_port"),
             model: llmBackend === "mistral" ? v("mistral_model")
-              : llmBackend === "openai" ? v("openai_llm_model") : v("local_llm_model"),
+              : llmBackend === "openai" ? v("openai_llm_model")
+                : llmBackend === "lmstudio" ? v("lmstudio_model") : v("local_llm_model"),
             mistralApiKey: v("mistral_api_key"),
             url: v("openai_llm_url"), key: v("openai_llm_key")
           };

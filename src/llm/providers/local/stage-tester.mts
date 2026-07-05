@@ -12,6 +12,7 @@ import { OpenAiSttClient } from './openai-stt-client.mjs';
 import { OpenAiTtsClient } from './openai-tts-client.mjs';
 import { WyomingSttClient } from './wyoming-stt-client.mjs';
 import { WyomingTtsClient } from './wyoming-tts-client.mjs';
+import { LmStudioClient } from './lmstudio-client.mjs';
 import { LOCAL_DEFAULT_PORTS } from '../local-pipeline-provider.mjs';
 
 /**
@@ -75,6 +76,7 @@ function buildSttClient(req: StageTestRequest): ISttClient {
 
 function buildLlmClient(req: StageTestRequest): ILlmClient {
     switch (req.backend) {
+        case 'lmstudio': return new LmStudioClient({ host: str(req.host), port: num(req.port, LOCAL_DEFAULT_PORTS.lmstudio), model: str(req.model) });
         case 'mistral': return new MistralClient({ apiKey: str(req.mistralApiKey), model: str(req.model) });
         case 'openai': return new OpenAiLlmClient({ baseUrl: str(req.url), apiKey: str(req.key), model: str(req.model) });
         default: return new OllamaClient({ host: str(req.host), port: num(req.port, LOCAL_DEFAULT_PORTS.llm), model: str(req.model) });

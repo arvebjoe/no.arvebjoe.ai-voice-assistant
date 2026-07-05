@@ -25,6 +25,7 @@ import { OpenAiTtsClient, OpenAiTtsConfig } from "./local/openai-tts-client.mjs"
 import { OPENAI_TTS_VOICES } from "./local/openai-compat.mjs";
 import { WyomingSttClient, WyomingSttConfig } from "./local/wyoming-stt-client.mjs";
 import { WyomingTtsClient, WyomingTtsConfig } from "./local/wyoming-tts-client.mjs";
+import { LmStudioClient, LmStudioConfig } from "./local/lmstudio-client.mjs";
 
 // The app-wide reply-audio contract: audio.delta emits PCM16 mono 24 kHz
 // (see voice-provider.mts). Piper voices speak 16/22.05 kHz — resampled up.
@@ -39,11 +40,11 @@ const MAX_TOOL_ROUNDS = 5;
 const HEALTH_INTERVAL_MS = 60_000;
 
 /** Default ports of the supported services. */
-export const LOCAL_DEFAULT_PORTS = { stt: 9000, llm: 11434, tts: 5000, wyomingStt: 10300, wyomingTts: 10200 } as const;
+export const LOCAL_DEFAULT_PORTS = { stt: 9000, llm: 11434, tts: 5000, wyomingStt: 10300, wyomingTts: 10200, lmstudio: 1234 } as const;
 
 /** Selectable backends per pipeline stage (settings: local_stt/llm/tts_provider). */
 export type LocalSttProviderId = 'whisper' | 'wyoming' | 'mistral' | 'openai';
-export type LocalLlmProviderId = 'ollama' | 'mistral' | 'openai';
+export type LocalLlmProviderId = 'ollama' | 'lmstudio' | 'mistral' | 'openai';
 export type LocalTtsProviderId = 'piper' | 'wyoming' | 'mistral' | 'openai';
 
 type LocalConfigs = {
@@ -52,6 +53,7 @@ type LocalConfigs = {
     wyomingStt: WyomingSttConfig;
     llmProvider: LocalLlmProviderId;
     ollama: LocalLlmConfig;
+    lmstudio: LmStudioConfig;
     mistral: MistralConfig;
     ttsProvider: LocalTtsProviderId;
     piper: LocalTtsConfig;
@@ -83,11 +85,16 @@ function readLocalConfigs(): LocalConfigs {
             host: s('wyoming_stt_host'),
             port: Number(g('wyoming_stt_port', LOCAL_DEFAULT_PORTS.wyomingStt)) || LOCAL_DEFAULT_PORTS.wyomingStt,
         },
-        llmProvider: stage('local_llm_provider', ['ollama', 'mistral', 'openai'], 'ollama') as LocalLlmProviderId,
+        llmProvider: stage('local_llm_provider', ['ollama', 'lmstudio', 'mistral', 'openai'], 'ollama') as LocalLlmProviderId,
         ollama: {
             host: s('local_llm_host'),
             port: Number(g('local_llm_port', LOCAL_DEFAULT_PORTS.llm)) || LOCAL_DEFAULT_PORTS.llm,
             model: s('local_llm_model'),
+        },
+        lmstudio: {
+            host: s('lmstudio_host'),
+            port: Number(g('lmstudio_port', LOCAL_DEFAULT_PORTS.lmstudio)) || LOCAL_DEFAULT_PORTS.lmstudio,
+            model: s('lmstudio_model'),
         },
         mistral: {
             apiKey: s('mistral_api_key'),
@@ -125,6 +132,7 @@ function buildSttClient(configs: LocalConfigs): ISttClient {
 /** Build the LLM stage for the selected backend. */
 function buildLlmClient(configs: LocalConfigs): ILlmClient {
     switch (configs.llmProvider) {
+        case 'lmstudio': return new LmStudioClient(configs.lmstudio);
         case 'mistral': return new MistralClient(configs.mistral);
         case 'openai': return new OpenAiLlmClient(configs.openaiLlm);
         default: return new OllamaClient(configs.ollama);

@@ -266,6 +266,12 @@ fresh config download: [`.esp_home/CUSTOMIZATIONS.md`](./.esp_home/CUSTOMIZATION
     check = `describe`→`info` with a `tts` entry. TTS dropdown option "Wyoming — Piper (local)"
     with `wyoming_tts_host`/`wyoming_tts_port` (default 10200); voice is server-side like HTTP
     Piper; Test button supported.
+  - [x] **LM Studio as a first-class LLM backend (2026-07-05).** It already worked through the
+    generic OpenAI-compatible backend, but as a desktop app it gets the Ollama treatment:
+    dropdown option "LM Studio (local)" with `lmstudio_host`/`lmstudio_port` (default 1234) and
+    an OPTIONAL `lmstudio_model` (empty = auto-pick the first model from `GET /v1/models`,
+    cached). `local/lmstudio-client.mts` is a thin `OpenAiLlmClient` subclass (keyless, host/port
+    → base URL, `resolveModel()` named like Ollama's so the provider's health flow calls it).
   - [x] **Per-stage "Test" buttons in the settings page (2026-07-05).** Each stage section has a
     Test button that POSTs the CURRENT (unsaved) form values to the app's new
     `POST /test-local-stage` endpoint (route in `.homeycompose/app.json`; handler in `api.mts` →

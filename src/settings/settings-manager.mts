@@ -131,7 +131,9 @@ export class SettingsManager {
       'openai_llm_url', 'openai_llm_key', 'openai_llm_model',
       'openai_tts_url', 'openai_tts_key', 'openai_tts_model', 'openai_tts_voice',
       // Wyoming protocol services (wyoming-faster-whisper 10300, wyoming-piper 10200)
-      'wyoming_stt_host', 'wyoming_stt_port', 'wyoming_tts_host', 'wyoming_tts_port'];
+      'wyoming_stt_host', 'wyoming_stt_port', 'wyoming_tts_host', 'wyoming_tts_port',
+      // LM Studio desktop app (OpenAI dialect, port 1234, model optional)
+      'lmstudio_host', 'lmstudio_port', 'lmstudio_model'];
 
     for (const k of knownKeys) {
       this.globals[k] = this.homey.settings.get(k);

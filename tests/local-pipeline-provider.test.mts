@@ -11,6 +11,7 @@ import { OpenAiSttClient } from '../src/llm/providers/local/openai-stt-client.mj
 import { OpenAiTtsClient } from '../src/llm/providers/local/openai-tts-client.mjs';
 import { WyomingSttClient } from '../src/llm/providers/local/wyoming-stt-client.mjs';
 import { WyomingTtsClient } from '../src/llm/providers/local/wyoming-tts-client.mjs';
+import { LmStudioClient } from '../src/llm/providers/local/lmstudio-client.mjs';
 import { settingsManager } from '../src/settings/settings-manager.mjs';
 import { MockHomey } from './mocks/mock-homey.mjs';
 import { fakeToolManager } from './mocks/mock-tool-manager.mjs';
@@ -347,6 +348,22 @@ describe('LocalPipelineProvider', () => {
             homey.setMockSetting('local_tts_provider', 'piper');
             expect((p as any).stt).toBeInstanceOf(WhisperClient);
             expect((p as any).tts).toBeInstanceOf(PiperClient);
+        } finally {
+            p.destroy();
+        }
+    });
+
+    it('switches the LLM stage to LM Studio (keyless LAN, model optional)', async () => {
+        const p = new LocalPipelineProvider(homey as any, toolManager as any, { ...baseOpts });
+        try {
+            homey.setMockSetting('lmstudio_host', '10.0.0.9');
+            homey.setMockSetting('local_llm_provider', 'lmstudio');
+            expect((p as any).llm).toBeInstanceOf(LmStudioClient);
+            expect(p.hasApiKey()).toBe(true);
+            expect((p as any).llm.isConfigured()).toBe(true); // host alone suffices
+
+            homey.setMockSetting('local_llm_provider', 'ollama');
+            expect((p as any).llm).toBeInstanceOf(OllamaClient);
         } finally {
             p.destroy();
         }

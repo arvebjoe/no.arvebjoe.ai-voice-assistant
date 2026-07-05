@@ -7,6 +7,7 @@ import { MistralTtsClient, voxtralVoiceName } from '../src/llm/providers/local/m
 import { generateToolCallId, sanitizeToolCallId } from '../src/llm/providers/local/llm-client.mjs';
 import { PiperClient } from '../src/llm/providers/local/piper-client.mjs';
 import { OpenAiLlmClient } from '../src/llm/providers/local/openai-llm-client.mjs';
+import { LmStudioClient } from '../src/llm/providers/local/lmstudio-client.mjs';
 import { OpenAiSttClient } from '../src/llm/providers/local/openai-stt-client.mjs';
 import { OpenAiTtsClient } from '../src/llm/providers/local/openai-tts-client.mjs';
 import { normalizeOpenAiBaseUrl } from '../src/llm/providers/local/openai-compat.mjs';
@@ -357,6 +358,49 @@ describe('OpenAiLlmClient (generic)', () => {
             return jsonResponse({ error: 'invalid_api_key' }, 401);
         };
         await expect(client.check()).rejects.toThrow(/rejected the API key/);
+    });
+});
+
+describe('LmStudioClient', () => {
+    it('auto-picks the first available model when none is configured', async () => {
+        const client = new LmStudioClient({ host: '10.0.0.5', port: 1234, model: '' });
+        fetchImpl = (url) => {
+            if (url === 'http://10.0.0.5:1234/v1/models') {
+                return jsonResponse({ object: 'list', data: [{ id: 'qwen2.5-7b-instruct' }, { id: 'llama-3.2-3b' }] });
+            }
+            expect(url).toBe('http://10.0.0.5:1234/v1/chat/completions');
+            const body = JSON.parse(fetchCalls[fetchCalls.length - 1].init.body);
+            expect(body.model).toBe('qwen2.5-7b-instruct');
+            return sseResponse([{ choices: [{ delta: { content: 'OK' } }] }]);
+        };
+
+        const result = await client.chat([{ role: 'user', content: 'hi' }], []);
+        expect(result.content).toBe('OK');
+
+        // Resolution is cached: a second chat makes no extra /models call.
+        fetchCalls = [];
+        await client.chat([{ role: 'user', content: 'again' }], []);
+        expect(fetchCalls.filter((c) => c.url.endsWith('/models')).length).toBe(0);
+    });
+
+    it('uses the configured model verbatim and needs no key', async () => {
+        const client = new LmStudioClient({ host: '10.0.0.5', port: 1234, model: 'gpt-oss-20b' });
+        expect(client.isConfigured()).toBe(true);
+        expect(client.hasCredentials()).toBe(true);
+        fetchImpl = (url, init) => {
+            expect(url).toBe('http://10.0.0.5:1234/v1/chat/completions');
+            expect(init.headers.Authorization).toBeUndefined();
+            expect(JSON.parse(init.body).model).toBe('gpt-oss-20b');
+            return sseResponse([{ choices: [{ delta: { content: 'hei' } }] }]);
+        };
+        await client.chat([{ role: 'user', content: 'hei' }], []);
+        expect(fetchCalls.some((c) => c.url.endsWith('/models'))).toBe(false); // no auto-pick needed
+    });
+
+    it('reports a clear error when LM Studio has no models', async () => {
+        const client = new LmStudioClient({ host: '10.0.0.5', port: 1234, model: '' });
+        fetchImpl = () => jsonResponse({ object: 'list', data: [] });
+        await expect(client.chat([{ role: 'user', content: 'hi' }], [])).rejects.toThrow(/no models available/);
     });
 });
 
