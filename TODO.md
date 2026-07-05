@@ -195,11 +195,27 @@ fresh config download: [`.esp_home/CUSTOMIZATIONS.md`](./.esp_home/CUSTOMIZATION
 
 ## 5. Local / offline AI
 
-- [ ] Explore locally-hosted stack: **Whisper** (STT), **Piper** (TTS), **Ollama** (LLM) — possibly
-  as a realtime agent, possibly using `gpt-oss`.
-  - [Build a Simple AI Agent with gpt-oss-20b](https://www.youtube.com/watch?v=e2sgwsC92Bc)
-  - [Build Anything with OpenAI's New OSS Models (n8n Agents)](https://www.youtube.com/watch?v=Myjo1amUZ08)
-  - [Learn MCP (Model Context Protocol)](https://www.youtube.com/watch?v=GuTcle5edjk)
+- [~] **Locally-hosted stack: Whisper (STT) + Ollama (LLM) + Piper (TTS) — first round done
+  (2026-07-05, branch `claude/local-stt-llm-tts-provider-oc0cng`), untested against real services.**
+  New `local` voice provider (`src/llm/providers/local-pipeline-provider.mts`) selectable in app
+  settings, with per-service host/port boxes (+ optional Ollama model, defaults to the first
+  installed one). Pipeline: on-device energy VAD (`local/simple-vad.mts`, the cloud providers'
+  server VAD has no local equivalent) → Whisper STT (`local/whisper-client.mts`, auto-detects
+  `/asr` = whisper-asr-webservice, `/v1/audio/transcriptions` = speaches/faster-whisper-server,
+  `/inference` = whisper.cpp) → Ollama `/api/chat` streaming with the full ToolManager tool loop
+  (`local/ollama-client.mts`, strips `<think>` blocks from reasoning models) → Piper TTS
+  (`local/piper-client.mts`, `POST /synthesize` with `POST /` fallback), sentence-by-sentence while
+  the LLM streams, resampled to the 24 kHz seam contract. Health probes + reconnect campaign +
+  60 s idle re-probe drive device availability. No auth (this round) — LAN only.
+  - [ ] **Verify against real services on Windows** (whisper-asr-webservice + Ollama desktop +
+    piper http docker); tune `SimpleVad` thresholds with a real PE mic.
+  - [ ] Wake-word → reply latency measurement; consider Whisper streaming/partials.
+  - [ ] Optional auth (API keys / basic auth) for the three endpoints.
+  - [ ] Per-request Piper voice selection (needs `GET /voices` + a voice dropdown).
+  - Reference videos:
+    - [Build a Simple AI Agent with gpt-oss-20b](https://www.youtube.com/watch?v=e2sgwsC92Bc)
+    - [Build Anything with OpenAI's New OSS Models (n8n Agents)](https://www.youtube.com/watch?v=Myjo1amUZ08)
+    - [Learn MCP (Model Context Protocol)](https://www.youtube.com/watch?v=GuTcle5edjk)
 
 ---
 

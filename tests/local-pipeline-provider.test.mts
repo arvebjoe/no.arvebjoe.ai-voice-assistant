@@ -1,0 +1,315 @@
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { LocalPipelineProvider, ThinkTagFilter } from '../src/llm/providers/local-pipeline-provider.mjs';
+import { settingsManager } from '../src/settings/settings-manager.mjs';
+import { MockHomey } from './mocks/mock-homey.mjs';
+import { fakeToolManager } from './mocks/mock-tool-manager.mjs';
+
+const RATE = 16000;
+
+function silence(ms: number): Buffer {
+    return Buffer.alloc(Math.round(RATE * ms / 1000) * 2);
+}
+
+function speech(ms: number, amplitude = 8000): Buffer {
+    const samples = Math.round(RATE * ms / 1000);
+    const buf = Buffer.alloc(samples * 2);
+    for (let i = 0; i < samples; i++) {
+        buf.writeInt16LE(Math.round(amplitude * Math.sin(2 * Math.PI * 300 * i / RATE)), i * 2);
+    }
+    return buf;
+}
+
+function feedAll(provider: LocalPipelineProvider, pcm: Buffer) {
+    const chunk = 1024;
+    for (let off = 0; off < pcm.length; off += chunk) {
+        provider.sendAudioChunk(pcm.subarray(off, Math.min(off + chunk, pcm.length)));
+    }
+}
+
+function once(provider: LocalPipelineProvider, event: string, timeoutMs = 3000): Promise<any> {
+    return new Promise((resolve, reject) => {
+        const t = setTimeout(() => reject(new Error(`timeout waiting for ${event}`)), timeoutMs);
+        (provider as any).once(event, (...args: any[]) => {
+            clearTimeout(t);
+            resolve(args);
+        });
+    });
+}
+
+const baseOpts = {
+    apiKey: '',
+    voice: 'server-default',
+    languageCode: 'en',
+    languageName: 'English',
+    additionalInstructions: '',
+    deviceZone: 'Office',
+    supportsTimers: false,
+};
+
+let provider: LocalPipelineProvider;
+let homey: MockHomey;
+let llmChat: ReturnType<typeof vi.fn>;
+let sttTranscribe: ReturnType<typeof vi.fn>;
+let ttsSynthesize: ReturnType<typeof vi.fn>;
+
+const toolManager = fakeToolManager(
+    { get_time: (_args: any) => ({ ok: true, now: '12:00' }) },
+    [{ name: 'get_time', description: 'time', parameters: { type: 'object', properties: {} } }],
+);
+
+/** Build a provider whose three HTTP clients are stubbed out. */
+async function makeProvider(): Promise<LocalPipelineProvider> {
+    settingsManager.reset();
+    homey = new MockHomey();
+    homey.setMockSetting('local_stt_host', '10.0.0.2');
+    homey.setMockSetting('local_llm_host', '10.0.0.2');
+    homey.setMockSetting('local_llm_model', 'qwen3');
+    homey.setMockSetting('local_tts_host', '10.0.0.2');
+    settingsManager.init(homey as any);
+
+    provider = new LocalPipelineProvider(homey as any, toolManager as any, { ...baseOpts });
+
+    sttTranscribe = vi.fn(async () => 'turn on the light');
+    llmChat = vi.fn(async (_msgs: any[], _tools: any[], onDelta?: (d: string) => void) => {
+        onDelta?.('Sure. ');
+        onDelta?.('Light is on.');
+        return { content: 'Sure. Light is on.', toolCalls: [] };
+    });
+    // 100 ms of quiet PCM at Piper's typical 22.05 kHz
+    ttsSynthesize = vi.fn(async () => ({ pcm: Buffer.alloc(2205 * 2), sampleRate: 22050 }));
+
+    const stub = { configure: () => { }, isConfigured: () => true, check: async () => { }, baseUrl: 'stub' };
+    (provider as any).stt = { ...stub, transcribe: sttTranscribe };
+    (provider as any).llm = { ...stub, resolveModel: async () => 'qwen3', chat: llmChat };
+    (provider as any).tts = { ...stub, synthesize: ttsSynthesize };
+
+    await provider.start();
+    return provider;
+}
+
+describe('LocalPipelineProvider', () => {
+    beforeEach(async () => {
+        await makeProvider();
+    });
+
+    afterEach(() => {
+        try { (provider as any)?.destroy?.(); } catch { /* ignore */ }
+    });
+
+    it('reports connected/healthy after start() and needs no API key', () => {
+        expect(provider.isConnected()).toBe(true);
+        expect(provider.hasApiKey()).toBe(true);
+        expect(provider.inputSampleRate).toBe(16000);
+    });
+
+    it('runs a full spoken turn: VAD -> STT -> LLM -> TTS with the seam event order', async () => {
+        const events: string[] = [];
+        for (const e of ['speech', 'silence', 'transcript.done', 'transcript.delta', 'audio.delta', 'audio.done', 'response.done']) {
+            (provider as any).on(e, () => events.push(e));
+        }
+        const transcriptDone = once(provider, 'transcript.done');
+        const responseDone = once(provider, 'response.done');
+
+        feedAll(provider, silence(200));
+        feedAll(provider, speech(600));
+        feedAll(provider, silence(900));
+
+        const [transcript] = await transcriptDone;
+        expect(transcript).toBe('turn on the light');
+        await responseDone;
+
+        // STT got the utterance, the LLM got the transcript as the user message.
+        expect(sttTranscribe).toHaveBeenCalledTimes(1);
+        const messages = llmChat.mock.calls[0][0];
+        expect(messages[0].role).toBe('system');
+        expect(messages[0].content.length).toBeGreaterThan(0);
+        expect(messages[messages.length - 1]).toMatchObject({ role: 'user', content: 'turn on the light' });
+
+        // Piper spoke the reply (sentence-split can make 1..2 clips).
+        expect(ttsSynthesize).toHaveBeenCalled();
+
+        // Ordering: speech before silence, silence before transcript.done,
+        // transcript.done before the reply stream, response.done last.
+        expect(events.indexOf('speech')).toBeLessThan(events.indexOf('silence'));
+        expect(events.indexOf('silence')).toBeLessThan(events.indexOf('transcript.done'));
+        expect(events.indexOf('transcript.done')).toBeLessThan(events.indexOf('transcript.delta'));
+        expect(events.indexOf('audio.delta')).toBeGreaterThan(events.indexOf('transcript.done'));
+        expect(events[events.length - 1]).toBe('response.done');
+    });
+
+    it('emits audio.delta as PCM16 mono 24 kHz (resampled from Piper rate, padded)', async () => {
+        const chunks: Buffer[] = [];
+        (provider as any).on('audio.delta', (b: Buffer) => chunks.push(b));
+        const done = once(provider, 'response.done');
+        feedAll(provider, speech(600));
+        feedAll(provider, silence(900));
+        await done;
+
+        // 100 ms @22050 -> ~100 ms @24000 (2400 samples) + 350 ms pad (8400 samples)
+        const total = chunks.reduce((n, b) => n + b.length, 0) / 2;
+        expect(total).toBeGreaterThanOrEqual(2400 + 8400 - 4);
+    });
+
+    it('reports an empty transcript without invoking the LLM (device decides retry/end)', async () => {
+        sttTranscribe.mockResolvedValueOnce('   ');
+        const transcriptDone = once(provider, 'transcript.done');
+        feedAll(provider, speech(600));
+        feedAll(provider, silence(900));
+        const [transcript] = await transcriptDone;
+        expect(transcript).toBe('');
+        await new Promise((r) => setTimeout(r, 20));
+        expect(llmChat).not.toHaveBeenCalled();
+    });
+
+    it('filters known Whisper hallucinations to an empty transcript', async () => {
+        sttTranscribe.mockResolvedValueOnce('Undertekster av Ai-Media');
+        const transcriptDone = once(provider, 'transcript.done');
+        feedAll(provider, speech(600));
+        feedAll(provider, silence(900));
+        const [transcript] = await transcriptDone;
+        expect(transcript).toBe('');
+    });
+
+    it('emits silence + empty transcript when the user never speaks (VAD timeout)', async () => {
+        const silenceSpy = vi.fn();
+        (provider as any).on('silence', silenceSpy);
+        const transcriptDone = once(provider, 'transcript.done', 5000);
+        feedAll(provider, silence(9000)); // default noSpeechTimeoutMs = 8000
+        const [transcript] = await transcriptDone;
+        expect(transcript).toBe('');
+        expect(silenceSpy).toHaveBeenCalled();
+        expect(sttTranscribe).not.toHaveBeenCalled();
+    });
+
+    it('loops tool calls through the ToolManager and feeds results back', async () => {
+        llmChat
+            .mockImplementationOnce(async () => ({
+                content: '',
+                toolCalls: [{ function: { name: 'get_time', arguments: { zone: 'Office' } } }],
+            }))
+            .mockImplementationOnce(async (_msgs: any[], _tools: any[], onDelta?: (d: string) => void) => {
+                onDelta?.('It is noon.');
+                return { content: 'It is noon.', toolCalls: [] };
+            });
+
+        const called = vi.fn();
+        const completed = vi.fn();
+        (provider as any).on('tool.called', called);
+        (provider as any).on('tool.completed', completed);
+        const done = once(provider, 'response.done');
+
+        feedAll(provider, speech(600));
+        feedAll(provider, silence(900));
+        await done;
+
+        expect(called).toHaveBeenCalledWith(expect.objectContaining({ name: 'get_time', args: { zone: 'Office' } }));
+        expect(completed).toHaveBeenCalledWith(expect.objectContaining({ name: 'get_time', result: { ok: true, now: '12:00' } }));
+
+        // Round 2 saw the assistant tool_calls message and the tool result.
+        const round2: any[] = llmChat.mock.calls[1][0];
+        const toolMsg = round2.find((m) => m.role === 'tool');
+        expect(toolMsg).toBeTruthy();
+        expect(toolMsg.tool_name).toBe('get_time');
+        expect(JSON.parse(toolMsg.content)).toEqual({ ok: true, now: '12:00' });
+    });
+
+    it('keeps conversation context across turns and clears it on resetConversation()', async () => {
+        // response.done is emitted just before the provider returns to 'idle';
+        // give the turn's async tail a tick before starting the next one (a real
+        // follow-up arrives seconds later, after the device played the reply).
+        const settle = () => new Promise((r) => setTimeout(r, 0));
+
+        const done1 = once(provider, 'response.done');
+        feedAll(provider, speech(600));
+        feedAll(provider, silence(900));
+        await done1;
+        await settle();
+
+        const done2 = once(provider, 'response.done');
+        feedAll(provider, speech(600));
+        feedAll(provider, silence(900));
+        await done2;
+        await settle();
+
+        // Second round carries turn 1's user+assistant messages.
+        const messages2: any[] = llmChat.mock.calls[1][0];
+        expect(messages2.filter((m) => m.role === 'user').length).toBe(2);
+        expect(messages2.filter((m) => m.role === 'assistant').length).toBe(1);
+
+        provider.resetConversation();
+        const done3 = once(provider, 'response.done');
+        feedAll(provider, speech(600));
+        feedAll(provider, silence(900));
+        await done3;
+        const messages3: any[] = llmChat.mock.calls[2][0];
+        expect(messages3.filter((m) => m.role === 'user').length).toBe(1);
+    });
+
+    it('answers text questions with text.done and no TTS', async () => {
+        const done = once(provider, 'text.done');
+        provider.sendTextForTextResponse('what time is it?');
+        const [msg] = await done;
+        expect(msg.text).toBe('Sure. Light is on.');
+        expect(ttsSynthesize).not.toHaveBeenCalled();
+    });
+
+    it('speaks text via sendTextForAudioResponse (audio out, response.done)', async () => {
+        const done = once(provider, 'response.done');
+        provider.sendTextForAudioResponse('say hello');
+        await done;
+        expect(ttsSynthesize).toHaveBeenCalled();
+        const messages = llmChat.mock.calls[0][0];
+        expect(messages[messages.length - 1]).toMatchObject({ role: 'user', content: 'say hello' });
+    });
+
+    it('emits error (and no response.done) when a pipeline stage fails', async () => {
+        sttTranscribe.mockRejectedValueOnce(new Error('whisper down'));
+        const err = once(provider, 'error');
+        feedAll(provider, speech(600));
+        feedAll(provider, silence(900));
+        const [e] = await err;
+        expect(String(e.message)).toContain('whisper down');
+    });
+
+    it('marks unconnected and emits Unhealthy when a health probe fails', async () => {
+        (provider as any).on('error', () => { }); // 'error' with no listener would throw
+        (provider as any).stt.check = async () => { throw new Error('refused'); };
+        const unhealthy = once(provider, 'Unhealthy');
+        await provider.restart().catch(() => { });
+        await unhealthy;
+        expect(provider.isConnected()).toBe(false);
+    });
+});
+
+describe('ThinkTagFilter', () => {
+    it('passes plain text through', () => {
+        const f = new ThinkTagFilter();
+        expect(f.feed('hello world') + f.flush()).toBe('hello world');
+    });
+
+    it('strips a think block', () => {
+        const f = new ThinkTagFilter();
+        expect(f.feed('<think>secret plan</think>Answer.') + f.flush()).toBe('Answer.');
+    });
+
+    it('strips think blocks torn across deltas', () => {
+        const f = new ThinkTagFilter();
+        let out = '';
+        out += f.feed('<thi');
+        out += f.feed('nk>internal ');
+        out += f.feed('monologue</th');
+        out += f.feed('ink>The light ');
+        out += f.feed('is on.');
+        out += f.flush();
+        expect(out).toBe('The light is on.');
+    });
+
+    it('does not eat text that merely looks like a tag start', () => {
+        const f = new ThinkTagFilter();
+        let out = '';
+        out += f.feed('a < b and <thin');
+        out += f.feed('g> is fine');
+        out += f.flush();
+        expect(out).toBe('a < b and <thing> is fine');
+    });
+});

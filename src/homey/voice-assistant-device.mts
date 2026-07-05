@@ -779,10 +779,13 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
         await this.rebuildProvider(newProviderId);
       }
 
-      // Check if the active provider's API key changed
-      const newApiKey = newSettings[this.provider.apiKeySettingKey];
+      // Check if the active provider's API key changed. Normalized to '' on both
+      // sides: a keyless provider (local pipeline) resolves its key setting to
+      // undefined while options.apiKey is '' — without normalization every
+      // settings save would look like a key change and force a restart.
+      const newApiKey = newSettings[this.provider.apiKeySettingKey] ?? '';
 
-      if (newApiKey !== this.providerOptions.apiKey) {
+      if (newApiKey !== (this.providerOptions.apiKey ?? '')) {
         this.logger.info(`API key changed, updating agent and restarting.`);
         this.providerOptions.apiKey = newApiKey;
         await this.provider.updateApiKey(newApiKey);
@@ -1235,10 +1238,15 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       this.esp = null!;
     }
 
-    // Safely close agent
+    // Safely close agent. Prefer destroy() (full teardown — e.g. the local
+    // pipeline unsubscribes its settings listener there), same as rebuildProvider.
     try {
       if (this.provider) {
-        this.provider.close();
+        if (typeof (this.provider as any).destroy === 'function') {
+          (this.provider as any).destroy();
+        } else {
+          this.provider.close();
+        }
       }
     } catch (err) {
       this.error('Failed to close agent:', err);

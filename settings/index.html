@@ -89,6 +89,33 @@
       cursor: pointer;
       padding: 4px 6px;
     }
+
+    /* Local-provider endpoint boxes: host wide, port narrow, side by side. */
+    .local-host-port {
+      display: flex;
+      gap: 10px;
+    }
+
+    .local-host-port .homey-form-group:first-child {
+      flex: 1;
+    }
+
+    .local-host-port .homey-form-group:last-child {
+      width: 110px;
+    }
+
+    .local-section-title {
+      font-weight: 600;
+      font-size: 15px;
+      margin: 18px 0 8px;
+      padding-top: 10px;
+      border-top: 1px solid #e9ecef;
+    }
+
+    .local-section-help {
+      margin-top: -8px;
+      margin-bottom: 15px;
+    }
   </style>
 </head>
 
@@ -126,8 +153,64 @@
       <select class="homey-form-input" id="provider_select">
         <option value="openai-realtime">OpenAI Realtime</option>
         <option value="gemini-realtime">Google Gemini Live</option>
+        <option value="local">Local (Whisper + Ollama + Piper)</option>
       </select>
-      <div class="help-text">Which backend handles speech &amp; language. Set the matching API key above.</div>
+      <div class="help-text">Which backend handles speech &amp; language. Cloud providers need the matching API key above; the local provider needs the server addresses below.</div>
+    </div>
+
+    <!-- Local pipeline endpoints — only shown when the 'local' provider is selected. -->
+    <div id="local_settings" style="display: none;">
+      <div class="local-section-title">Speech-to-text — Whisper</div>
+      <div class="local-host-port">
+        <div class="homey-form-group">
+          <label class="homey-form-label" for="local_stt_host">Host</label>
+          <input type="text" class="homey-form-input" id="local_stt_host" autocomplete="off"
+            placeholder="e.g. 192.168.1.50" />
+        </div>
+        <div class="homey-form-group">
+          <label class="homey-form-label" for="local_stt_port">Port</label>
+          <input type="number" class="homey-form-input" id="local_stt_port" min="1" max="65535" placeholder="9000" />
+        </div>
+      </div>
+      <div class="help-text local-section-help">A Whisper server, e.g. the <code>onerahmet/openai-whisper-asr-webservice</code>
+        docker image (port 9000). OpenAI-compatible servers (speaches / faster-whisper-server) and whisper.cpp also work —
+        the endpoint style is detected automatically.</div>
+
+      <div class="local-section-title">Language model — Ollama</div>
+      <div class="local-host-port">
+        <div class="homey-form-group">
+          <label class="homey-form-label" for="local_llm_host">Host</label>
+          <input type="text" class="homey-form-input" id="local_llm_host" autocomplete="off"
+            placeholder="e.g. 192.168.1.50" />
+        </div>
+        <div class="homey-form-group">
+          <label class="homey-form-label" for="local_llm_port">Port</label>
+          <input type="number" class="homey-form-input" id="local_llm_port" min="1" max="65535" placeholder="11434" />
+        </div>
+      </div>
+      <div class="homey-form-group">
+        <label class="homey-form-label" for="local_llm_model">Model</label>
+        <input type="text" class="homey-form-input" id="local_llm_model" autocomplete="off"
+          placeholder="Leave empty to use the first installed model" />
+        <div class="help-text">An Ollama model that supports tool calling (e.g. <code>qwen3</code>, <code>llama3.1</code>,
+          <code>gpt-oss</code>). Empty = the first model from <code>ollama list</code>.</div>
+      </div>
+
+      <div class="local-section-title">Text-to-speech — Piper</div>
+      <div class="local-host-port">
+        <div class="homey-form-group">
+          <label class="homey-form-label" for="local_tts_host">Host</label>
+          <input type="text" class="homey-form-input" id="local_tts_host" autocomplete="off"
+            placeholder="e.g. 192.168.1.50" />
+        </div>
+        <div class="homey-form-group">
+          <label class="homey-form-label" for="local_tts_port">Port</label>
+          <input type="number" class="homey-form-input" id="local_tts_port" min="1" max="65535" placeholder="5000" />
+        </div>
+      </div>
+      <div class="help-text local-section-help">A Piper HTTP server (port 5000), e.g. <code>artibex/piper-http</code> or
+        <code>python -m piper.http_server</code>. The spoken voice is the model the server was started with.
+        No authentication is used — keep these services on your trusted LAN.</div>
     </div>
 
     <div class="homey-form-group">
@@ -177,6 +260,30 @@
       var voiceSelectElement = document.getElementById("voice_select");
       var aiInstructionsElement = document.getElementById("ai_instructions");
       var saveElement = document.getElementById("save");
+      var localSettingsElement = document.getElementById("local_settings");
+
+      // Local (Whisper/Ollama/Piper) endpoint settings: text/number inputs that
+      // load and save 1:1 with a global setting key of the same id.
+      var localSettingIds = [
+        "local_stt_host", "local_stt_port",
+        "local_llm_host", "local_llm_port", "local_llm_model",
+        "local_tts_host", "local_tts_port"
+      ];
+
+      localSettingIds.forEach(function (id) {
+        Homey.get(id, function (err, value) {
+          if (err) return Homey.alert(err);
+          if (value !== null && value !== undefined && value !== "") {
+            document.getElementById(id).value = value;
+          }
+        });
+      });
+
+      // The endpoint boxes only make sense for the local provider.
+      function refreshLocalVisibility() {
+        localSettingsElement.style.display =
+          providerSelectElement.value === "local" ? "" : "none";
+      }
 
       Homey.get("openai_api_key", function (err, apiKey) {
         if (err) return Homey.alert(err);
@@ -221,6 +328,7 @@
       Homey.get("voice_provider", function (err, provider) {
         if (err) return Homey.alert(err);
         providerSelectElement.value = provider || "openai-realtime";
+        refreshLocalVisibility();
 
         // Load the saved voice, then populate the list for the active provider.
         Homey.get("selected_voice", function (err, voice) {
@@ -233,6 +341,7 @@
       // it's still valid for the newly selected provider.
       providerSelectElement.addEventListener("change", function () {
         refreshVoices(providerSelectElement.value, voiceSelectElement.value);
+        refreshLocalVisibility();
       });
 
       Homey.get("selected_language_code", function (err, language) {
@@ -262,6 +371,13 @@
         // Save selected voice provider
         Homey.set("voice_provider", providerSelectElement.value, function (err) {
           if (err) return Homey.alert(err);
+        });
+
+        // Save the local pipeline endpoints (harmless when another provider is active)
+        localSettingIds.forEach(function (id) {
+          Homey.set(id, document.getElementById(id).value.trim(), function (err) {
+            if (err) return Homey.alert(err);
+          });
         });
 
         // Get both value and text from the select element
