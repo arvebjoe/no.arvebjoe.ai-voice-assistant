@@ -137,20 +137,13 @@ globals:
     type: int
     restore_value: no
     initial_value: '0'
-  # Shared rotation for the rainbow voice-phase effects (Waiting/Voice/Thinking/Reply Rainbow).
-  # Kept global so the rainbow keeps its position across phase changes: Waiting shows it dark and
-  # static, Listening spins it, Thinking freezes it and fades to white, Reply keeps it stationary
-  # (a white pulse travels instead) — so the next Waiting picks up the exact same position.
+  # Shared rotation for the rainbow voice-phase effects (Voice Rainbow / Thinking Rainbow / Reply Rainbow).
+  # Kept global so the rainbow keeps its position across phase changes: Listening spins it, Thinking
+  # freezes it in place (only pulses brightness), Reply continues from the same spot but spins the other way.
   - id: led_rainbow_rotation
     type: uint8_t
     restore_value: no
     initial_value: '0'
-  # White level the Thinking effect is currently breathing at (0.6 - 1.0). Reply Rainbow reads it
-  # on entry so its fade back to the rainbow starts from the exact white the ring is showing.
-  - id: led_white_level
-    type: float
-    restore_value: no
-    initial_value: '1.0'
   # Global initialization variable. Initialized to true and set to false once everything is connected. Only used to have a smooth "plugging" experience
   - id: init_in_progress
     type: bool
@@ -713,120 +706,125 @@ light:
               }
             }
       - addressable_lambda:
-          name: "Waiting Rainbow"
-          update_interval: 50ms
-          lambda: |-
-            // Waiting phase: dark, NON-rotating rainbow at the shared rotation, so the ring
-            // sits in exactly the position Reply Rainbow (also stationary) left it in.
-            // Eases down from full brightness to the dark level for a smooth entry.
-            static float level = 1.0f;
-            if (initial_run) {
-              level = 1.0f;
-            }
-            const float dark_level = 0.35f;
-            for (uint8_t i = 0; i < 12; i++) {
-              uint8_t hue = (uint8_t)((i * 256 / 12) + id(led_rainbow_rotation));
-              ESPHSVColor hsv(hue, 255, (uint8_t)(255.0f * level));
-              it[i] = hsv.to_rgb();
-            }
-            // 0.05 per 50ms frame => ~0.65s fade from full down to the dark level.
-            if (level > dark_level) {
-              level -= 0.05f;
-              if (level < dark_level) level = dark_level;
-            }
-      - addressable_lambda:
           name: "Voice Rainbow"
           update_interval: 50ms
           lambda: |-
-            // Listening phase: full-brightness rainbow rotating clockwise. No reset on entry —
-            // it continues from the shared rotation the dark Waiting ring is already showing,
-            // and spinning advances that shared value for the phases that follow.
+            // Fill all 12 LEDs with the full color wheel and rotate it.
+            // Uses the shared global rotation so Thinking/Reply can pick up where this leaves off.
+            if (initial_run) {
+              id(led_rainbow_rotation) = 0;
+            }
             for (uint8_t i = 0; i < 12; i++) {
               uint8_t hue = (uint8_t)((i * 256 / 12) + id(led_rainbow_rotation));
               ESPHSVColor hsv(hue, 255, 255);
               it[i] = hsv.to_rgb();
             }
-            // Decrement = clockwise; 6 per 50ms frame = ~2.1s per full turn.
+            // Decrement to rotate the "other way"; 6 per 50ms = ~2.1s per full turn.
             id(led_rainbow_rotation) = id(led_rainbow_rotation) - 6;
       - addressable_lambda:
           name: "Thinking Rainbow"
           update_interval: 50ms
           lambda: |-
-            // Thinking phase: the rotation stops (led_rainbow_rotation is left untouched), the
-            // frozen rainbow fades up to full white, then the white breathes 100% -> 60% -> 100%.
-            // The current white level is published to led_white_level for Reply Rainbow.
-            static float blend = 0.0f;   // 0 = rainbow, 1 = white
-            static float level = 1.0f;   // breathing level once fully white
-            static bool dimming = true;
+            // Freeze the rainbow where Listening left it (do NOT touch led_rainbow_rotation)
+            // and pulse the whole ring between 100% and 25% brightness and back.
+            static float pulse = 1.0f;
+            static bool pulse_down = true;
             if (initial_run) {
-              blend = 0.0f;
-              level = 1.0f;
-              dimming = true;
+              pulse = 1.0f;
+              pulse_down = true;
             }
             for (uint8_t i = 0; i < 12; i++) {
               uint8_t hue = (uint8_t)((i * 256 / 12) + id(led_rainbow_rotation));
-              Color rgb = ESPHSVColor(hue, 255, 255).to_rgb();
-              float r = rgb.r + (255.0f - rgb.r) * blend;
-              float g = rgb.g + (255.0f - rgb.g) * blend;
-              float b = rgb.b + (255.0f - rgb.b) * blend;
-              it[i] = Color((uint8_t)(r * level), (uint8_t)(g * level), (uint8_t)(b * level));
+              ESPHSVColor hsv(hue, 255, (uint8_t)(255.0f * pulse));
+              it[i] = hsv.to_rgb();
             }
-            if (blend < 1.0f) {
-              // Fade-to-white: 0.08 per 50ms frame => ~0.65s.
-              blend += 0.08f;
-              if (blend > 1.0f) blend = 1.0f;
-            } else if (dimming) {
-              // Breathe: 0.02 per frame => 100% -> 60% -> 100% in ~2s.
-              level -= 0.02f;
-              if (level <= 0.6f) { level = 0.6f; dimming = false; }
+            // 0.05 step at 50ms => ~0.75s each way, ~1.5s full breath (1.0 -> 0.25 -> 1.0).
+            if (pulse_down) {
+              pulse -= 0.05f;
+              if (pulse <= 0.25f) { pulse = 0.25f; pulse_down = false; }
             } else {
-              level += 0.02f;
-              if (level >= 1.0f) { level = 1.0f; dimming = true; }
+              pulse += 0.05f;
+              if (pulse >= 1.0f) { pulse = 1.0f; pulse_down = true; }
             }
-            id(led_white_level) = blend < 1.0f ? 1.0f : level;
       - addressable_lambda:
           name: "Reply Rainbow"
           update_interval: 50ms
           lambda: |-
-            // Reply phase: fade from the white Thinking is currently showing (led_white_level)
-            // back to the full rainbow, held STATIONARY at the shared rotation. Once the rainbow
-            // is back, a white pulse travels counter-clockwise around the stationary ring.
-            // led_rainbow_rotation is never advanced here, so the Waiting phase that follows
-            // shows the ring in this exact position.
-            static float blend = 1.0f;      // 1 = white, 0 = rainbow
-            static float white_start = 1.0f;
-            static float pulse_pos = 0.0f;  // LED index of the white pulse
-            if (initial_run) {
-              blend = 1.0f;
-              white_start = id(led_white_level);
-              pulse_pos = 0.0f;
-            }
+            // Same as Voice Rainbow but spins the opposite way. Continues from the shared
+            // rotation (no reset) so it picks up exactly where Thinking froze the ring.
             for (uint8_t i = 0; i < 12; i++) {
               uint8_t hue = (uint8_t)((i * 256 / 12) + id(led_rainbow_rotation));
-              Color rgb = ESPHSVColor(hue, 255, 255).to_rgb();
-              float whiteness = blend;
-              if (blend <= 0.0f) {
-                // Circular distance (0..6 LEDs) between this LED and the pulse position.
-                float d = fabsf(fmodf((float)i - pulse_pos + 18.0f, 12.0f) - 6.0f);
-                if (d < 2.0f) {
-                  whiteness = (1.0f - d / 2.0f) * 0.9f;
-                }
-              }
-              // Blend toward white at the level the fade started from (matches Thinking's breath).
-              float wl = 255.0f * (blend > 0.0f ? white_start : 1.0f);
-              it[i] = Color((uint8_t)(rgb.r + (wl - rgb.r) * whiteness),
-                            (uint8_t)(rgb.g + (wl - rgb.g) * whiteness),
-                            (uint8_t)(rgb.b + (wl - rgb.b) * whiteness));
+              ESPHSVColor hsv(hue, 255, 255);
+              it[i] = hsv.to_rgb();
             }
-            if (blend > 0.0f) {
-              // Fade-to-rainbow: 0.08 per 50ms frame => ~0.65s.
-              blend -= 0.08f;
-              if (blend < 0.0f) blend = 0.0f;
+            // Increment (Voice Rainbow decrements) to rotate the other way; same 6 per frame.
+            id(led_rainbow_rotation) = id(led_rainbow_rotation) + 6;
+      - addressable_lambda:
+          name: "Cold Rainbow"
+          update_interval: 50ms
+          lambda: |-
+            // Cold rotating ring (green -> cyan -> blue -> purple).
+            // A triangle wave keeps the hue inside the cold band so there is no seam.
+            static uint16_t rotation = 0;
+            if (initial_run) {
+              rotation = 0;
+            }
+            const float cold_min = 85.0f;   // green  (hue 85  = 120 deg)
+            const float cold_max = 205.0f;  // purple (hue 205 = 288 deg)
+            for (uint8_t i = 0; i < 12; i++) {
+              float pos = (float)((i * 256 / 12 + rotation) % 256) / 256.0f;  // 0..1 around the ring
+              float t = pos < 0.5f ? (pos * 2.0f) : (2.0f - pos * 2.0f);       // 0..1..0 (stay cold)
+              uint8_t hue = (uint8_t)(cold_min + t * (cold_max - cold_min));
+              ESPHSVColor hsv(hue, 255, 255);
+              it[i] = hsv.to_rgb();
+            }
+            // Decrement to rotate the "other way"; 6 per frame matches the other rings.
+            rotation = (rotation + 256 - 6) % 256;
+      - addressable_lambda:
+          name: "Thinking White"
+          update_interval: 10ms
+          lambda: |-
+            // All LEDs pulse white (breathing) by ramping brightness up and down.
+            static uint8_t brightness_step = 0;
+            static bool brightness_decreasing = true;
+            static uint8_t brightness_step_number = 10;
+            if (initial_run) {
+              brightness_step = 0;
+              brightness_decreasing = true;
+            }
+            Color white_color(255, 255, 255);
+            for (uint8_t i = 0; i < 12; i++) {
+              it[i] = white_color * uint8_t(255/brightness_step_number*(brightness_step_number-brightness_step));
+            }
+            if (brightness_decreasing) {
+              brightness_step++;
             } else {
-              // Voice Rainbow's decrement reads as clockwise, so decreasing the LED index
-              // moves the pulse the other way; 0.35 LEDs per frame = ~1.7s per lap.
-              pulse_pos = fmodf(pulse_pos - 0.35f + 12.0f, 12.0f);
+              brightness_step--;
             }
+            if (brightness_step == 0 || brightness_step == brightness_step_number) {
+              brightness_decreasing = !brightness_decreasing;
+            }
+      - addressable_lambda:
+          name: "Warm Rainbow"
+          update_interval: 50ms
+          lambda: |-
+            // Warm rotating ring (red -> orange -> yellow).
+            // A triangle wave keeps the hue inside the warm band so there is no red->yellow seam.
+            static uint16_t rotation = 0;
+            if (initial_run) {
+              rotation = 0;
+            }
+            const float warm_min = 0.0f;    // red   (hue 0)
+            const float warm_max = 45.0f;   // yellow (hue ~45 = 63 deg)
+            for (uint8_t i = 0; i < 12; i++) {
+              float pos = (float)((i * 256 / 12 + rotation) % 256) / 256.0f;  // 0..1 around the ring
+              float t = pos < 0.5f ? (pos * 2.0f) : (2.0f - pos * 2.0f);       // 0..1..0 (stay warm)
+              uint8_t hue = (uint8_t)(warm_min + t * (warm_max - warm_min));
+              ESPHSVColor hsv(hue, 255, 255);
+              it[i] = hsv.to_rgb();
+            }
+            // Decrement to rotate the "other way"; 6 per frame matches the other rings.
+            rotation = (rotation + 256 - 6) % 256;
       - addressable_lambda:
           name: "Debug Waiting"
           update_interval: 250ms
@@ -1324,40 +1322,40 @@ script:
             light.turn_on: led_ring
 
   # Script executed when the voice assistant is waiting for a command (After the wake word)
-  # Dark, non-rotating rainbow at the shared rotation
+  # DEBUG: solid amber while the phase is being diagnosed. Normal effect: "Warm Rainbow".
   - id: control_leds_voice_assistant_waiting_for_command_phase
     then:
       - light.turn_on:
           brightness: !lambda return max( id(led_ring).current_values.get_brightness() , 0.2f );
           id: voice_assistant_leds
-          effect: "Waiting Rainbow"
+          effect: "Debug Waiting"
 
   # Script executed when the voice assistant is listening to a command
-  # Full rainbow rotating clockwise (advances the shared rotation)
+  # DEBUG: solid green while the phase is being diagnosed. Normal effect: "Voice Rainbow".
   - id: control_leds_voice_assistant_listening_for_command_phase
     then:
       - light.turn_on:
           brightness: !lambda return max( id(led_ring).current_values.get_brightness() , 0.2f );
           id: voice_assistant_leds
-          effect: "Voice Rainbow"
+          effect: "Debug Listening"
 
   # Script executed when the voice assistant is thinking to a command
-  # Rotation stops, the frozen rainbow fades to white, then breathes 100% <-> 60%
+  # DEBUG: solid blue while the phase is being diagnosed. Normal effect: "Thinking Rainbow".
   - id: control_leds_voice_assistant_thinking_phase
     then:
       - light.turn_on:
           brightness: !lambda return max( id(led_ring).current_values.get_brightness() , 0.2f );
           id: voice_assistant_leds
-          effect: "Thinking Rainbow"
+          effect: "Debug Thinking"
 
   # Script executed when the voice assistant is replying to a command
-  # White fades back to the stationary rainbow, then a white pulse travels counter-clockwise
+  # DEBUG: solid red while the phase is being diagnosed. Normal effect: "Reply Rainbow".
   - id: control_leds_voice_assistant_replying_phase
     then:
       - light.turn_on:
           brightness: !lambda return max( id(led_ring).current_values.get_brightness() , 0.2f );
           id: voice_assistant_leds
-          effect: "Reply Rainbow"
+          effect: "Debug Replying"
 
   # Script executed when the voice assistant is in error
   # Fast Red Pulse
