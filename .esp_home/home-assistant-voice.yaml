@@ -723,7 +723,7 @@ light:
             if (initial_run) {
               level = 1.0f;
             }
-            const float dark_level = 0.35f;
+            const float dark_level = 0.75f;
             for (uint8_t i = 0; i < 12; i++) {
               uint8_t hue = (uint8_t)((i * 256 / 12) + id(led_rainbow_rotation));
               ESPHSVColor hsv(hue, 255, (uint8_t)(255.0f * level));
@@ -1063,48 +1063,48 @@ light:
           name: "Jack Plugged"
           update_interval: 40ms
           lambda: |-
-              static uint8_t index = 0;
-              if (initial_run) {
-                index = 0;
-              }
-              auto light_color = id(led_ring).current_values;
-              Color color(light_color.get_red() * 255, light_color.get_green() * 255,
-                    light_color.get_blue() * 255);
-              if (index <= 6) {
-                for (uint8_t i = 0; i < 12; i++) {
-                  if (i == index) {
-                    it[i] = color;
-                  } else if (i == (12 - index) % 12) {
-                    it[i] = color;
-                  } else {
-                    it[i] = Color::BLACK;
-                  }
+            static uint8_t index = 0;
+            if (initial_run) {
+              index = 0;
+            }
+            auto light_color = id(led_ring).current_values;
+            Color color(light_color.get_red() * 255, light_color.get_green() * 255,
+                  light_color.get_blue() * 255);
+            if (index <= 6) {
+              for (uint8_t i = 0; i < 12; i++) {
+                if (i == index) {
+                  it[i] = color;
+                } else if (i == (12 - index) % 12) {
+                  it[i] = color;
+                } else {
+                  it[i] = Color::BLACK;
                 }
               }
-              index = (index + 1);
+            }
+            index = (index + 1);
       - addressable_lambda:
           name: "Jack Unplugged"
           update_interval: 40ms
           lambda: |-
-              static uint8_t index = 0;
-              if (initial_run) {
-                index = 0;
-              }
-              auto light_color = id(led_ring).current_values;
-              Color color(light_color.get_red() * 255, light_color.get_green() * 255,
-                    light_color.get_blue() * 255);
-              if (index <= 6) {
-                for (uint8_t i = 0; i < 12; i++) {
-                  if (i == 6 - index) {
-                    it[i] = color;
-                  } else if (i == (6 + index) % 12) {
-                    it[i] = color;
-                  } else {
-                    it[i] = Color::BLACK;
-                  }
+            static uint8_t index = 0;
+            if (initial_run) {
+              index = 0;
+            }
+            auto light_color = id(led_ring).current_values;
+            Color color(light_color.get_red() * 255, light_color.get_green() * 255,
+                  light_color.get_blue() * 255);
+            if (index <= 6) {
+              for (uint8_t i = 0; i < 12; i++) {
+                if (i == 6 - index) {
+                  it[i] = color;
+                } else if (i == (6 + index) % 12) {
+                  it[i] = color;
+                } else {
+                  it[i] = Color::BLACK;
                 }
               }
-              index = (index + 1);
+            }
+            index = (index + 1);
 
   # User facing LED ring. Remapping of the internal LEDs.
   # Exposed to be used by the user.
