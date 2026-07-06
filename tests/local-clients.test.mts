@@ -3,7 +3,7 @@ import { WhisperClient } from '../src/llm/providers/local/whisper-client.mjs';
 import { OllamaClient } from '../src/llm/providers/local/ollama-client.mjs';
 import { MistralClient } from '../src/llm/providers/local/mistral-client.mjs';
 import { MistralSttClient } from '../src/llm/providers/local/mistral-stt-client.mjs';
-import { MistralTtsClient, voxtralVoiceName } from '../src/llm/providers/local/mistral-tts-client.mjs';
+import { MistralTtsClient, listMistralTtsVoices, mistralVoiceOptions } from '../src/llm/providers/local/mistral-tts-client.mjs';
 import { generateToolCallId, sanitizeToolCallId } from '../src/llm/providers/local/llm-client.mjs';
 import { PiperClient } from '../src/llm/providers/local/piper-client.mjs';
 import { OpenAiLlmClient } from '../src/llm/providers/local/openai-llm-client.mjs';
@@ -529,59 +529,101 @@ describe('MistralSttClient', () => {
 
 describe('MistralTtsClient', () => {
     const wav24k = pcmToWav(Buffer.alloc(24000 * 2), 24000, 1); // 1 s @24k
+    const PAUL_NEUTRAL = 'c69964a6-ab8b-4f8a-9465-ec0925096ec8';
+    const PAUL_HAPPY = '1024d823-a11e-43ee-bf3d-d440dccc0577';
+    // Shape observed live from GET /v1/audio/voices on 2026-07-06.
+    const voicesPage = {
+        items: [
+            { id: PAUL_HAPPY, name: 'Paul - Happy', slug: 'en_paul_happy', languages: ['en_us'] },
+            { id: PAUL_NEUTRAL, name: 'Paul - Neutral', slug: 'en_paul_neutral', languages: ['en_us'] },
+        ],
+        total: 2, page: 1, page_size: 10, total_pages: 1,
+    };
 
-    it('synthesizes via /v1/audio/speech and returns 24 kHz PCM', async () => {
-        const client = new MistralTtsClient({ apiKey: 'sk-test', model: '', voice: 'casual_male' });
+    it('synthesizes via /v1/audio/speech with a UUID voice, no voice-list lookup', async () => {
+        const client = new MistralTtsClient({ apiKey: 'sk-test', model: '', voice: PAUL_NEUTRAL });
         fetchImpl = (url, init) => {
             expect(url).toBe('https://api.mistral.ai/v1/audio/speech');
             expect(init.headers.Authorization).toBe('Bearer sk-test');
             const body = JSON.parse(init.body);
             expect(body).toMatchObject({
                 input: 'Hei på deg.',
-                voice_id: 'casual_male', // API field is voice_id (per Mistral's OpenAPI spec)
+                voice_id: PAUL_NEUTRAL, // API field is voice_id, a UUID from /v1/audio/voices
                 response_format: 'wav',
+                // the live server 422s without a model — the default is always sent
+                model: 'voxtral-mini-tts-2603',
             });
-            // model is optional — omitted, the server default applies.
-            expect(body).not.toHaveProperty('model');
             return binaryResponse(wav24k);
         };
 
         const { pcm, sampleRate } = await client.synthesize('Hei på deg.');
         expect(sampleRate).toBe(24000);
         expect(pcm.length).toBe(24000 * 2);
+        expect(fetchCalls.length).toBe(1); // a UUID voice needs no /v1/audio/voices round-trip
     });
 
     it('pins the model when one is configured', async () => {
-        const client = new MistralTtsClient({ apiKey: 'sk-test', model: 'voxtral-mini-tts-2603', voice: 'neutral_male' });
+        const client = new MistralTtsClient({ apiKey: 'sk-test', model: 'voxtral-mini-tts-2604', voice: PAUL_NEUTRAL });
         fetchImpl = (url, init) => {
-            expect(JSON.parse(init.body).model).toBe('voxtral-mini-tts-2603');
+            expect(JSON.parse(init.body).model).toBe('voxtral-mini-tts-2604');
             return binaryResponse(wav24k);
         };
         await client.synthesize('test');
     });
 
-    it('falls back to the default voice for non-Voxtral voice names', async () => {
-        const client = new MistralTtsClient({ apiKey: 'sk', model: '', voice: 'server-default' });
+    it('resolves a slug voice against the live voice list', async () => {
+        const client = new MistralTtsClient({ apiKey: 'sk-slug-test', model: '', voice: 'en_paul_happy' });
         fetchImpl = (url, init) => {
-            expect(JSON.parse(init.body).voice_id).toBe('neutral_female');
+            if (url.startsWith('https://api.mistral.ai/v1/audio/voices')) return jsonResponse(voicesPage);
+            expect(JSON.parse(init.body).voice_id).toBe(PAUL_HAPPY);
+            return binaryResponse(wav24k);
+        };
+        await client.synthesize('test');
+        expect(fetchCalls.length).toBe(2);
+
+        // The resolution is cached — the next synthesis skips the list call.
+        await client.synthesize('igjen');
+        expect(fetchCalls.length).toBe(3);
+    });
+
+    it('falls back to a neutral voice for names not in the library', async () => {
+        // e.g. a leftover 'alloy'/'Kore' from a previous OpenAI/Gemini configuration
+        const client = new MistralTtsClient({ apiKey: 'sk-fallback-test', model: '', voice: 'alloy' });
+        fetchImpl = (url, init) => {
+            if (url.startsWith('https://api.mistral.ai/v1/audio/voices')) return jsonResponse(voicesPage);
+            expect(JSON.parse(init.body).voice_id).toBe(PAUL_NEUTRAL);
             return binaryResponse(wav24k);
         };
         await client.synthesize('test');
 
-        // setVoice flows a valid preset through unchanged.
-        client.setVoice('fr_female');
+        // setVoice to a UUID passes straight through.
+        client.setVoice(PAUL_HAPPY);
         fetchImpl = (url, init) => {
-            expect(JSON.parse(init.body).voice_id).toBe('fr_female');
+            expect(JSON.parse(init.body).voice_id).toBe(PAUL_HAPPY);
             return binaryResponse(wav24k);
         };
         await client.synthesize('encore');
     });
 
-    it('voxtralVoiceName accepts presets and OpenAI aliases, rejects the rest', () => {
-        expect(voxtralVoiceName('neutral_male')).toBe('neutral_male');
-        expect(voxtralVoiceName('alloy')).toBe('alloy'); // legacy OpenAI name still works
-        expect(voxtralVoiceName('Kore')).toBe('neutral_female'); // Gemini leftover
-        expect(voxtralVoiceName(undefined)).toBe('neutral_female');
+    it('lists voices across pages and maps them to dropdown options', async () => {
+        const page = (items: any[], total: number) => ({ items, total, page: 1, page_size: items.length, total_pages: 2 });
+        fetchImpl = (url) => {
+            expect(url).toContain('https://api.mistral.ai/v1/audio/voices?limit=');
+            return url.includes('offset=0')
+                ? jsonResponse(page([{ id: PAUL_HAPPY, name: 'Paul - Happy', slug: 'en_paul_happy', languages: ['en_us'] }], 2))
+                : jsonResponse(page([{ id: PAUL_NEUTRAL, name: 'Paul - Neutral', slug: 'en_paul_neutral', languages: ['en_us'] }], 2));
+        };
+        const voices = await listMistralTtsVoices('sk-paging-test');
+        expect(voices.map((v) => v.id)).toEqual([PAUL_HAPPY, PAUL_NEUTRAL]);
+        expect(mistralVoiceOptions(voices)).toEqual([
+            { value: PAUL_HAPPY, name: 'Paul - Happy (EN-US)' },
+            { value: PAUL_NEUTRAL, name: 'Paul - Neutral (EN-US)' },
+        ]);
+
+        // Cached per key: a second call makes no further requests.
+        const calls = fetchCalls.length;
+        await listMistralTtsVoices('sk-paging-test');
+        expect(fetchCalls.length).toBe(calls);
     });
 });
 

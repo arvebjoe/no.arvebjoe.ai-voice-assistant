@@ -342,7 +342,7 @@ describe('LocalPipelineProvider', () => {
             expect((p as any).tts).toBeInstanceOf(WyomingTtsClient);
             expect(p.hasApiKey()).toBe(true);
             // Wyoming Piper's voice is server-side, same as HTTP Piper.
-            expect(LocalPipelineProvider.getAvailableVoices('wyoming').map((v) => v.value)).toEqual(['server-default']);
+            expect((await LocalPipelineProvider.getAvailableVoices('wyoming')).map((v) => v.value)).toEqual(['server-default']);
 
             homey.setMockSetting('local_stt_provider', 'whisper');
             homey.setMockSetting('local_tts_provider', 'piper');
@@ -398,17 +398,37 @@ describe('LocalPipelineProvider', () => {
         }
     });
 
-    it('offers voices matching the TTS backend', () => {
+    it('offers voices matching the TTS backend', async () => {
         // Saved setting decides when no override is passed.
-        expect(LocalPipelineProvider.getAvailableVoices().map((v) => v.value)).toEqual(['server-default']);
+        expect((await LocalPipelineProvider.getAvailableVoices()).map((v) => v.value)).toEqual(['server-default']);
+
+        // Voxtral without a saved key: one sentinel entry ('' = client picks), no network.
         homey.setMockSetting('local_tts_provider', 'mistral');
-        const voxtral = LocalPipelineProvider.getAvailableVoices();
-        expect(voxtral.length).toBe(20);
-        expect(voxtral.map((v) => v.value)).toContain('neutral_female');
+        homey.setMockSetting('mistral_api_key', '');
+        expect((await LocalPipelineProvider.getAvailableVoices()).map((v) => v.value)).toEqual(['']);
+
+        // With a key the list comes live from GET /v1/audio/voices.
+        homey.setMockSetting('mistral_api_key', 'sk-provider-voices-test');
+        vi.stubGlobal('fetch', vi.fn(async () => ({
+            ok: true,
+            status: 200,
+            json: async () => ({
+                items: [{ id: '530e2e20-58e2-45d8-b0a5-4594f4915944', name: 'Paul - Sad', slug: 'en_paul_sad', languages: ['en_us'] }],
+                total: 1,
+            }),
+        })));
+        try {
+            expect(await LocalPipelineProvider.getAvailableVoices()).toEqual([
+                { value: '530e2e20-58e2-45d8-b0a5-4594f4915944', name: 'Paul - Sad (EN-US)' },
+            ]);
+        } finally {
+            vi.unstubAllGlobals();
+        }
+
         // An explicit override (settings-page preview) wins over the saved setting.
-        expect(LocalPipelineProvider.getAvailableVoices('piper').map((v) => v.value)).toEqual(['server-default']);
+        expect((await LocalPipelineProvider.getAvailableVoices('piper')).map((v) => v.value)).toEqual(['server-default']);
         // The generic backend offers OpenAI's standard voices.
-        expect(LocalPipelineProvider.getAvailableVoices('openai').map((v) => v.value)).toContain('alloy');
+        expect((await LocalPipelineProvider.getAvailableVoices('openai')).map((v) => v.value)).toContain('alloy');
     });
 
     it('emits missing_api_key on start when Mistral is selected without a key', async () => {

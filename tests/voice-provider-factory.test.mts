@@ -73,10 +73,10 @@ describe('voice-provider-factory', () => {
     });
 
     describe('getVoicesForProvider', () => {
-        it('returns distinct, non-empty lists per provider', () => {
-            const openai = getVoicesForProvider('openai-realtime');
-            const gemini = getVoicesForProvider('gemini-realtime');
-            const local = getVoicesForProvider('local');
+        it('returns distinct, non-empty lists per provider', async () => {
+            const openai = await getVoicesForProvider('openai-realtime');
+            const gemini = await getVoicesForProvider('gemini-realtime');
+            const local = await getVoicesForProvider('local');
             expect(openai.length).toBeGreaterThan(0);
             expect(gemini.length).toBeGreaterThan(0);
             expect(local.length).toBeGreaterThan(0);
@@ -86,8 +86,8 @@ describe('voice-provider-factory', () => {
             }
         });
 
-        it('falls back to the OpenAI list for an unknown provider id', () => {
-            expect(getVoicesForProvider('nope')).toEqual(getVoicesForProvider('openai-realtime'));
+        it('falls back to the OpenAI list for an unknown provider id', async () => {
+            expect(await getVoicesForProvider('nope')).toEqual(await getVoicesForProvider('openai-realtime'));
         });
     });
 });

@@ -69,6 +69,10 @@
     "getVoices": {
       "method": "GET",
       "path": "/voices"
+    },
+    "testLocalStage": {
+      "method": "POST",
+      "path": "/test-local-stage"
     }
   },
   "esm": true,

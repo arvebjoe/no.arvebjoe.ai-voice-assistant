@@ -184,12 +184,16 @@ real services is still open — TODO §5.)* Backends delivered:
   (default) or `mistral` (`local/mistral-tts-client.mts`, `POST /v1/audio/speech` →
   WAV 24 kHz mono = the seam contract exactly). TTS request shape verified 2026-07-05 against
   Mistral's official Python SDK (generated from their OpenAPI spec): the voice field is
-  **`voice_id`** (not `voice`), and **`model` is optional** — omitted, the server's default TTS
-  model runs (we omit unless `mistral_tts_model` is set; a concrete pin would be
-  `voxtral-mini-tts-2603`). The spec also exposes `GET /v1/audio/voices` (presets + customs) —
-  candidate for a dynamic voice dropdown later. Voxtral TTS has 20 preset voices (+ OpenAI-name
-  aliases) — the main Voice dropdown switches to them when the TTS backend is Mistral
-  (`LocalPipelineProvider.getAvailableVoices(ttsBackend?)`, `/voices?provider=local&tts=…`).
+  **`voice_id`** (not `voice`). Two spec-vs-live-server gaps surfaced on a real device
+  2026-07-06: `model` is marked optional but the server 422s without one ("No model provided
+  for speech") — the client now always sends `voxtral-mini-tts-2603` unless
+  `mistral_tts_model` overrides it; and the "20 preset voices" from the open-weights model
+  card (`neutral_female` etc.) don't exist on the hosted platform (404 "Voice not found") —
+  the platform serves its own library via `GET /v1/audio/voices` (30 voices, UUID ids +
+  slugs like `en_paul_neutral`). The Voice dropdown is now populated live from that endpoint
+  (`LocalPipelineProvider.getAvailableVoices(ttsBackend?)` went async,
+  `/voices?provider=local&tts=…`), the stored value is the voice UUID, and a non-library
+  `selected_voice` (legacy OpenAI/Gemini names) resolves to a neutral voice at synthesis.
   One shared `mistral_api_key` for all Mistral-backed stages; the settings page shows the key
   field when any stage picks Mistral, and each stage independently shows LAN host/port vs
   cloud model boxes. Any keyless Mistral stage → `missing_api_key`/`hasApiKey()=false`.

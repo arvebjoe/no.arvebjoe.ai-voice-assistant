@@ -25,9 +25,10 @@ const API_KEY_SETTING: Record<string, string> = {
  * list (single source of truth); unknown ids fall back to the default provider's
  * list so the dropdown is never empty. The local provider's list depends on its
  * TTS backend — `localTtsBackend` lets the settings page preview an unsaved
- * dropdown choice (omitted = the saved setting decides).
+ * dropdown choice (omitted = the saved setting decides). Async because the
+ * local provider's Voxtral backend fetches its voice library from Mistral.
  */
-export function getVoicesForProvider(providerId: string, localTtsBackend?: string): { value: string; name: string }[] {
+export async function getVoicesForProvider(providerId: string, localTtsBackend?: string): Promise<{ value: string; name: string }[]> {
     switch (providerId) {
         case 'openai-realtime':
             return OpenAIRealtimeProvider.getAvailableVoices();

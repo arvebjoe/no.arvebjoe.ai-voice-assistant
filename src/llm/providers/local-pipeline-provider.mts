@@ -17,7 +17,7 @@ import { ChatMessage, ILlmClient } from "./local/llm-client.mjs";
 import { OllamaClient, LocalLlmConfig } from "./local/ollama-client.mjs";
 import { MistralClient, MistralConfig } from "./local/mistral-client.mjs";
 import { MistralSttClient } from "./local/mistral-stt-client.mjs";
-import { MistralTtsClient, VOXTRAL_TTS_VOICES } from "./local/mistral-tts-client.mjs";
+import { MistralTtsClient, listMistralTtsVoices, mistralVoiceOptions } from "./local/mistral-tts-client.mjs";
 import { PiperClient, LocalTtsConfig } from "./local/piper-client.mjs";
 import { OpenAiLlmClient, OpenAiLlmConfig } from "./local/openai-llm-client.mjs";
 import { OpenAiSttClient, OpenAiSttConfig } from "./local/openai-stt-client.mjs";
@@ -291,13 +291,27 @@ export class LocalPipelineProvider extends (EventEmitter as new () => TypedEmitt
 
     /**
      * Voices depend on the selected TTS backend: Piper's voice is fixed
-     * server-side (single placeholder entry), Voxtral offers preset voices.
+     * server-side (single placeholder entry), Voxtral's voice library lives on
+     * Mistral's platform and is fetched live (needs the saved API key).
      * `ttsBackend` lets the settings page preview an unsaved dropdown choice;
      * omitted, the saved setting decides.
      */
-    static getAvailableVoices(ttsBackend?: string): { value: string; name: string }[] {
+    static async getAvailableVoices(ttsBackend?: string): Promise<{ value: string; name: string }[]> {
         const backend = ttsBackend ?? settingsManager.getGlobal<string>('local_tts_provider', 'piper');
-        if (backend === 'mistral') return VOXTRAL_TTS_VOICES;
+        if (backend === 'mistral') {
+            const apiKey = (settingsManager.getGlobal<string>('mistral_api_key', '') || '').trim();
+            if (apiKey) {
+                try {
+                    const options = mistralVoiceOptions(await listMistralTtsVoices(apiKey));
+                    if (options.length) return options;
+                } catch {
+                    // fall through to the placeholder — the dropdown must never be empty
+                }
+            }
+            // No key yet (or the list fetch failed): a single sentinel entry.
+            // '' makes the TTS client pick a neutral voice from the live list.
+            return [{ value: '', name: apiKey ? 'Default voice (voice list unavailable)' : 'Default voice (save the Mistral API key to list voices)' }];
+        }
         // Standard OpenAI voices; custom servers (Kokoro etc.) use the
         // free-text voice override in the TTS section instead.
         if (backend === 'openai') return OPENAI_TTS_VOICES;

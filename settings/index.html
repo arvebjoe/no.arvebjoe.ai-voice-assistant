@@ -451,10 +451,10 @@
         <div class="homey-form-group">
           <label class="homey-form-label" for="mistral_tts_model">Model</label>
           <input type="text" class="homey-form-input" id="mistral_tts_model" autocomplete="off"
-            placeholder="Leave empty for Mistral's default TTS model" />
-          <div class="help-text">Mistral's Voxtral TTS. Empty = the server's current default; set an explicit id
-            (e.g. <code>voxtral-mini-tts-2603</code>) to pin one. Pick one of Voxtral's preset voices in the
-            <b>Voice</b> dropdown above.</div>
+            placeholder="voxtral-mini-tts-2603" />
+          <div class="help-text">Mistral's Voxtral TTS. Empty = <code>voxtral-mini-tts-2603</code>; set an explicit
+            id to pin a different one. The <b>Voice</b> dropdown above lists Mistral's voice library —
+            save the API key first, then it fills in on Save.</div>
         </div>
       </div>
       <div id="local_tts_openai" style="display: none;">
@@ -784,6 +784,12 @@
         Homey.set("ai_instructions", aiInstructionsElement.value, function (err) {
           if (err) return Homey.alert(err);
         });
+
+        // Repopulate the voice dropdown once the saves have landed — Voxtral's
+        // voice list is fetched from Mistral and needs the just-saved API key.
+        setTimeout(function () {
+          refreshVoices(providerSelectElement.value, voiceSelectElement.value, ttsProviderSelectElement.value);
+        }, 500);
       });
 
 
