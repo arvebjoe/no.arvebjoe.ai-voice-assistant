@@ -1,166 +1,275 @@
-
 # AI Voice Assistant for Homey
 
 <img src="./assets/images/large.png" alt="App banner" />
 
-A Homey app that connects small ESP32‑based voice devices to the cloud so you can talk to your smart home. The app bridges on‑device microphones/speakers with cloud speech‑to‑text, reasoning, and text‑to‑speech, lets the assistant control your Homey devices, answer questions and run timers, and exposes handy Flow cards — all simple enough to flash and use on inexpensive hardware.
+Talk to your smart home. This Homey app connects small, inexpensive ESP32-based voice devices
+(Home Assistant Voice Preview Edition, XiaoZhi AI) to an AI assistant that controls your Homey
+devices, answers questions, runs timers, and speaks back — in your language.
 
-You choose the AI engine: **OpenAI** or **Google Gemini**.
+You choose the brain: **OpenAI**, **Google Gemini**, or a fully **local / self-hosted** pipeline
+(Whisper + Ollama + Piper and friends) where no audio ever leaves your network.
 
-> **Status:** Active development. See [todo.md](./TODO.md) for planned features and open tasks.
+> **Status:** Active development. Open work lives in [TODO.md](./TODO.md); finished work is
+> archived in [COMPLETED.md](./COMPLETED.md).
 
 ---
 
-## Supported devices
+## What you can do by voice
+
+Wake the device with its wake word (e.g. *"Okay Nabu"* on the Voice PE) or press its button, then
+just speak naturally:
+
+* **Control devices** — turn lights, plugs and other devices on/off, dim lights, set thermostat
+  temperatures, in any room/zone.
+* **Lock & unlock doors** — control supported smart locks.
+* **Ask about the weather** — current conditions and forecasts for your location.
+* **Ask the time & date** — answered from your Homey's local time and timezone.
+* **Set timers & alarms** — *"set a 10 minute timer"*, *"wake me at 7"*. The device counts down on
+  its LED ring and chimes when time's up; cancel or check it by voice.
+* **Have a conversation** — the assistant keeps listening after it answers, so you can ask
+  follow-up questions without repeating the wake word.
+* **Ask anything** — general questions answered by the AI.
+
+The assistant understands and replies in **English, Dutch, German, French, Italian, Swedish,
+Norwegian, Spanish, Danish, Russian, Polish and Korean** — pick yours in the app settings.
+
+---
+
+## Quick start
+
+1. **Flash** your device with ESPHome firmware and get it on your Wi-Fi
+   (see [Hardware setup](#hardware-setup) below).
+2. **Install** this app on your Homey.
+3. In the app settings, **choose an AI engine** and enter the matching API key
+   (or point it at your local services — see [Choosing an AI engine](#choosing-an-ai-engine)).
+4. **Add the device** in Homey — it's discovered automatically on your LAN.
+5. **Say the wake word** and ask something — or test from a Flow with the
+   *Ask the assistant* / *Say* cards.
+
+---
+
+## Hardware setup
+
+The app talks to any supported device over your LAN using the ESPHome native API (port 6053) —
+no Home Assistant installation is needed, and nothing extra runs on the device beyond its
+standard ESPHome firmware.
+
+> **Note:** the app connects to the ESPHome API in plaintext. If your device has an API
+> **encryption key** configured (common when a device was previously adopted by Home Assistant),
+> remove the key from its ESPHome config — encrypted connections are not supported yet.
 
 ### 1) Home Assistant Voice: Preview Edition (PE)
 
 <img src="./drivers/home-assistant-voice-preview-edition/assets/images/large.png" height="160" alt="Voice PE" />
 
-**Firmware**: Official ESPHome firmware.
+A ready-made voice satellite by Nabu Casa with a good microphone array, speaker, LED ring and
+on-device wake word (default: *"Okay Nabu"*). **Firmware:** official ESPHome firmware — stock,
+no modifications needed.
 
 **How to flash / (re)install**
 
-1. Use a Chromium‑based browser (Chrome/Edge) that supports Web Serial.
+1. Use a Chromium-based browser (Chrome/Edge) that supports Web Serial.
 2. Open the installer: [https://esphome.github.io/home-assistant-voice-pe/](https://esphome.github.io/home-assistant-voice-pe/)
-3. Click **Connect**, choose the device’s COM/USB port.
+3. Click **Connect**, choose the device's COM/USB port.
 4. Pick a firmware version and click **Install**.
-5. When prompted, enter your Wi‑Fi credentials.
+5. When prompted, enter your Wi-Fi credentials.
 6. After boot, optionally assign a **static IP** in your router/DHCP.
 
 **Tips**
 
 * You can update/monitor later using the ESPHome Web tools.
-* If the device doesn’t appear for OTA updates, try power‑cycling and ensure your network resolves the device hostname.
-
----
+* If the device doesn't appear for OTA updates, try power-cycling and ensure your network
+  resolves the device hostname.
 
 ### 2) XiaoZhi AI devices (RealDeco firmware)
 
 <img src="./drivers/xiaozhi-ai/assets/images/large.png" height="160" alt="XiaoZhi AI" />
-<img src="./.resources/devices_1.jpg" height="160" alt="XiaoZhi AI" />
-<img src="./.resources/devices_2.jpg" height="160" alt="XiaoZhi AI" />
-<img src="./.resources/devices_3.png" height="160" alt="XiaoZhi AI" />
-<img src="./.resources/devices_4.png" height="160" alt="XiaoZhi AI" />
+<img src="./.resources/devices_1.jpg" height="160" alt="XiaoZhi AI device" />
+<img src="./.resources/devices_2.jpg" height="160" alt="XiaoZhi AI device" />
+<img src="./.resources/devices_3.png" height="160" alt="XiaoZhi AI device" />
+<img src="./.resources/devices_4.png" height="160" alt="XiaoZhi AI device" />
 
-**Firmware**: Community ESPHome configs by RealDeco.
+Cheap and cheerful ESP32-S3 gadgets in many shapes (some with screens). They ship with
+proprietary firmware, so they must be re-flashed. **Firmware:** community ESPHome configs by
+RealDeco.
 
 **How to flash**
 
 1. Connect the XiaoZhi via USB.
 2. Go to the RealDeco repo for your model: [https://github.com/RealDeco/xiaozhi-esphome](https://github.com/RealDeco/xiaozhi-esphome)
 3. Use **ESPHome Web** ([https://web.esphome.io/](https://web.esphome.io/)) to do the first flash if needed.
-4. In ESPHome, create or take over the device, paste the config from the repo, keep the **device name** unchanged, and install.
-5. First‑time install may require USB flashing to update partitions; later you can update OTA.
+4. In ESPHome, create or take over the device, paste the config from the repo, keep the
+   **device name** unchanged, and install.
+5. First-time install may require USB flashing to update partitions; later you can update OTA.
 
 **Notes**
 
-* Some models have different screens/touch options—use the matching YAML.
-* If a device gets stuck after a wrong name/config, enter bootloader (usually holding/combining buttons) and re‑flash over USB.
+* Some models have different screens/touch options — use the matching YAML.
+* If a device gets stuck after a wrong name/config, enter bootloader mode (usually
+  holding/combining buttons) and re-flash over USB.
 
 ---
 
-## What you can do by voice
+## Choosing an AI engine
 
-Once a device is set up, just speak naturally. The assistant can:
+Select the **Voice provider** in the app settings. You only need credentials for the engine you
+actually use.
 
-* **Control devices** — turn lights, plugs and other devices on/off, dim lights, and set thermostat temperature.
-* **Lock & unlock doors** — control supported smart locks by voice.
-* **Ask about the weather** — current conditions and a short forecast for your location.
-* **Ask the time & date** — answered from your Homey’s local time and timezone.
-* **Set timers & alarms** — e.g. *“set a 10 minute timer”* or *“wake me at 7”*. The device counts down on its LED ring and chimes when time’s up; cancel it by voice.
-* **Ask anything** — general questions answered by the AI.
+### OpenAI Realtime (cloud)
 
-The assistant understands and replies in many languages — pick yours in **Settings**.
-
----
-
-## Choosing an AI engine (provider)
-
-The app supports two cloud providers; select one in **Settings → Voice provider**:
-
-* **OpenAI Realtime** — uses OpenAI for speech‑to‑text, reasoning and text‑to‑speech.
-* **Google Gemini Live** — uses Google Gemini for the same pipeline.
-
-You only need an API key for the provider you actually use.
-
-### OpenAI API key
+One WebSocket session handles speech-to-text, reasoning and text-to-speech with very low
+latency. Get an API key:
 
 1. Sign in at [https://platform.openai.com/](https://platform.openai.com/)
-2. Go to **API keys** (account/organization settings) and **Create new secret key**.
-3. Copy the key and keep it secret; paste it into the app settings in Homey.
+2. Go to **API keys** and **Create new secret key**.
+3. Paste it into the app settings in Homey (keep it secret).
 
 > If your OpenAI account is new, you may need to add billing to enable API usage.
 
-### Google Gemini API key
+### Google Gemini Live (cloud)
+
+The same real-time pipeline, powered by Gemini. Get an API key:
 
 1. Sign in at [https://aistudio.google.com/apikey](https://aistudio.google.com/apikey)
 2. **Create API key** and copy it.
 3. Paste it into the app settings in Homey.
 
+### Local / self-hosted (private)
+
+Run the whole pipeline on your own hardware — speech never has to leave your LAN. The pipeline
+has three stages, and **each stage is independently pluggable**, so you can mix and match (e.g.
+local Whisper + cloud Mistral LLM + local Piper):
+
+| Stage | Options |
+|---|---|
+| **Speech-to-text** | Whisper over HTTP (whisper-asr-webservice, speaches, whisper.cpp) · Wyoming faster-whisper (the Home Assistant `rhasspy/wyoming-whisper` docker) · Mistral Voxtral (cloud) · any OpenAI-compatible server |
+| **Language model** | Ollama · LM Studio · Mistral (cloud) · any OpenAI-compatible server (Groq, OpenRouter, DeepSeek, llama.cpp, vLLM, …) |
+| **Text-to-speech** | Piper over HTTP · Wyoming Piper (the `rhasspy/wyoming-piper` docker) · Mistral Voxtral (cloud) · any OpenAI-compatible server (e.g. kokoro-fastapi) |
+
+Each stage has its own host/port (or URL/key/model) settings, and a **Test button** that runs a
+real mini-request from your Homey — wrong ports, model names, keys and voices show up immediately
+with the actual error and latency.
+
+Smart-home control, weather, timers and the rest of the tool set work the same on all three
+engines.
+
 ---
 
 ## App settings
+
 <img src="./.resources/settings.jpg" height="500" alt="Settings" />
 
-  - **Voice provider** — choose **OpenAI Realtime** or **Google Gemini Live**.
-  - **OpenAI API key** — required for the OpenAI provider.
-  - **Gemini API key** — required for the Gemini provider.
-  - **Language** — the language you’ll speak with the assistant. Supported: English, Dutch, German, French, Italian, Swedish, Norwegian, Spanish, Danish, Russian, Polish, Korean.
-  - **Voice** — the voice the assistant speaks with. The available voices depend on the selected provider.
-  - **Optional AI instructions** — personality or behaviour tweaks. Be careful: this **will** affect the AI. Write it in English.
+* **Voice provider** — **OpenAI Realtime**, **Google Gemini Live**, or **Local**.
+* **API key** — for the selected cloud provider (OpenAI or Gemini).
+* **Language** — the language you'll speak with the assistant.
+* **Voice** — the voice the assistant speaks with. The list adapts to the selected provider
+  (and, for the local engine, to the selected TTS backend).
+* **Optional AI instructions** — personality or behaviour tweaks. Be careful: this **will**
+  affect the AI. Write it in English.
+* **Local pipeline settings** *(Local provider only)* — per-stage backend choice plus host/port
+  or URL/key/model for each, with Test buttons.
+
+Settings changes apply on the fly — no app restart needed.
+
+**Per-device settings** (on the device in Homey): *Initial audio skip* and *Follow-up audio skip*
+trim a few milliseconds from the start of each turn to swallow the wake-word sound / mic-open
+noise, should you ever hear the assistant react to itself.
 
 ---
 
-## Features in Homey
+## Using it in Flows
 
-### Devices
+### Device tile
 
-* **Voice PE** and **XiaoZhi AI** appear as devices with controls for power/session (on/off), volume, and mute.
-* When a timer is running, the device tile shows the timer’s **name** and **time remaining**.
+Each voice device appears in Homey with on/off (session), **volume** and **mute** controls.
+While a timer runs, the tile also shows the timer's **name** and **time remaining**, counting
+down live.
 
 ### Flow cards
 
-**Triggers**
+**Triggers (When…)**
 
-* **When** a timer is started
-* **When** a timer finishes
-* **When** a timer is cancelled
+* A timer is started / finished / cancelled
 * Plus standard device triggers (turned on/off, volume changed)
 
-**Conditions**
+**Conditions (And…)**
 
-* **And** Is muted
-* **And** A timer is / is not running
-* Plus the standard “is turned on” condition
+* Is muted
+* A timer is / is not running
+* Plus the standard "is turned on" condition
 
-**Actions**
+**Actions (Then…)**
 
-* **Then** Ask the assistant a question — output as **text** (use the answer elsewhere in a Flow)
-* **Then** Ask the assistant a question — output as **audio** on the device speaker
-* **Then** **Say** something — turns text into speech and plays it on the device speaker
-* **Then** Playback an audio URL on the device speaker (format must be **.flac**)
-* **Then** Start a timer
-* **Then** Cancel the timer
-* Plus standard device actions (turn on/off to start/stop a session, set volume, mute/unmute)
+* **Ask the assistant** a question — answer returned as **text** (a tag you can use later in the
+  Flow)
+* **Ask the assistant** a question — answer **spoken** on the device
+* **Say** something — text-to-speech on the device speaker
+* **Play an audio URL** on the device speaker (must be **.flac**)
+* **Start a timer** / **Cancel the timer**
+* Plus standard device actions (turn on/off, set volume, mute/unmute)
 
-> Names may vary slightly as the app evolves—see the in‑app Flow picker for the authoritative list.
+> Names may vary slightly as the app evolves — see the in-app Flow picker for the authoritative
+> list.
 
 ---
 
-## Quick start
+## How it works
 
-1. **Flash** your device (PE or XiaoZhi) using the steps above and connect it to Wi‑Fi.
-2. **Install** this app on your Homey.
-3. **Choose** your voice provider and enter the matching API key in the app settings.
-4. **Add** your device in Homey (pairing flow per driver).
-5. **Test** by running the *Ask the assistant* / *Say* action from a Flow, or use the device’s hardware button/wake word.
+```
+ ESP32 device  ── LAN (TCP :6053, ESPHome native API) ──  Homey app  ── cloud or LAN ──  AI engine
+ mic · speaker                                            this app                       OpenAI / Gemini /
+ wake word · LED ring                                                                    Whisper+Ollama+Piper
+```
+
+1. **Wake & stream.** The wake word is detected *on the device*. It then streams raw microphone
+   audio (16 kHz PCM) to the Homey app over the ESPHome native API — the same LAN protocol Home
+   Assistant uses, so stock firmware just works.
+2. **Understand.** The app forwards the audio to the selected engine. Cloud engines (OpenAI /
+   Gemini) do speech detection, transcription and reasoning in one real-time session; the local
+   engine chains its own voice-activity detection → STT → LLM.
+3. **Act.** The AI doesn't just chat — it gets a set of **tools**: query and control your Homey
+   devices and zones, read the weather and local time, and manage timers. When you say *"turn off
+   the kitchen lights"*, the model calls a tool and the app executes it through Homey's API.
+4. **Reply.** The spoken answer is encoded to FLAC and served from a small HTTP server inside the
+   app; the device fetches and plays it over the LAN. After answering, the mic reopens so you can
+   ask a follow-up — the session ends when you stay silent.
+5. **Timers** live in the app (not the device), so they survive brief disconnects; the device
+   renders the countdown on its LED ring and chimes when a timer finishes.
+
+Everything between the device and the app stays on your LAN. What leaves your network depends
+entirely on the engine you pick — with the local pipeline, nothing does.
+
+---
+
+## Troubleshooting
+
+* **Device not found during pairing:** make sure it's powered, on the same LAN/subnet as Homey,
+  and has no ESPHome API **encryption key** set (see the note under Hardware setup).
+* **No audio/response:** check the device volume and mute state, and confirm the selected
+  engine's API key (or local service hosts) are set — use the settings page's **Test** buttons
+  for the local pipeline.
+* **The assistant reacts to its own wake word sound:** increase the device's *Initial audio
+  skip* setting slightly.
+* **Flashing/USB issues:** try another USB cable/port; if needed, enter bootloader mode and
+  re-flash.
+* **Device not updating OTA:** ensure it's online and reachable; verify hostname/DNS on your LAN.
+
+---
+
+## Privacy & security
+
+* Your API keys stay in your Homey app settings; sensitive values are masked in the app logs.
+* With a **cloud** engine, audio and text are sent to **OpenAI** or **Google** (or **Mistral**,
+  if selected for a local-pipeline stage) to fulfil your requests. Don't use those engines if
+  that's not acceptable for your environment.
+* With a fully **local** pipeline, audio and text stay on your own network.
 
 ---
 
 ## Developing
 
-Want to contribute or experiment? You can run the app **without Homey hardware** using the built‑in emulator.
+Want to contribute or experiment? You can run the app **without Homey hardware** using the
+built-in emulator:
 
 ```bash
 npm install
@@ -169,28 +278,18 @@ npm test           # run the test suite (vitest)
 npm run emulator   # run the app without a Homey
 ```
 
-See [emulator/README.md](./emulator/README.md) for details. Running on real hardware uses the Homey CLI (`homey app run --remote`).
-
----
-
-## Troubleshooting
-
-* **Flashing/USB issues**: Try another USB cable/port; if needed, enter bootloader mode and re‑flash.
-* **Device not updating OTA**: Ensure it’s online and reachable; verify hostname/DNS on your LAN.
-* **No audio/response**: Check device volume (if applicable) and confirm the **selected provider’s** API key is set and valid.
-
----
-
-## Privacy & security
-
-* Your API keys stay in your Homey app settings, and sensitive details (such as keys) are masked in the app logs.
-* Depending on the provider you choose, audio and text are sent to **OpenAI** or **Google** to fulfil your requests. Do not use this app if that’s not acceptable for your environment.
+See [emulator/README.md](./emulator/README.md) for details. Running on real hardware uses the
+Homey CLI (`homey app run --remote`). Architecture notes for contributors are in
+[CLAUDE.md](./CLAUDE.md); protocol references live under
+[docs/](./docs/home-assistant-voice-preview-edition/).
 
 ---
 
 ## Roadmap
 
-Planned features and ideas live in **[todo.md](./TODO.md)**.
+Planned features and open tasks live in **[TODO.md](./TODO.md)** (with a release-testing
+checklist at the top). Completed work — including detailed write-ups of past bugs and their
+fixes — is archived in **[COMPLETED.md](./COMPLETED.md)**.
 
 ---
 
