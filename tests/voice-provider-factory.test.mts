@@ -6,6 +6,7 @@ import {
 } from '../src/llm/voice-provider-factory.mjs';
 import { OpenAIRealtimeProvider } from '../src/llm/providers/openai-realtime-agent.mjs';
 import { GeminiLiveProvider } from '../src/llm/providers/gemini-live-provider.mjs';
+import { LocalPipelineProvider } from '../src/llm/providers/local-pipeline-provider.mjs';
 import { settingsManager } from '../src/settings/settings-manager.mjs';
 import { MockHomey } from './mocks/mock-homey.mjs';
 
@@ -50,6 +51,16 @@ describe('voice-provider-factory', () => {
         expect(provider).toBeInstanceOf(OpenAIRealtimeProvider);
     });
 
+    it('constructs the keyless local provider on request', () => {
+        const opts: any = {};
+        const provider = createVoiceProvider(homey as any, toolManager, opts, 'local');
+        expect(provider).toBeInstanceOf(LocalPipelineProvider);
+        // No API-key setting exists for the local pipeline — resolves to ''.
+        expect(opts.apiKey).toBe('');
+        expect(provider.hasApiKey()).toBe(true);
+        (provider as LocalPipelineProvider).destroy();
+    });
+
     it('falls back to OpenAI (with the OpenAI key) for an unknown provider id', () => {
         const opts: any = {};
         const provider = createVoiceProvider(homey as any, toolManager, opts, 'does-not-exist');
@@ -65,9 +76,11 @@ describe('voice-provider-factory', () => {
         it('returns distinct, non-empty lists per provider', () => {
             const openai = getVoicesForProvider('openai-realtime');
             const gemini = getVoicesForProvider('gemini-realtime');
+            const local = getVoicesForProvider('local');
             expect(openai.length).toBeGreaterThan(0);
             expect(gemini.length).toBeGreaterThan(0);
-            for (const v of [...openai, ...gemini]) {
+            expect(local.length).toBeGreaterThan(0);
+            for (const v of [...openai, ...gemini, ...local]) {
                 expect(v).toHaveProperty('value');
                 expect(v).toHaveProperty('name');
             }

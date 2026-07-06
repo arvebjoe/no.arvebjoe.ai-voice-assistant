@@ -44,7 +44,8 @@ export class SettingsManager {
   static getAvailableProviders(): { value: string; name: string }[] {
     return [
       { value: 'openai-realtime', name: 'OpenAI Realtime' },
-      { value: 'gemini-realtime', name: 'Google Gemini Live' }
+      { value: 'gemini-realtime', name: 'Google Gemini Live' },
+      { value: 'local', name: 'Local (Whisper + Ollama + Piper)' }
     ];
   }
 
@@ -119,7 +120,20 @@ export class SettingsManager {
     
     // Homey settings API does not expose list directly; define keys we care about explicitly.
     // Extend this list as needed.
-    const knownKeys = ['openai_api_key', 'gemini_api_key', 'openweather_api_key', 'selected_language_code', 'selected_language_name', 'selected_voice', 'ai_instructions', 'voice_provider', 'input_buffer_debug'];
+    const knownKeys = ['openai_api_key', 'gemini_api_key', 'openweather_api_key', 'selected_language_code', 'selected_language_name', 'selected_voice', 'ai_instructions', 'voice_provider', 'input_buffer_debug',
+      // Local pipeline endpoints + per-stage backend selection (Whisper/Voxtral,
+      // Ollama/Mistral, Piper/Voxtral) and the shared Mistral credentials/models
+      'local_stt_host', 'local_stt_port', 'local_llm_host', 'local_llm_port', 'local_llm_model', 'local_tts_host', 'local_tts_port',
+      'local_stt_provider', 'local_llm_provider', 'local_tts_provider',
+      'mistral_api_key', 'mistral_model', 'mistral_stt_model', 'mistral_tts_model',
+      // Generic OpenAI-compatible backends (per-stage base URL / key / model)
+      'openai_stt_url', 'openai_stt_key', 'openai_stt_model',
+      'openai_llm_url', 'openai_llm_key', 'openai_llm_model',
+      'openai_tts_url', 'openai_tts_key', 'openai_tts_model', 'openai_tts_voice',
+      // Wyoming protocol services (wyoming-faster-whisper 10300, wyoming-piper 10200)
+      'wyoming_stt_host', 'wyoming_stt_port', 'wyoming_tts_host', 'wyoming_tts_port',
+      // LM Studio desktop app (OpenAI dialect, port 1234, model optional)
+      'lmstudio_host', 'lmstudio_port', 'lmstudio_model'];
 
     for (const k of knownKeys) {
       this.globals[k] = this.homey.settings.get(k);

@@ -1,6 +1,7 @@
 import { IVoiceProvider, VoiceProviderOptions } from './voice-provider.mjs';
 import { OpenAIRealtimeProvider } from './providers/openai-realtime-agent.mjs';
 import { GeminiLiveProvider } from './providers/gemini-live-provider.mjs';
+import { LocalPipelineProvider } from './providers/local-pipeline-provider.mjs';
 import { ToolManager } from './tool-manager.mjs';
 import { settingsManager } from '../settings/settings-manager.mjs';
 import { createLogger } from '../helpers/logger.mjs';
@@ -14,19 +15,26 @@ export const DEFAULT_VOICE_PROVIDER = 'openai-realtime';
 const API_KEY_SETTING: Record<string, string> = {
     'openai-realtime': 'openai_api_key',
     'gemini-realtime': 'gemini_api_key',
+    // The local pipeline is keyless (this round): the setting never exists, so
+    // the resolved key is always '' and the device's key checks stay inert.
+    'local': 'local_api_key',
 };
 
 /**
  * Voices each provider offers, for the settings UI. Each provider owns its own
  * list (single source of truth); unknown ids fall back to the default provider's
- * list so the dropdown is never empty.
+ * list so the dropdown is never empty. The local provider's list depends on its
+ * TTS backend — `localTtsBackend` lets the settings page preview an unsaved
+ * dropdown choice (omitted = the saved setting decides).
  */
-export function getVoicesForProvider(providerId: string): { value: string; name: string }[] {
+export function getVoicesForProvider(providerId: string, localTtsBackend?: string): { value: string; name: string }[] {
     switch (providerId) {
         case 'openai-realtime':
             return OpenAIRealtimeProvider.getAvailableVoices();
         case 'gemini-realtime':
             return GeminiLiveProvider.getAvailableVoices();
+        case 'local':
+            return LocalPipelineProvider.getAvailableVoices(localTtsBackend);
         default:
             return OpenAIRealtimeProvider.getAvailableVoices();
     }
@@ -61,6 +69,9 @@ export function createVoiceProvider(
 
         case 'gemini-realtime':
             return new GeminiLiveProvider(homey, toolManager, options);
+
+        case 'local':
+            return new LocalPipelineProvider(homey, toolManager, options);
 
         default:
             logger.warn(`Unknown voice provider '${id}', falling back to '${DEFAULT_VOICE_PROVIDER}'`);

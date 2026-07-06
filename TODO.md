@@ -195,11 +195,102 @@ fresh config download: [`.esp_home/CUSTOMIZATIONS.md`](./.esp_home/CUSTOMIZATION
 
 ## 5. Local / offline AI
 
-- [ ] Explore locally-hosted stack: **Whisper** (STT), **Piper** (TTS), **Ollama** (LLM) — possibly
-  as a realtime agent, possibly using `gpt-oss`.
-  - [Build a Simple AI Agent with gpt-oss-20b](https://www.youtube.com/watch?v=e2sgwsC92Bc)
-  - [Build Anything with OpenAI's New OSS Models (n8n Agents)](https://www.youtube.com/watch?v=Myjo1amUZ08)
-  - [Learn MCP (Model Context Protocol)](https://www.youtube.com/watch?v=GuTcle5edjk)
+- [~] **Locally-hosted stack: Whisper (STT) + Ollama (LLM) + Piper (TTS) — first round done
+  (2026-07-05, branch `claude/local-stt-llm-tts-provider-oc0cng`), untested against real services.**
+  New `local` voice provider (`src/llm/providers/local-pipeline-provider.mts`) selectable in app
+  settings, with per-service host/port boxes (+ optional Ollama model, defaults to the first
+  installed one). Pipeline: on-device energy VAD (`local/simple-vad.mts`, the cloud providers'
+  server VAD has no local equivalent) → Whisper STT (`local/whisper-client.mts`, auto-detects
+  `/asr` = whisper-asr-webservice, `/v1/audio/transcriptions` = speaches/faster-whisper-server,
+  `/inference` = whisper.cpp) → Ollama `/api/chat` streaming with the full ToolManager tool loop
+  (`local/ollama-client.mts`, strips `<think>` blocks from reasoning models) → Piper TTS
+  (`local/piper-client.mts`, `POST /synthesize` with `POST /` fallback), sentence-by-sentence while
+  the LLM streams, resampled to the 24 kHz seam contract. Health probes + reconnect campaign +
+  60 s idle re-probe drive device availability. No auth for the LAN services (this round).
+  - [x] **Mistral as an alternative LLM backend (2026-07-05).** Mistral has no unified realtime
+    speech-to-speech API (their docs compose voice agents as STT→LLM→TTS). So the pipeline's
+    LLM stage is now pluggable behind `ILlmClient` (`local/llm-client.mts`, backend-neutral
+    messages/tool calls): `local_llm_provider` setting = `ollama` (default) or `mistral`
+    (`local/mistral-client.mts`, `/v1/chat/completions` SSE streaming + tool calling; gotcha:
+    Mistral validates `tool_call_id` as EXACTLY 9 chars `[a-zA-Z0-9]`, hence
+    `sanitizeToolCallId`/`generateToolCallId`). Settings page: LLM backend pulldown — Ollama shows
+    host/port/model, Mistral shows API key (`mistral_api_key`) + model (`mistral_model`, default
+    `mistral-small-latest`).
+  - [x] **Mistral Voxtral as alternative STT and TTS backends (2026-07-05, untested against the
+    real API).** Same seam treatment for the other two stages (`ISttClient`/`ITtsClient` in
+    `local/stt-client.mts`/`tts-client.mts`): `local_stt_provider` = `whisper` (default) or
+    `mistral` (`local/mistral-stt-client.mts`, `POST /v1/audio/transcriptions` multipart, default
+    model `voxtral-mini-latest`, override `mistral_stt_model`); `local_tts_provider` = `piper`
+    (default) or `mistral` (`local/mistral-tts-client.mts`, `POST /v1/audio/speech` →
+    WAV 24 kHz mono = the seam contract exactly). TTS request shape verified 2026-07-05 against
+    Mistral's official Python SDK (generated from their OpenAPI spec): the voice field is
+    **`voice_id`** (not `voice`), and **`model` is optional** — omitted, the server's default TTS
+    model runs (we omit unless `mistral_tts_model` is set; a concrete pin would be
+    `voxtral-mini-tts-2603`). The spec also exposes `GET /v1/audio/voices` (presets + customs) —
+    candidate for a dynamic voice dropdown later. Voxtral TTS has 20 preset voices (+ OpenAI-name
+    aliases) — the main
+    Voice dropdown now switches to them when the TTS backend is Mistral
+    (`LocalPipelineProvider.getAvailableVoices(ttsBackend?)`, `/voices?provider=local&tts=…`).
+    One shared `mistral_api_key` for all Mistral-backed stages; the settings page shows the key
+    field when any stage picks Mistral, and each stage independently shows LAN host/port vs
+    cloud model boxes. Any keyless Mistral stage → `missing_api_key`/`hasApiKey()=false`.
+  - [x] **Generic OpenAI-compatible backend for every stage (2026-07-05, untested against real
+    services).** Third option (`openai`) in each stage's dropdown, with per-stage base URL /
+    optional API key / model settings (`openai_stt_*`, `openai_llm_*`, `openai_tts_*` — stages
+    may point at different servers). One implementation covers OpenAI itself, Groq
+    (https://api.groq.com/openai/v1 — fastest tokens + dirt-cheap Whisper), OpenRouter, DeepSeek,
+    LM Studio / llama.cpp / vLLM / LocalAI / Ollama's `/v1` shim (LLM), speaches (STT), and
+    kokoro-fastapi (TTS). `local/openai-compat.mts` has the shared URL normalizer (bare host →
+    `http://…/v1`; explicit paths kept verbatim) + `/models` health probe (401/403 → key error,
+    404 tolerated); `openai-llm-client.mts` is the SSE chat client base class that
+    `MistralClient` now subclasses (Mistral = same dialect + pinned endpoint + 9-char id
+    sanitization); `openai-stt-client.mts`/`openai-tts-client.mts` mirror the audio endpoints.
+    TTS voice: the Voice dropdown offers OpenAI's standard voices; the free-text
+    `openai_tts_voice` override wins for custom servers (e.g. Kokoro's `af_heart`). API key is
+    optional (LAN servers) — a keyed server rejecting shows up in the health probe.
+  - [x] **Wyoming-protocol STT backend (2026-07-05) — for `rhasspy/wyoming-faster-whisper` on
+    TCP port 10300.** Real-world testing showed the user's "faster-whisper" docker is the Home
+    Assistant Wyoming build — raw TCP with newline-JSON events + binary PCM payloads, NOT HTTP,
+    so the HTTP `WhisperClient` can never reach it (that was the connect failure in the log).
+    New `local/wyoming-protocol.mts` (framing per
+    `docs/home-assistant-voice-preview-edition/wyoming-protocol.md`: header line with optional
+    `data_length` side-band JSON + `payload_length` binary) and `local/wyoming-stt-client.mts`
+    (`transcribe`→`audio-start`/`audio-chunk`×N/`audio-stop`→`transcript`, streaming
+    transcript-chunk/-stop also handled; health check = `describe`→`info` with an `asr` entry).
+    Fourth STT dropdown option "Wyoming — faster-whisper (local)" with its own
+    `wyoming_stt_host`/`wyoming_stt_port` settings (default 10300); Test button supported.
+  - [x] **Wyoming-protocol TTS backend (2026-07-05) — for `rhasspy/wyoming-piper` on TCP port
+    10200** (the user's Piper turned out to be the Wyoming build too).
+    `local/wyoming-tts-client.mts` on the same protocol module: `synthesize {text}` →
+    `audio-start`/`audio-chunk`×N/`audio-stop` collected into PCM at the announced rate; health
+    check = `describe`→`info` with a `tts` entry. TTS dropdown option "Wyoming — Piper (local)"
+    with `wyoming_tts_host`/`wyoming_tts_port` (default 10200); voice is server-side like HTTP
+    Piper; Test button supported.
+  - [x] **LM Studio as a first-class LLM backend (2026-07-05).** It already worked through the
+    generic OpenAI-compatible backend, but as a desktop app it gets the Ollama treatment:
+    dropdown option "LM Studio (local)" with `lmstudio_host`/`lmstudio_port` (default 1234) and
+    an OPTIONAL `lmstudio_model` (empty = auto-pick the first model from `GET /v1/models`,
+    cached). `local/lmstudio-client.mts` is a thin `OpenAiLlmClient` subclass (keyless, host/port
+    → base URL, `resolveModel()` named like Ollama's so the provider's health flow calls it).
+  - [x] **Per-stage "Test" buttons in the settings page (2026-07-05).** Each stage section has a
+    Test button that POSTs the CURRENT (unsaved) form values to the app's new
+    `POST /test-local-stage` endpoint (route in `.homeycompose/app.json`; handler in `api.mts` →
+    `local/stage-tester.mts`) — the webview can't reach LAN services itself, so the test runs
+    from the Homey box. Not just a ping: one real mini-request per stage (STT transcribes 0.5 s
+    of silence, LLM answers "Reply with exactly: OK", TTS synthesizes "OK"), so wrong model ids,
+    rejected keys and bad voices surface, with latency and the underlying cause (ECONNREFUSED …)
+    shown inline. 30 s bound per test.
+  - [ ] **Verify against real services on Windows** (whisper-asr-webservice + Ollama desktop +
+    piper http docker); tune `SimpleVad` thresholds with a real PE mic.
+  - [ ] Wake-word → reply latency measurement; consider Whisper streaming/partials, and Mistral's
+    **Voxtral Realtime** WebSocket STT (sub-200 ms, $0.006/min, also open-weights) as an upgrade
+    over the batch transcription endpoint used now.
+  - [ ] Optional auth (API keys / basic auth) for the LAN endpoints.
+  - [ ] Per-request Piper voice selection (needs `GET /voices` + a voice dropdown).
+  - Reference videos:
+    - [Build a Simple AI Agent with gpt-oss-20b](https://www.youtube.com/watch?v=e2sgwsC92Bc)
+    - [Build Anything with OpenAI's New OSS Models (n8n Agents)](https://www.youtube.com/watch?v=Myjo1amUZ08)
+    - [Learn MCP (Model Context Protocol)](https://www.youtube.com/watch?v=GuTcle5edjk)
 
 ---
 
