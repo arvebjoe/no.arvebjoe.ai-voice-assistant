@@ -79,6 +79,15 @@ Vitest with `globals: true`, node environment. Tests live in `tests/**/*.test.mt
 
 `docs/home-assistant-voice-preview-edition/` contains protocol notes (ESPHome native API, Wyoming protocol, communication flow, hardware reference) useful when changing the ESP client.
 
+## User-facing docs — keep in sync with feature changes
+
+Two files describe the app to end users and **must be updated whenever a user-visible feature changes** (new provider/backend, new flow card, new setting, new supported device, changed behavior):
+
+- `README.md` — the full GitHub-facing doc (features, hardware setup, engine choice, settings, flow cards, how-it-works overview).
+- `README.txt` — the Homey App Store description. Plain text, no markdown, keep it short and non-technical; it must stay consistent with README.md.
+
+When finishing a feature, check both before committing — stale READMEs have already happened once (the local pipeline shipped without either file mentioning it).
+
 ## Outstanding work
 
-**`TODO.md` (repo root) is the single source of truth for what's left to do** — check it at the start of each session. It indexes everything outstanding (ESP client, OpenAI Realtime, agent tools, firmware, local AI, Phase 2) with status markers. Two detailed reference docs feed into it: `OPENAI_API_IMPROVEMENTS.md` (OpenAI Realtime audit) and `docs/home-assistant-voice-preview-edition/implementation-gap-analysis.md` (ESPHome native-API coverage).
+**`TODO.md` (repo root) is the single source of truth for what's left to do** — check it at the start of each session. It indexes everything outstanding (release testing checklist, ESP client, OpenAI Realtime, agent tools, firmware, local AI, Phase 2) with status markers. Finished items are archived with their full context (root causes, gotchas, verification notes) in `COMPLETED.md` — check there before re-investigating anything that sounds familiar. Two detailed reference docs feed into the TODO list: `OPENAI_API_IMPROVEMENTS.md` (OpenAI Realtime audit) and `docs/home-assistant-voice-preview-edition/implementation-gap-analysis.md` (ESPHome native-API coverage).

@@ -1,18 +1,24 @@
-Turn ESPHome Voice Assistant devices into a natural voice interface for Homey. Speak normally to get quick answers and control lights, climate, music, scenes and more. 
-Real-time responsiveness powered by OpenAI’s Realtime API makes everyday tasks quick and effortless.
+Turn ESPHome voice assistant devices into a natural voice interface for Homey. Speak normally to get quick answers, control lights, thermostats, locks and more, set timers and alarms, and keep the conversation going with follow-up questions — no need to repeat the wake word.
 
-Supported devices are:
-    - Home Assistant Voice Preview Edition 
-    - Xiaozhi AI devices (running RealDeco’s ESPHome firmware). 
+You choose the AI engine:
+    - OpenAI Realtime — low-latency cloud speech-to-speech.
+    - Google Gemini Live — the same real-time pipeline, powered by Gemini.
+    - Local / self-hosted — Whisper, Ollama, LM Studio, Piper, Wyoming and any OpenAI-compatible server. Mix and match per stage; with a fully local setup no audio leaves your network.
 
-Requirements: 
-    - A compatible ESPHome voice device with microphone and speaker 
-    - An OpenAI API key (https://platform.openai.com)
+Supported devices:
+    - Home Assistant Voice Preview Edition (stock ESPHome firmware, no Home Assistant needed)
+    - XiaoZhi AI devices (running RealDeco's ESPHome firmware)
 
-There are also useful Flow cards like:
-    - "Ask assistant" a question, output as text or to the device speaker.
-    - "Playback audio from URL", useful if you want to play a sound effect or a pre recorded message.
-    - "Say" for quick text-to-speech. 
+Requirements:
+    - A compatible ESPHome voice device with microphone and speaker
+    - An API key for your chosen cloud engine (OpenAI or Google Gemini), or your own local AI services
 
-Please look in the GitHub repository for more details (link below).
+Useful Flow cards:
+    - "Ask assistant" a question, output as text or spoken on the device.
+    - "Say" for quick text-to-speech on the device speaker.
+    - "Playback audio from URL", handy for sound effects or pre-recorded messages.
+    - Start and cancel timers, and trigger Flows when a timer starts, finishes or is cancelled.
 
+The assistant speaks your language — English, Dutch, German, French, Italian, Swedish, Norwegian, Spanish, Danish, Russian, Polish and Korean.
+
+Please look in the GitHub repository for setup instructions and more details (link below).

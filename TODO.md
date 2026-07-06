@@ -3,121 +3,76 @@
 This is the one place to look at the start of each session for what's left to do.
 Stuff I want to bake into the app over time. Please come with suggestions :)
 
+Finished work is archived in [`COMPLETED.md`](./COMPLETED.md) — the full context of every done item
+(root causes, gotchas, verification notes) lives there so we don't re-investigate.
+
 Two detailed reference docs feed into this list (don't duplicate their detail here, link to them):
 - [`OPENAI_API_IMPROVEMENTS.md`](./OPENAI_API_IMPROVEMENTS.md) — OpenAI Realtime API audit (12 items, most done)
 - [`docs/home-assistant-voice-preview-edition/implementation-gap-analysis.md`](./docs/home-assistant-voice-preview-edition/implementation-gap-analysis.md) — ESPHome native-API coverage vs. the PE docs
 
-Legend: `[ ]` open · `[~]` partially done · `[x]` done (kept for context so we don't re-investigate)
+Legend: `[ ]` open · `[~]` partially done · (fully done items move to `COMPLETED.md`)
+
+---
+
+## 0. Release testing checklist
+
+Implemented but not yet verified in the real world — must all pass before the store release.
+(Each links back to the owning item below or its archive entry in COMPLETED.md.)
+
+- [ ] **Re-run the 3-question quiz** — verifies the playback-aware `lastTurnEndedAt` fix (long
+  in-band replies must not eat the 10 s context TTL and wipe the LLM context). _(§1 hardening)_
+- [ ] **LED-phase fidelity on the PE** with the debug solid colors (amber=mic open, green=speech
+  heard, blue=thinking, red=replying) — in-band replies should now reach the *replying* phase;
+  expected artifact: brief red flash on each mic-reopen. _(§1 hardening sub-item)_
+- [ ] **Fresh `[CONVO]` trace** for the user-reported (still unspecified) conversation bugs. _(§1 hardening)_
+- [ ] **STT changes on real speech** — `gpt-4o-transcribe` sidecar model + text-anchored replies,
+  especially in Norwegian. _(§2 STT accuracy)_
+- [ ] **Timer LED-drift resync** — hardware-verify the quiet `UPDATED` every 30 s on a
+  long/alarm-length countdown. _(COMPLETED.md §1, timer support)_
+- [ ] **Local pipeline against real services** — see the verify item in §5.
+- [ ] **Update the images used in README.md** — at minimum `.resources/settings.jpg` predates the
+  provider-choice settings redesign (no Gemini/local pipeline visible); also review the banner
+  (`assets/images/large.png`) and the device photos before the store release.
 
 ---
 
 ## 1. ESPHome device client (`src/voice_assistant/`)
 
-- [x] **BUG (FIXED 2026-06-26): follow-up turn produced no audio on the PE.** Root cause: in a
-  `startConversation` follow-up the reply was sent as a standalone `VoiceAssistantAnnounceRequest`,
-  which the PE acks (`AnnounceFinished`) but never fetches once it is in conversation mode → silence.
-  Fix: deliver the reply **in-band** on the pipeline's `TTS_END` carrying the FLAC URL (`tts_end(url)`),
-  and drive the single mic-reopen ourselves via a `peConversationActive` session flag in
-  `src/homey/voice-assistant-device.mts`. A secondary chain-blocker (the PE's mic-open noise burst on
-  auto-reopened turns tripping OpenAI's server VAD → ~0.5s dead window) was fixed with a per-turn
-  follow-up skip (`followup_audio_skip` setting, default `DEFAULT_FOLLOWUP_SKIP_MS` = 150ms — decoupled
-  from the wake-turn `initial_audio_skip` so a follow-up's first word isn't clipped). **Single follow-up AND chained multi-question conversations both
-  confirmed on PE firmware 2026.6.2** (diagnosed using the new `[PE]` device-log stream, below). See §3
-  "Follow-up / keep conversation alive" and branch `fix/followup-turn-audio`.
-- [~] **Conversation-flow hardening (2026-07-02, commits 77bd40c…94f94aa) — "real close", bugs remain.**
-  Session's fixes, all confirmed on the real PE unless noted: broadened pairing device-type sniff so
-  self-compiled firmware (no "Nabu Casa"/"PE" identity strings) is listed again; always-on `[CONVO]`
-  conversation trace (wake→VAD→STT→tools→LLM→TTS→continue/stop) + new `tool.completed` provider event;
-  spurious-VAD-trip retry (PE auto-reopen catches TTS echo → empty transcript <2.5s → reopen instead of
-  ending session); suppress `response.done` for function_call responses (tool-turn replies were routed
-  to the announce path mid-conversation and silently dropped); `continue_conversation` sent as INTENT_END
-  event data so the PE closes after non-question replies (the firmware flag is sticky — verified in
-  esphome voice_assistant.cpp); playback-aware `lastTurnEndedAt` (+pcmBytes/48 ms) so long in-band replies
-  don't eat the 10s context TTL and wipe the LLM context mid-conversation (**this last fix not yet
-  re-tested — re-run the 3-question quiz**). Open warts: multi-segment announce race (short first segment's
-  ack before segment 2 exists → premature turn-complete, currently self-heals by luck); keepOpen-with-no-audio
-  edge (peConversationActive=true but PE may not reopen when there's no TTS URL); user reports further
-  unspecified bugs — get a fresh `[CONVO]` trace. Details: memory `followup-turn-no-audio-rootcause.md`.
-  - [~] **LED-phase fidelity (2026-07-02 afternoon, untested on PE):** debug solid-color LED effects added
-    to the PE config (amber=mic open, green=speech heard, blue=thinking, red=replying — see
-    `.esp_home/CUSTOMIZATIONS.md`). They exposed that in-band replies never reached the PE's *replying*
-    phase: the firmware discards a TTS_START without a `text` data entry, and only announces went red
-    (the firmware's announcement handler fires tts_start_trigger_ itself). Fixed: `tts_start(text?)`
-    carries the reply text; `stt_vad_start` now sent on the new provider `speech` event (server VAD
-    speech_started) instead of at mic open, so waiting vs. listening is real. Expected artifact: brief
-    red flash on each mic-reopen (the reopen is an announce). Verify on the PE with the debug colors.
-- [x] **Device-log streaming for diagnosis (2026-06-26)** — opt-in `SubscribeLogsRequest` (id 28) over
-  the native API streams the PE's own ESPHome logs back (`SubscribeLogsResponse`, id 29), printed inline
-  under `[PE]` alongside the `[ESP]`/app logs. Gated by `ESP_LOG_LEVEL` (env var) or the `logLevel` client
-  option; off by default, no serial/USB needed, works for the emulator and a real device. This is what
-  made the follow-up-audio diagnosis tractable.
-- [x] **BUG: devices not appearing in the pairing dialog on repeat attempts** — _fixed 2026-06-20._
-  Root cause was a **reconnect leak in the discovery capability probe**, not firmware version (the
-  original "v25.7 vs v26.4" framing was a red herring — both firmwares advertise `platform=ESP32` and
-  pass the `txt.platform` discovery condition fine; Homey's regex match is case-insensitive).
-  - **Real mechanism (confirmed live with ESP-client logging):** during pairing, the driver opens a
-    one-shot `EspVoiceAssistantClient` probe per discovered device. If a probe errored or finished,
-    `handleDisconnect()` would `emit('Unhealthy')` (→ driver `finish()` → `disconnect()`, which clears
-    the reconnect timer) and **then** call `scheduleReconnect()` — setting a *new* timer after cleanup
-    that nothing ever cleared. That orphaned timer fired `start()` → error → `scheduleReconnect()` →
-    an infinite zombie reconnect loop, one per failed probe. The zombies kept hammering the device and
-    occupying ESPHome's limited API connection slots, so the next dialog open failed with
-    `read ETIMEDOUT` and showed no devices. An app restart killed the zombies (sockets die with the
-    process) — which is why restarting "fixed" it and the first attempt always worked.
-  - **Fix** (`src/voice_assistant/esp-voice-assistant-client.mts`): (1) `autoReconnect` flag derived
-    from `discoveryMode` at construction — probes never reconnect; (2) terminal `closed` flag set in
-    `disconnect()` so no reconnect can be scheduled after close, even from a late socket event;
-    (3) `scheduleReconnect()` bails on `closed || !autoReconnect`; (4) strip socket listeners
-    (`removeAllListeners()`) before `destroy()` in `disconnect()`/`handleDisconnect()`/`start()` so a
-    dead socket's late close/error can't re-enter the reconnect path. Verified: repeated dialog opens
-    now probe cleanly (`Scheduling reconnection` count = 0), both devices reappear every time.
-  - **Related latent risk surfaced during investigation:** the newer PE firmware advertises
-    `api_encryption_supported` (`Noise_...`). Plaintext still works while no key is set, but if a user
-    sets an API encryption key, `api_encryption` appears and the plaintext-only client fails — see the
-    Noise item below.
-- [~] **Timer support** — _voice-driven timers + alarms done 2026-06-23._ `set_timer` /
-  `cancel_timer` / `get_timer` tools; new `TimerManager` owns the authoritative countdown and
-  sends `VoiceAssistantTimerEventResponse` (STARTED/CANCELLED/FINISHED) to the PE for the LED ring
-  + finish chime. **Single timer only** — a second request makes the agent ask whether to replace.
-  **Alarms** ("Sett alarm til kl 11") are timers with a duration the LLM computes from
-  `get_local_time`. Re-arms the ring on reconnect. See
-  [`docs/.../timer-feature.md` §9](./docs/home-assistant-voice-preview-edition/timer-feature.md).
-  - **Resolved (verified on hardware 2026-06-23):**
-    - A **finished/ringing** timer no longer blocks a new one — `startTimer` silently sends
-      CANCELLED to stop the ring and starts the new timer (no "replace?" prompt). Only a *running*
-      countdown triggers the TIMER_ALREADY_ACTIVE replace flow.
-    - **LED ring re-arms on reconnect.** `reissue()` is fired from the `capabilities` event
-      (handshake complete), NOT `Healthy` (which fires right after TCP connect, before the device
-      subscribes to the voice assistant — a timer event sent then is dropped and the ring never shows).
-    - **By design:** if a timer elapses while the device is disconnected, it does NOT ring on
-      reconnect (`reissue` skips finished timers). Intended — a stale alarm shouldn't fire late.
-    - **No device→host timer events to handle:** pressing the device button just triggers the mic
-      (like the wake word); it does not dismiss the timer, so there's nothing to receive/clear.
-  - [x] **Flow cards (done, hardware-verified 2026-06-23):** triggers (started/finished/cancelled),
-    condition (timer-is-running), actions (start/cancel) — see §7.
-  - [x] **Tile capabilities (done, hardware-verified 2026-06-23):** read-only
-    `timer_active` / `timer_remaining` (seconds, 1 Hz tick) / `timer_name` on the device card,
-    on both drivers; the device mirrors the TimerManager lifecycle onto them — see §7.
-  - [x] **LED-drift resync (done 2026-06-23, pending hardware verify):** `TimerManager` re-issues a
-    quiet `UPDATED` with the authoritative `seconds_left` every 30 s while a timer counts down, so the
-    PE's locally-ticked LED ring can't drift on long/alarm-length countdowns (skipped while
-    disconnected; `reissue()` still re-arms on reconnect). _(gap analysis #5)_
-  - (Timers are intentionally **not** persisted across an app restart — an in-flight timer is dropped,
-    which is the expected, least-surprising behavior.)
+- [~] **Conversation-flow hardening — "real close", bugs remain.** The 2026-07-02 fix round
+  (pairing sniff broadened, `[CONVO]` trace, spurious-VAD-trip retry, tool-turn `response.done`
+  suppression, `continue_conversation` on INTENT_END, playback-aware `lastTurnEndedAt`) is archived
+  in COMPLETED.md §1. Still open:
+  - Playback-aware `lastTurnEndedAt` not yet re-tested — see §0.
+  - **Multi-segment announce race:** a short first segment's ack arrives before segment 2 exists →
+    premature turn-complete; currently self-heals by luck.
+  - **keepOpen-with-no-audio edge:** `peConversationActive=true` but the PE may not reopen when
+    there's no TTS URL.
+  - User reports further unspecified bugs — get a fresh `[CONVO]` trace (§0).
+  Details: memory `followup-turn-no-audio-rootcause.md`.
+  - [~] **LED-phase fidelity (2026-07-02 afternoon, untested on PE):** debug solid-color LED effects
+    added to the PE config (amber=mic open, green=speech heard, blue=thinking, red=replying — see
+    `.esp_home/CUSTOMIZATIONS.md`). They exposed that in-band replies never reached the PE's
+    *replying* phase: the firmware discards a TTS_START without a `text` data entry, and only
+    announces went red (the firmware's announcement handler fires tts_start_trigger_ itself).
+    Fixed: `tts_start(text?)` carries the reply text; `stt_vad_start` now sent on the new provider
+    `speech` event (server VAD speech_started) instead of at mic open, so waiting vs. listening is
+    real. Verify on the PE with the debug colors (§0).
+- [~] **Timer support** — voice-driven timers + alarms shipped 2026-06-23 (TimerManager, flow cards,
+  tile capabilities, LED-ring re-arm on reconnect, LED-drift resync — full record in COMPLETED.md §1;
+  design notes in [`docs/.../timer-feature.md` §9](./docs/home-assistant-voice-preview-edition/timer-feature.md)).
+  Remaining:
+  - **Single timer only** — a second request makes the agent ask whether to replace. Multiple
+    concurrent timers would need TimerManager + tool-schema + PE timer-id plumbing.
+  - LED-drift resync hardware verify (§0).
 - [ ] **Configuration sync / wake-word selection** — parse `ListEntitiesSelectResponse`, store the
   wake-word + pipeline select keys, optionally expose wake-word choice in Homey device settings.
-  _(gap analysis #7, Medium)_
+  (Select entities are already registered generically into `entityKeys` by the client; the
+  wake-word-specific handling and settings UI are the missing parts.) _(gap analysis #7, Medium)_
 - [ ] **ESPHome API encryption (Noise) + API key** — client is currently plaintext-only. If a
   satellite has an encryption key set, the connection fails entirely. Add an optional
   `encryption_key` device setting and implement the Noise handshake
   (`Noise_NNpsk0_25519_ChaChaPoly_SHA256`) before the Hello exchange.
   _(gap analysis #10, High — only needed when a user asks for it)_
-- [x] **2026.1 handshake fix** — ESPHome 2026.1.0 (PE firmware 26.x) removed password auth;
-  client no longer waits for `ConnectResponse`, stays backward compatible with 25.x. Verified on
-  firmware 26.4.0. See `CLAUDE.md` → "ESPHome firmware compatibility".
-  (The encryption item above is the remaining piece of the same area.)
-- [x] Done in gap analysis: `WAKE_WORD_END`, `ERROR` events, `INTENT_PROGRESS`, version-check,
-  `SubscribeStates`, extra entity-type handlers.
 
 ---
 
@@ -127,20 +82,17 @@ Remaining items from the audit (1–7, 10, 12 are already done — see the refer
 
 - [ ] **#8 Simplify VAD response trigger** — set `create_response: true` (+ `interrupt_response: true`)
   in `turn_detection`, drop the manual transcript re-injection / `transcript_id` tracking.
-  _(Medium — also enables barge-in)_
+  _(Medium — also enables barge-in. NOTE: partially superseded by the text-anchored-replies flow,
+  which deliberately keeps manual response creation so the model answers the transcript, not the
+  audio — reconcile the two before doing this.)_
 - [ ] **#9 Expose `gpt-realtime-mini`** — add a "model quality" setting (Standard = mini vs Full)
-  for the cost/quality tradeoff. _(Medium)_
-- [ ] **#11 Act on `rate_limits.updated`** — log low-token warnings / surface a Homey notification
-  when quota runs low. _(Low, optional)_
+  for the cost/quality tradeoff. Model is currently hardcoded (`gpt-realtime-2025-08-28`). _(Medium)_
+- [ ] **#11 Act on `rate_limits.updated`** — the event is emitted by the agent but nothing acts on
+  it; log low-token warnings / surface a Homey notification when quota runs low. _(Low, optional)_
 - [~] **Improve STT accuracy (esp. Norwegian)** — command transcription is unreliable, particularly
-  in Norwegian. _(Medium — ongoing pain point)_
-  - [x] Switched the sidecar transcription model `gpt-realtime-whisper` → **`gpt-4o-transcribe`**
-    (2026-07-02; `delay` removed — only supported by gpt-realtime-whisper). Untested on real speech.
-  - [x] **Text-anchored replies (2026-07-02, untested):** proven necessary same day — "Fortell meg
-    en vits" transcribed perfectly but the model answered the *audio* with the local time. The agent
-    now replaces the committed audio item with the transcript (`conversation.item.delete` +
-    `sendUserText` + `createResponse`), so the model answers what `gpt-4o-transcribe` heard.
-    Near-zero latency cost since we already waited for `transcription.completed`.
+  in Norwegian. _(Medium — ongoing pain point.)_ Done so far (archived in COMPLETED.md §2, both
+  pending real-speech verification, §0): sidecar model switched to `gpt-4o-transcribe`;
+  text-anchored replies (model answers the transcript, not the audio). Remaining:
   - [ ] Transcription `prompt` with actual device/zone names from DeviceManager (needs plumbing:
     session.update once the device list is known).
   - [ ] VAD threshold / `silence_duration_ms` / `noise_reduction` tuning if needed.
@@ -153,15 +105,10 @@ Remaining items from the audit (1–7, 10, 12 are already done — see the refer
   - Start flow by name: "start \<flow name\>".
   - Start flow by synonym: "I'm going to bed" → starts "night mode". Needs a way for the user to
     map synonyms → flow names.
-- [x] **Follow-up / keep conversation alive (done 2026-06-26)** — answer follow-up questions without
-  repeating the wake word (via `startConversation`). Single follow-up and chained multi-question
-  conversations both work; the reply is delivered in-band on `TTS_END` and the PE auto-reopens the mic
-  for each subsequent turn. The session ends on a silent turn (user has nothing to say) or after the
-  context TTL. See §1 (follow-up audio bug, fixed) and branch `fix/followup-turn-audio`.
 - [ ] **Change settings by voice** (lots of work, but cool) — expose allowed settings (`voice`,
   `language`, `optional_ai_instructions`) as tools. Flow: agent lists options → user picks → tool
   stores the change → agent finishes its run → apply the change (socket reconnects) → optionally
-  speak back in the new voice. Needs the keep-conversation-alive flag above.
+  speak back in the new voice. Builds on the keep-conversation-alive feature (done — COMPLETED.md §3).
 - [ ] **Help!** — ask the agent what it can do.
 - [ ] **When triggered from a flow, don't chunk audio** — set `pcm-segmenter` to a high
   `MIN_SILENCE_MS` (one `.flac`), or bypass the segmenter and pipe directly. Fast response time
@@ -173,13 +120,9 @@ Remaining items from the audit (1–7, 10, 12 are already done — see the refer
 
 Customizations live in `.esp_home/` (downloaded stock config + edits). Re-application guide after any
 fresh config download: [`.esp_home/CUSTOMIZATIONS.md`](./.esp_home/CUSTOMIZATIONS.md).
+(The custom "Hey Homey" wake word is done — see COMPLETED.md §4 for the microWakeWord-vs-openWakeWord
+gotcha before touching wake words again.)
 
-- [x] **Custom wake word "Hey Homey"** — done via [microwakeword.com](https://microwakeword.com/).
-  Gotcha that cost hours: it must be **microWakeWord** (runs on-device), NOT **openWakeWord**
-  (server-side) — they have near-identical names but an openWakeWord `.tflite` flashes fine then
-  crash-loops the PE (`Failed to get registration from op code SHAPE` → LoadProhibited). Model lives
-  in `.esp_home/wake_words/`, referenced from the config via a **`raw.githubusercontent.com`** URL
-  (the `github.com/.../raw/` redirect form fails ESPHome's model validation). See CUSTOMIZATIONS.md.
 - [~] **Homey look for the LED ring** — per-phase rotating rainbows implemented (waiting + listening =
   full rainbow CW; thinking = cold rainbow CCW; replying = warm rainbow CCW). Effects + phase mapping
   documented in CUSTOMIZATIONS.md. <img src="./.resources/pe_rainbow.png" height="200" alt="PE rainbow" />
@@ -195,93 +138,14 @@ fresh config download: [`.esp_home/CUSTOMIZATIONS.md`](./.esp_home/CUSTOMIZATION
 
 ## 5. Local / offline AI
 
-- [~] **Locally-hosted stack: Whisper (STT) + Ollama (LLM) + Piper (TTS) — first round done
-  (2026-07-05, branch `claude/local-stt-llm-tts-provider-oc0cng`), untested against real services.**
-  New `local` voice provider (`src/llm/providers/local-pipeline-provider.mts`) selectable in app
-  settings, with per-service host/port boxes (+ optional Ollama model, defaults to the first
-  installed one). Pipeline: on-device energy VAD (`local/simple-vad.mts`, the cloud providers'
-  server VAD has no local equivalent) → Whisper STT (`local/whisper-client.mts`, auto-detects
-  `/asr` = whisper-asr-webservice, `/v1/audio/transcriptions` = speaches/faster-whisper-server,
-  `/inference` = whisper.cpp) → Ollama `/api/chat` streaming with the full ToolManager tool loop
-  (`local/ollama-client.mts`, strips `<think>` blocks from reasoning models) → Piper TTS
-  (`local/piper-client.mts`, `POST /synthesize` with `POST /` fallback), sentence-by-sentence while
-  the LLM streams, resampled to the 24 kHz seam contract. Health probes + reconnect campaign +
-  60 s idle re-probe drive device availability. No auth for the LAN services (this round).
-  - [x] **Mistral as an alternative LLM backend (2026-07-05).** Mistral has no unified realtime
-    speech-to-speech API (their docs compose voice agents as STT→LLM→TTS). So the pipeline's
-    LLM stage is now pluggable behind `ILlmClient` (`local/llm-client.mts`, backend-neutral
-    messages/tool calls): `local_llm_provider` setting = `ollama` (default) or `mistral`
-    (`local/mistral-client.mts`, `/v1/chat/completions` SSE streaming + tool calling; gotcha:
-    Mistral validates `tool_call_id` as EXACTLY 9 chars `[a-zA-Z0-9]`, hence
-    `sanitizeToolCallId`/`generateToolCallId`). Settings page: LLM backend pulldown — Ollama shows
-    host/port/model, Mistral shows API key (`mistral_api_key`) + model (`mistral_model`, default
-    `mistral-small-latest`).
-  - [x] **Mistral Voxtral as alternative STT and TTS backends (2026-07-05, untested against the
-    real API).** Same seam treatment for the other two stages (`ISttClient`/`ITtsClient` in
-    `local/stt-client.mts`/`tts-client.mts`): `local_stt_provider` = `whisper` (default) or
-    `mistral` (`local/mistral-stt-client.mts`, `POST /v1/audio/transcriptions` multipart, default
-    model `voxtral-mini-latest`, override `mistral_stt_model`); `local_tts_provider` = `piper`
-    (default) or `mistral` (`local/mistral-tts-client.mts`, `POST /v1/audio/speech` →
-    WAV 24 kHz mono = the seam contract exactly). TTS request shape verified 2026-07-05 against
-    Mistral's official Python SDK (generated from their OpenAPI spec): the voice field is
-    **`voice_id`** (not `voice`), and **`model` is optional** — omitted, the server's default TTS
-    model runs (we omit unless `mistral_tts_model` is set; a concrete pin would be
-    `voxtral-mini-tts-2603`). The spec also exposes `GET /v1/audio/voices` (presets + customs) —
-    candidate for a dynamic voice dropdown later. Voxtral TTS has 20 preset voices (+ OpenAI-name
-    aliases) — the main
-    Voice dropdown now switches to them when the TTS backend is Mistral
-    (`LocalPipelineProvider.getAvailableVoices(ttsBackend?)`, `/voices?provider=local&tts=…`).
-    One shared `mistral_api_key` for all Mistral-backed stages; the settings page shows the key
-    field when any stage picks Mistral, and each stage independently shows LAN host/port vs
-    cloud model boxes. Any keyless Mistral stage → `missing_api_key`/`hasApiKey()=false`.
-  - [x] **Generic OpenAI-compatible backend for every stage (2026-07-05, untested against real
-    services).** Third option (`openai`) in each stage's dropdown, with per-stage base URL /
-    optional API key / model settings (`openai_stt_*`, `openai_llm_*`, `openai_tts_*` — stages
-    may point at different servers). One implementation covers OpenAI itself, Groq
-    (https://api.groq.com/openai/v1 — fastest tokens + dirt-cheap Whisper), OpenRouter, DeepSeek,
-    LM Studio / llama.cpp / vLLM / LocalAI / Ollama's `/v1` shim (LLM), speaches (STT), and
-    kokoro-fastapi (TTS). `local/openai-compat.mts` has the shared URL normalizer (bare host →
-    `http://…/v1`; explicit paths kept verbatim) + `/models` health probe (401/403 → key error,
-    404 tolerated); `openai-llm-client.mts` is the SSE chat client base class that
-    `MistralClient` now subclasses (Mistral = same dialect + pinned endpoint + 9-char id
-    sanitization); `openai-stt-client.mts`/`openai-tts-client.mts` mirror the audio endpoints.
-    TTS voice: the Voice dropdown offers OpenAI's standard voices; the free-text
-    `openai_tts_voice` override wins for custom servers (e.g. Kokoro's `af_heart`). API key is
-    optional (LAN servers) — a keyed server rejecting shows up in the health probe.
-  - [x] **Wyoming-protocol STT backend (2026-07-05) — for `rhasspy/wyoming-faster-whisper` on
-    TCP port 10300.** Real-world testing showed the user's "faster-whisper" docker is the Home
-    Assistant Wyoming build — raw TCP with newline-JSON events + binary PCM payloads, NOT HTTP,
-    so the HTTP `WhisperClient` can never reach it (that was the connect failure in the log).
-    New `local/wyoming-protocol.mts` (framing per
-    `docs/home-assistant-voice-preview-edition/wyoming-protocol.md`: header line with optional
-    `data_length` side-band JSON + `payload_length` binary) and `local/wyoming-stt-client.mts`
-    (`transcribe`→`audio-start`/`audio-chunk`×N/`audio-stop`→`transcript`, streaming
-    transcript-chunk/-stop also handled; health check = `describe`→`info` with an `asr` entry).
-    Fourth STT dropdown option "Wyoming — faster-whisper (local)" with its own
-    `wyoming_stt_host`/`wyoming_stt_port` settings (default 10300); Test button supported.
-  - [x] **Wyoming-protocol TTS backend (2026-07-05) — for `rhasspy/wyoming-piper` on TCP port
-    10200** (the user's Piper turned out to be the Wyoming build too).
-    `local/wyoming-tts-client.mts` on the same protocol module: `synthesize {text}` →
-    `audio-start`/`audio-chunk`×N/`audio-stop` collected into PCM at the announced rate; health
-    check = `describe`→`info` with a `tts` entry. TTS dropdown option "Wyoming — Piper (local)"
-    with `wyoming_tts_host`/`wyoming_tts_port` (default 10200); voice is server-side like HTTP
-    Piper; Test button supported.
-  - [x] **LM Studio as a first-class LLM backend (2026-07-05).** It already worked through the
-    generic OpenAI-compatible backend, but as a desktop app it gets the Ollama treatment:
-    dropdown option "LM Studio (local)" with `lmstudio_host`/`lmstudio_port` (default 1234) and
-    an OPTIONAL `lmstudio_model` (empty = auto-pick the first model from `GET /v1/models`,
-    cached). `local/lmstudio-client.mts` is a thin `OpenAiLlmClient` subclass (keyless, host/port
-    → base URL, `resolveModel()` named like Ollama's so the provider's health flow calls it).
-  - [x] **Per-stage "Test" buttons in the settings page (2026-07-05).** Each stage section has a
-    Test button that POSTs the CURRENT (unsaved) form values to the app's new
-    `POST /test-local-stage` endpoint (route in `.homeycompose/app.json`; handler in `api.mts` →
-    `local/stage-tester.mts`) — the webview can't reach LAN services itself, so the test runs
-    from the Homey box. Not just a ping: one real mini-request per stage (STT transcribes 0.5 s
-    of silence, LLM answers "Reply with exactly: OK", TTS synthesizes "OK"), so wrong model ids,
-    rejected keys and bad voices surface, with latency and the underlying cause (ECONNREFUSED …)
-    shown inline. 30 s bound per test.
+- [~] **Locally-hosted stack — first round done (2026-07-05, merged PR #12), untested against real
+  services.** New `local` voice provider: energy VAD → STT → LLM (full tool loop) → TTS, all three
+  stages pluggable. Backends shipped (full details in COMPLETED.md §5): Whisper HTTP / Wyoming
+  faster-whisper / Mistral Voxtral / OpenAI-compatible (STT); Ollama / LM Studio / Mistral /
+  OpenAI-compatible (LLM); Piper HTTP / Wyoming Piper / Mistral Voxtral / OpenAI-compatible (TTS);
+  per-stage Test buttons in the settings page. Remaining:
   - [ ] **Verify against real services on Windows** (whisper-asr-webservice + Ollama desktop +
-    piper http docker); tune `SimpleVad` thresholds with a real PE mic.
+    piper http docker, plus the Wyoming dockers); tune `SimpleVad` thresholds with a real PE mic. (§0)
   - [ ] Wake-word → reply latency measurement; consider Whisper streaming/partials, and Mistral's
     **Voxtral Realtime** WebSocket STT (sub-200 ms, $0.006/min, also open-weights) as an upgrade
     over the batch transcription endpoint used now.
