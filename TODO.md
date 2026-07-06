@@ -30,6 +30,9 @@ Implemented but not yet verified in the real world — must all pass before the 
 - [ ] **Timer LED-drift resync** — hardware-verify the quiet `UPDATED` every 30 s on a
   long/alarm-length countdown. _(COMPLETED.md §1, timer support)_
 - [ ] **Local pipeline against real services** — see the verify item in §5.
+- [ ] **Update the images used in README.md** — at minimum `.resources/settings.jpg` predates the
+  provider-choice settings redesign (no Gemini/local pipeline visible); also review the banner
+  (`assets/images/large.png`) and the device photos before the store release.
 
 ---
 
