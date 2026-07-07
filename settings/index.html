@@ -522,6 +522,26 @@
         placeholder="Enter optional instructions for the AI, such as personality traits, behavior guidelines, or specific responses you'd like..."></textarea>
       <div class="help-text">Customize the AI's personality and behavior with additional instructions. Examples: "You act like Santa Claus" or "Be super sarcastic like GLaDOS."</div>
     </div>
+
+    <div class="homey-form-group">
+      <label class="homey-form-label" for="web_search_provider">Web search</label>
+      <select class="homey-form-input" id="web_search_provider">
+        <option value="openai">OpenAI web search (uses your OpenAI key)</option>
+        <option value="brave">Brave Search API</option>
+        <option value="disabled">Disabled</option>
+      </select>
+      <div class="help-text">Lets the assistant answer questions about current events, opening hours, departures, etc.
+        OpenAI searches and summarizes with your OpenAI API key; Brave uses its own free-tier key.</div>
+    </div>
+    <div class="homey-form-group" id="brave_key_group" style="display: none;">
+      <label class="homey-form-label" for="brave_api_key">Brave Search API key</label>
+      <div class="secret-wrap">
+        <input type="password" class="homey-form-input" id="brave_api_key" autocomplete="off"
+          placeholder="Enter your Brave Search API key here..." />
+        <button type="button" class="secret-toggle" data-for="brave_api_key">Show</button>
+      </div>
+      <div class="help-text">Visit https://api.search.brave.com to get one (free tier available).</div>
+    </div>
   </fieldset>
 
   <button id="save" class="homey-button-primary-full">Save changes</button>
@@ -692,6 +712,23 @@
         document.getElementById("openai_model").value = model || "full";
       });
 
+      // Web search: backend dropdown + the Brave key (shown only for Brave).
+      var webSearchSelectElement = document.getElementById("web_search_provider");
+      function refreshWebSearchVisibility() {
+        document.getElementById("brave_key_group").style.display =
+          webSearchSelectElement.value === "brave" ? "" : "none";
+      }
+      webSearchSelectElement.addEventListener("change", refreshWebSearchVisibility);
+      Homey.get("web_search_provider", function (err, backend) {
+        if (err) return Homey.alert(err);
+        webSearchSelectElement.value = backend || "openai";
+        refreshWebSearchVisibility();
+      });
+      Homey.get("brave_api_key", function (err, key) {
+        if (err) return Homey.alert(err);
+        if (key) document.getElementById("brave_api_key").value = key;
+      });
+
       // Show/hide toggles for the masked API-key inputs.
       document.querySelectorAll(".secret-toggle").forEach(function (btn) {
         btn.addEventListener("click", function () {
@@ -774,6 +811,14 @@
 
         // Save OpenAI Realtime model quality (full vs mini)
         Homey.set("openai_model", document.getElementById("openai_model").value, function (err) {
+          if (err) return Homey.alert(err);
+        });
+
+        // Save the web-search backend + Brave key
+        Homey.set("web_search_provider", webSearchSelectElement.value, function (err) {
+          if (err) return Homey.alert(err);
+        });
+        Homey.set("brave_api_key", document.getElementById("brave_api_key").value.trim(), function (err) {
           if (err) return Homey.alert(err);
         });
 

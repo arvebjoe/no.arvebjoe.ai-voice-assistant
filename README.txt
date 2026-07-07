@@ -3,7 +3,9 @@ Turn ESPHome voice assistant devices into a natural voice interface for Homey. S
 You choose the AI engine:
     - OpenAI Realtime — low-latency cloud speech-to-speech, with a choice between the full model (best quality) and the mini model (cheaper and faster).
     - Google Gemini Live — the same real-time pipeline, powered by Gemini.
-    - Local / self-hosted — Whisper, Ollama, LM Studio, Piper, Wyoming and any OpenAI-compatible server. Mix and match per stage; with a fully local setup no audio leaves your network.
+    - Local / self-hosted — Whisper, Voxtral Realtime, Ollama, LM Studio, Piper, Wyoming and any OpenAI-compatible server. Mix and match per stage; with a fully local setup no audio leaves your network.
+
+The assistant can also search the web for current information (opening hours, departures, what's on at the cinema) using OpenAI web search or the Brave Search API, and it can tell you what it is able to do when you ask for help.
 
 Supported devices:
     - Home Assistant Voice Preview Edition (stock ESPHome firmware, no Home Assistant needed)

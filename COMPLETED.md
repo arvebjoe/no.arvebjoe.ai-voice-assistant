@@ -109,6 +109,18 @@ ad-hoc if one of them misbehaves.
 - [x] Done in gap analysis: `WAKE_WORD_END`, `ERROR` events, `INTENT_PROGRESS`, version-check,
   `SubscribeStates`, extra entity-type handlers.
 
+- [x] **Wake-word selection (2026-07-07, gap analysis #7).** The ESP client parses the wake-word
+  data already present in `VoiceAssistantConfigurationResponse` (`available_wake_words`,
+  `active_wake_words`, `max_active_wake_words`), stores it, and emits a `wake_words` event on every
+  config response (fires on each connect and after a change). New client methods
+  `getAvailableWakeWords()` / `getActiveWakeWords()` / `setActiveWakeWords(ids)` — the setter sends
+  `VoiceAssistantSetConfiguration` (id 123, the same call Home Assistant uses) then re-requests the
+  config so the cached state reflects what the device applied. PE device settings gained a read-only
+  **Available wake words** label (kept in sync from the device, active one marked) and a **Wake word**
+  text field; `onSettings` resolves the typed name/id case-and-separator-insensitively against the
+  reported list and activates it, rejecting an unknown word with the available list in the error
+  (which the SDK surfaces to the user). No new proto — the fields were always in `api.proto`.
+
 ---
 
 ## 2. OpenAI Realtime API (`src/llm/providers/openai-realtime-agent.mts`)
@@ -158,6 +170,18 @@ Sub-items of the still-open "Improve STT accuracy" work:
   summary plus the live registered tool list (name + description), built from `ToolManager.tools`
   so it stays correct as tools come and go (timer tools only listed when the device supports them).
   The tool description instructs the model to summarize conversationally in the user's language.
+
+- [x] **Web search (2026-07-07)** — new `web_search` tool for current/local info ("what's on at the
+  cinema today?", "when does the next bus leave?"). Backend chosen by the `web_search_provider`
+  setting (`src/helpers/web-search.mts`):
+  - `openai` (default): OpenAI Responses API with the hosted `web_search` tool, reusing
+    `openai_api_key`. The model searches AND summarizes; the tool returns `{ answer, sources }`.
+    The device's IANA timezone is passed as `user_location.approximate` (Homey exposes no
+    city/country) so "the local cinema" resolves. Model `gpt-5-mini`.
+  - `brave`: Brave Search API (`brave_api_key`, free tier) — returns raw `{ results[] }` snippets;
+    the voice agent's own LLM summarizes.
+  - `disabled`: the tool returns a WEB_SEARCH_DISABLED error the model relays.
+  Settings page: a "Web search" dropdown + a Brave key field shown only for the Brave backend.
 
 ---
 
@@ -268,6 +292,27 @@ real services is still open — TODO §5.)* Backends delivered:
   of silence, LLM answers "Reply with exactly: OK", TTS synthesizes "OK"), so wrong model ids,
   rejected keys and bad voices surface, with latency and the underlying cause (ECONNREFUSED …)
   shown inline. 30 s bound per test.
+- [x] **Per-request Piper voice selection (2026-07-07).** `PiperClient` now sends the app's
+  `selected_voice` as `/synthesize {voice}` (piper1-gpl supports it), but only after confirming
+  the id against the server's own `GET /voices` dict (fetched once, cached) — so a stale
+  cross-backend `selected_voice` (an OpenAI name / Voxtral UUID left over from a backend switch)
+  falls back to the server default instead of 4xx-ing every synthesis; a server without `/voices`
+  disables voice selection entirely. The Voice dropdown for the Piper backend lists the server's
+  installed voices behind a "Server default voice" entry (`listPiperVoices` +
+  `getAvailableVoices('piper')`). Sentinel `server-default` = no voice sent.
+- [x] **Mistral Voxtral Realtime — streaming STT backend (2026-07-07).** Fifth STT dropdown option
+  "Mistral Voxtral Realtime (cloud, streaming)" using Mistral's websocket transcription endpoint
+  (`wss://api.mistral.ai/v1/audio/transcriptions/realtime?model=…`), much lower latency than the
+  batch upload. `local/mistral-realtime-stt-client.mts` — the wire protocol was reverse-engineered
+  from the official `mistralai` Python SDK v2.6.0 (`mistralai/extra/realtime/`), since the docs
+  pages are behind a bot wall: on `session.created` send `session.update` with
+  `audio_format {encoding:pcm_s16le, sample_rate:16000}` + `target_streaming_delay_ms:480`, then
+  base64 `input_audio.append` chunks (kept under the 256 KiB decoded cap), then `input_audio.flush`
+  + `input_audio.end`; collect `transcription.text.delta`, resolve on `transcription.done`. Shares
+  `mistral_api_key`; optional `mistral_stt_realtime_model` override (default
+  `voxtral-mini-transcribe-realtime-2602`). No language param — the model detects it. Test button
+  supported. *(Verify against the live Mistral API — like the other Voxtral stages, only unit-tested
+  so far with a fake websocket.)*
 
 ---
 

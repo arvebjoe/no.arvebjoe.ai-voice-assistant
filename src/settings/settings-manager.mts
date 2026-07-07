@@ -121,6 +121,8 @@ export class SettingsManager {
     // Homey settings API does not expose list directly; define keys we care about explicitly.
     // Extend this list as needed.
     const knownKeys = ['openai_api_key', 'openai_model', 'gemini_api_key', 'openweather_api_key', 'selected_language_code', 'selected_language_name', 'selected_voice', 'ai_instructions', 'voice_provider', 'input_buffer_debug',
+      // Web search tool (backend choice + the Brave key; 'openai' reuses openai_api_key)
+      'web_search_provider', 'brave_api_key',
       // Local pipeline endpoints + per-stage backend selection (Whisper/Voxtral,
       // Ollama/Mistral, Piper/Voxtral) and the shared Mistral credentials/models
       'local_stt_host', 'local_stt_port', 'local_llm_host', 'local_llm_port', 'local_llm_model', 'local_tts_host', 'local_tts_port',

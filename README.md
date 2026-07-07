@@ -29,6 +29,8 @@ just speak naturally:
 * **Have a conversation** — the assistant keeps listening after it answers, so you can ask
   follow-up questions without repeating the wake word.
 * **Ask anything** — general questions answered by the AI.
+* **Search the web** — *"what's playing at the cinema today?"*, *"when does the next bus leave?"* —
+  current and local information via OpenAI web search or the Brave Search API (pick one in settings).
 * **Ask for help** — *"what can you do?"* and the assistant explains its own capabilities.
 
 The assistant understands and replies in **English, Dutch, German, French, Italian, Swedish,
@@ -147,7 +149,7 @@ local Whisper + cloud Mistral LLM + local Piper):
 
 | Stage | Options |
 |---|---|
-| **Speech-to-text** | Whisper over HTTP (whisper-asr-webservice, speaches, whisper.cpp) · Wyoming faster-whisper (the Home Assistant `rhasspy/wyoming-whisper` docker) · Mistral Voxtral (cloud) · any OpenAI-compatible server |
+| **Speech-to-text** | Whisper over HTTP (whisper-asr-webservice, speaches, whisper.cpp) · Wyoming faster-whisper (the Home Assistant `rhasspy/wyoming-whisper` docker) · Mistral Voxtral (cloud) · Mistral Voxtral **Realtime** (cloud, streaming websocket, sub-500 ms) · any OpenAI-compatible server |
 | **Language model** | Ollama · LM Studio · Mistral (cloud) · any OpenAI-compatible server (Groq, OpenRouter, DeepSeek, llama.cpp, vLLM, …) |
 | **Text-to-speech** | Piper over HTTP · Wyoming Piper (the `rhasspy/wyoming-piper` docker) · Mistral Voxtral (cloud) · any OpenAI-compatible server (e.g. kokoro-fastapi) |
 
