@@ -488,6 +488,19 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       this.timerManager?.reissue();
     });
 
+    // The satellite reported its wake-word configuration (fires on every
+    // connect and after a setActiveWakeWords). Surface it in the device
+    // settings: a read-only list of what's on board, with the active one
+    // marked, so the user knows what to type in the 'wake_word' text setting.
+    this.esp.on('wake_words', (available, active) => {
+      const lines = available
+        .map(w => `${w.wakeWord} (${w.id})${active.includes(w.id) ? ' — active' : ''}`)
+        .join('\n');
+      this.setSettings({ available_wake_words: lines }).catch(err => {
+        this.logger.error('Failed to update available_wake_words setting', err);
+      });
+    });
+
 
     // Actually start the ESP and agent.
     await this.esp.start();
@@ -1216,6 +1229,35 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     this.followupSkipBytes = this.msToBytes(followupSkipMs, 16000, 1, 2);
 
     this.logger.info(`Audio skip updated: initial=${skipMs ?? 'unset'}ms, followup=${followupSkipMs}ms`);
+
+    // Wake-word change: resolve the typed name/id against what the satellite
+    // reported and activate it (VoiceAssistantSetConfiguration). Throwing here
+    // rejects the settings save with the message shown to the user.
+    if (changedKeys.includes('wake_word')) {
+      const wanted = String(newSettings.wake_word ?? '').trim();
+      if (wanted) {
+        return this.applyWakeWord(wanted);
+      }
+    }
+  }
+
+  /** Resolve + activate a wake word typed in the device settings. */
+  private applyWakeWord(wanted: string): string {
+    if (!this.esp?.isConnected) {
+      throw new Error('The device is not connected — try again when it is online.');
+    }
+    const available = this.esp.getAvailableWakeWords();
+    if (available.length === 0) {
+      throw new Error('The device has not reported any selectable wake words.');
+    }
+    const norm = (s: string) => s.toLowerCase().replace(/[\s_-]+/g, '_');
+    const match = available.find(w => norm(w.id) === norm(wanted) || norm(w.wakeWord) === norm(wanted));
+    if (!match) {
+      throw new Error(`Unknown wake word '${wanted}'. Available: ${available.map(w => `${w.wakeWord} (${w.id})`).join(', ')}`);
+    }
+    this.esp.setActiveWakeWords([match.id]);
+    this.logger.info(`Wake word set to ${match.wakeWord} (${match.id})`);
+    return `Wake word set to "${match.wakeWord}".`;
   }
 
   /**

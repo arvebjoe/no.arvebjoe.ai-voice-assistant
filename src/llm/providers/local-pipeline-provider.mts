@@ -18,7 +18,7 @@ import { OllamaClient, LocalLlmConfig } from "./local/ollama-client.mjs";
 import { MistralClient, MistralConfig } from "./local/mistral-client.mjs";
 import { MistralSttClient } from "./local/mistral-stt-client.mjs";
 import { MistralTtsClient, listMistralTtsVoices, mistralVoiceOptions } from "./local/mistral-tts-client.mjs";
-import { PiperClient, LocalTtsConfig } from "./local/piper-client.mjs";
+import { PiperClient, LocalTtsConfig, listPiperVoices, PIPER_SERVER_DEFAULT_VOICE } from "./local/piper-client.mjs";
 import { OpenAiLlmClient, OpenAiLlmConfig } from "./local/openai-llm-client.mjs";
 import { OpenAiSttClient, OpenAiSttConfig } from "./local/openai-stt-client.mjs";
 import { OpenAiTtsClient, OpenAiTtsConfig } from "./local/openai-tts-client.mjs";
@@ -145,7 +145,7 @@ function buildTtsClient(configs: LocalConfigs, voice: string): ITtsClient {
         case 'wyoming': return new WyomingTtsClient(configs.wyomingTts);
         case 'mistral': return new MistralTtsClient({ apiKey: configs.mistral.apiKey, model: configs.mistralTtsModel, voice });
         case 'openai': return new OpenAiTtsClient({ ...configs.openaiTts, voice });
-        default: return new PiperClient(configs.piper);
+        default: return new PiperClient({ ...configs.piper, voice });
     }
 }
 
@@ -315,7 +315,27 @@ export class LocalPipelineProvider extends (EventEmitter as new () => TypedEmitt
         // Standard OpenAI voices; custom servers (Kokoro etc.) use the
         // free-text voice override in the TTS section instead.
         if (backend === 'openai') return OPENAI_TTS_VOICES;
-        return [{ value: "server-default", name: "Piper server voice" }];
+        // Piper: list the server's installed voices (piper1-gpl GET /voices).
+        // Older servers without the endpoint keep the single default entry —
+        // their voice is fixed by how the server was started.
+        if (backend === 'piper') {
+            const host = (settingsManager.getGlobal<string>('local_tts_host', '') || '').trim();
+            const port = Number(settingsManager.getGlobal('local_tts_port', LOCAL_DEFAULT_PORTS.tts)) || LOCAL_DEFAULT_PORTS.tts;
+            if (host) {
+                try {
+                    const voices = await listPiperVoices(host, port);
+                    if (voices.length) {
+                        return [
+                            { value: PIPER_SERVER_DEFAULT_VOICE, name: 'Server default voice' },
+                            ...voices.map((v) => ({ value: v, name: v })),
+                        ];
+                    }
+                } catch {
+                    // fall through to the placeholder — the dropdown must never be empty
+                }
+            }
+        }
+        return [{ value: PIPER_SERVER_DEFAULT_VOICE, name: "Piper server voice" }];
     }
 
     private homey: any;
@@ -688,8 +708,8 @@ export class LocalPipelineProvider extends (EventEmitter as new () => TypedEmitt
 
     updateVoice(newVoice: string): void {
         this.options.voice = newVoice;
-        // Piper's voice is fixed server-side (no setVoice); Voxtral picks a
-        // preset voice per request, so the setting flows through here.
+        // Every backend with per-request voices (Piper /synthesize, Voxtral,
+        // OpenAI-compatible) picks the new voice up here; the others no-op.
         this.tts.setVoice?.(newVoice);
     }
 

@@ -34,6 +34,13 @@ function resolveLogLevel(value: string | number | undefined): number {
   return LOG_LEVELS[String(value).toUpperCase().replace(/[\s-]/g, '_')] ?? 0;
 }
 
+/** A wake word the satellite has on board (VoiceAssistantConfigurationResponse). */
+export interface EspWakeWord {
+  id: string;
+  wakeWord: string;
+  trainedLanguages: string[];
+}
+
 type EspVoiceEvents = {
   Healthy: () => void;
   Unhealthy: () => void;
@@ -44,6 +51,8 @@ type EspVoiceEvents = {
   capabilities: (mediaPlayersCount: number, subscribeVoiceAssistantCount: number, voiceAssistantConfigurationCount: number, deviceType: string | null) => void;
   volume: (level: number) => void; // Volume change event
   mute: (isMuted: boolean) => void; // Mute state change event
+  // The satellite's wake-word configuration arrived/changed (available + active).
+  wake_words: (available: EspWakeWord[], active: string[], maxActive: number) => void;
 }
 
 
@@ -103,6 +112,11 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
   // Track device state
   private currentVolume: number = 0.5;
   private isMutedValue: boolean = false;
+
+  // Wake-word configuration reported by the satellite (gap analysis #7).
+  private availableWakeWords: EspWakeWord[] = [];
+  private activeWakeWords: string[] = [];
+  private maxActiveWakeWords: number = 0;
 
 
   constructor(homey: any, { host, apiPort = 6053, discoveryMode = false, logLevel }: EspVoiceClientOptions) {
@@ -543,6 +557,22 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
 
     else if (name === 'VoiceAssistantConfigurationResponse') {
       this.voiceAssistantConfigurationCount++
+
+      // Wake-word configuration (gap analysis #7): what the satellite has on
+      // board and which are active. Kept in sync on every response — a
+      // setActiveWakeWords() re-requests the config so this refreshes.
+      this.availableWakeWords = (message?.availableWakeWords ?? []).map((w: any) => ({
+        id: w?.id ?? '',
+        wakeWord: w?.wakeWord ?? '',
+        trainedLanguages: w?.trainedLanguages ?? [],
+      })).filter((w: EspWakeWord) => w.id);
+      this.activeWakeWords = message?.activeWakeWords ?? [];
+      this.maxActiveWakeWords = message?.maxActiveWakeWords ?? 0;
+      if (this.availableWakeWords.length) {
+        this.logger.info(`Wake words: available=[${this.availableWakeWords.map(w => w.id).join(', ')}], active=[${this.activeWakeWords.join(', ')}], max=${this.maxActiveWakeWords}`);
+        this.emit('wake_words', this.getAvailableWakeWords(), this.getActiveWakeWords(), this.maxActiveWakeWords);
+      }
+
       this.emit('capabilities', this.mediaPlayersCount, this.subscribeVoiceAssistantCount, this.voiceAssistantConfigurationCount, this.deviceType);
 
     }
@@ -851,6 +881,27 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
   /** Whether the device advertised support for on-device timers. */
   get supportsTimers(): boolean {
     return this.timersSupported;
+  }
+
+  /** Wake words the satellite has on board (empty until the config response). */
+  getAvailableWakeWords(): EspWakeWord[] {
+    return this.availableWakeWords.map((w) => ({ ...w, trainedLanguages: [...w.trainedLanguages] }));
+  }
+
+  /** Currently active wake-word ids. */
+  getActiveWakeWords(): string[] {
+    return [...this.activeWakeWords];
+  }
+
+  /**
+   * Activate the given wake words on the satellite (VoiceAssistantSetConfiguration,
+   * id 123 — the same call Home Assistant uses). The device persists the choice
+   * itself. A configuration re-request follows so our cached state (and the
+   * 'wake_words' event) reflects what the device actually applied.
+   */
+  setActiveWakeWords(ids: string[]): void {
+    this.send('VoiceAssistantSetConfiguration', { activeWakeWords: ids });
+    this.send('VoiceAssistantConfigurationRequest', {});
   }
 
   /** Whether the native-API TCP connection is established (handshake complete). */
