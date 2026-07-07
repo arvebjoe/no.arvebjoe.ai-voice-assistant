@@ -1,3 +1,10 @@
 {
-  "extends": "athom/homey-app"
+  "extends": "athom/homey-app",
+  // The tsconfig (via @tsconfig/node22) sets `lib: es2024`, which the pinned
+  // @typescript-eslint@6 parser/scope-manager does not recognize, causing a
+  // parse error. Pin the linter's lib to values it knows — compilation itself
+  // still targets es2024 via tsc.
+  "parserOptions": {
+    "lib": ["es2023", "esnext"]
+  }
 }
