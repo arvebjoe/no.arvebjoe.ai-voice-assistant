@@ -113,6 +113,15 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
     hasTool(name: string): boolean { return this.tools.has(name); }
     getToolNames(): string[] { return Array.from(this.tools.keys()); }
 
+    /**
+     * Device + zone names for the provider's STT vocabulary prompt (§2 STT
+     * accuracy). Optional-chained so test doubles without the helper stay valid;
+     * empty until DeviceManager has fetched the catalog.
+     */
+    getSttVocabulary(): string[] {
+        return (this.deviceManager as any)?.getVocabularyNames?.() ?? [];
+    }
+
     private async listDeviceIdsBy(zone?: string | null, type?: string | null): Promise<string[]> {
         // Page through getSmartHomeDevices to collect device IDs for safety checks
         const ids: string[] = [];
@@ -223,14 +232,44 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
                     };
                 } catch (error: any) {
                     this.logger.error('Error formatting local time:', error);
-                    return { 
-                        ok: false, 
-                        error: { 
-                            code: "TIME_FORMAT_ERROR", 
-                            message: `Could not format time for timezone '${timezone}' and locale '${locale}'.` 
-                        } 
+                    return {
+                        ok: false,
+                        error: {
+                            code: "TIME_FORMAT_ERROR",
+                            message: `Could not format time for timezone '${timezone}' and locale '${locale}'.`
+                        }
                     };
                 }
+            }
+        });
+
+        this.registerTool({
+            type: "function",
+            name: "get_assistant_capabilities",
+            description: "Explain what this voice assistant can do. Call this when the user asks for help or what the assistant can do (e.g. \"help\", \"what can you do?\", \"what are you able to control?\"). " +
+                "Summarize the returned capabilities briefly and conversationally in the user's language — don't read the tool list verbatim.",
+            parameters: {
+                type: "object",
+                properties: {},
+                required: [],
+                additionalProperties: false
+            },
+            handler: () => {
+                this.logger.info('get_assistant_capabilities', 'TOOL', 'Executing get_assistant_capabilities...');
+                const tools = Array.from(this.tools.values())
+                    .filter(t => t.name !== 'get_assistant_capabilities')
+                    .map(t => ({ name: t.name, description: t.description }));
+                return {
+                    ok: true,
+                    data: {
+                        summary: "This voice assistant can: control smart home devices (lights, sockets, thermostats, locks — on/off, dim level, target temperature) in any room/zone; " +
+                            "look up devices and read sensor values (temperature, humidity, motion, etc.); report the current weather and the forecast for the home's location; " +
+                            "tell the current local time and date; " +
+                            (this.timerManager ? "set, check and cancel a countdown timer or alarm on the voice device; " : "") +
+                            "and answer general questions conversationally.",
+                        tools
+                    }
+                };
             }
         });
     }

@@ -29,6 +29,7 @@ just speak naturally:
 * **Have a conversation** — the assistant keeps listening after it answers, so you can ask
   follow-up questions without repeating the wake word.
 * **Ask anything** — general questions answered by the AI.
+* **Ask for help** — *"what can you do?"* and the assistant explains its own capabilities.
 
 The assistant understands and replies in **English, Dutch, German, French, Italian, Swedish,
 Norwegian, Spanish, Danish, Russian, Polish and Korean** — pick yours in the app settings.
@@ -124,6 +125,10 @@ latency. Get an API key:
 2. Go to **API keys** and **Create new secret key**.
 3. Paste it into the app settings in Homey (keep it secret).
 
+A **Model quality** setting picks between **Full** (`gpt-realtime`, best quality) and **Mini**
+(`gpt-realtime-mini`, a fraction of the cost and a bit faster). If your OpenAI quota runs low,
+the app warns you with a Homey notification before requests start failing.
+
 > If your OpenAI account is new, you may need to add billing to enable API usage.
 
 ### Google Gemini Live (cloud)
@@ -161,6 +166,8 @@ engines.
 
 * **Voice provider** — **OpenAI Realtime**, **Google Gemini Live**, or **Local**.
 * **API key** — for the selected cloud provider (OpenAI or Gemini).
+* **Model quality** *(OpenAI only)* — **Full** for the best understanding, **Mini** for a much
+  cheaper, slightly faster model.
 * **Language** — the language you'll speak with the assistant.
 * **Voice** — the voice the assistant speaks with. The list adapts to the selected provider
   (and, for the local engine, to the selected TTS backend).

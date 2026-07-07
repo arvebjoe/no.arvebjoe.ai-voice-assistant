@@ -204,6 +204,14 @@
         </div>
         <div class="help-text">Visit https://platform.openai.com to get one</div>
       </div>
+      <div class="homey-form-group">
+        <label class="homey-form-label" for="openai_model">Model quality</label>
+        <select class="homey-form-input" id="openai_model">
+          <option value="full">Full (gpt-realtime) — best quality</option>
+          <option value="mini">Mini (gpt-realtime-mini) — cheaper &amp; faster</option>
+        </select>
+        <div class="help-text">Mini costs a fraction of Full per minute; Full understands tricky requests better.</div>
+      </div>
     </div>
 
     <div id="gemini_realtime_settings" style="display: none;">
@@ -667,6 +675,11 @@
         if (apiKey) geminiApiKeyElement.value = apiKey;
       });
 
+      Homey.get("openai_model", function (err, model) {
+        if (err) return Homey.alert(err);
+        document.getElementById("openai_model").value = model || "full";
+      });
+
       // Show/hide toggles for the masked API-key inputs.
       document.querySelectorAll(".secret-toggle").forEach(function (btn) {
         btn.addEventListener("click", function () {
@@ -744,6 +757,11 @@
 
         // Save Gemini API key
         Homey.set("gemini_api_key", geminiApiKeyElement.value.trim(), function (err) {
+          if (err) return Homey.alert(err);
+        });
+
+        // Save OpenAI Realtime model quality (full vs mini)
+        Homey.set("openai_model", document.getElementById("openai_model").value, function (err) {
           if (err) return Homey.alert(err);
         });
 

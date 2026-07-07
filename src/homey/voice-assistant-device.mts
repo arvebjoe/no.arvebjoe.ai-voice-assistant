@@ -42,6 +42,10 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
   // handleSettingsChange so switching the 'voice_provider' setting rebuilds the
   // provider at runtime instead of silently keeping the old one until restart.
   private currentProviderId: string = DEFAULT_VOICE_PROVIDER;
+  // Last seen 'openai_model' quality setting ('full' | 'mini'). The model is
+  // baked into the Realtime websocket URL, so a change needs a provider restart
+  // (handleSettingsChange) rather than a session.update.
+  private currentOpenAiModel: string = 'full';
 
   private settingsUnsubscribe?: () => void;
   private providerOptions!: VoiceProviderOptions;
@@ -178,6 +182,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     // Remember which id it was built from so handleSettingsChange can detect a
     // runtime provider switch and rebuild (see rebuildProvider).
     this.currentProviderId = settingsManager.getGlobal('voice_provider', DEFAULT_VOICE_PROVIDER);
+    this.currentOpenAiModel = settingsManager.getGlobal('openai_model', 'full');
     this.provider = createVoiceProvider(this.homey, this.toolManager, this.providerOptions, this.currentProviderId);
     this.configureResampler();
 
@@ -809,6 +814,17 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
         this.providerOptions.languageName = newLanguageName || 'English';
         this.provider.updateLanguage(this.providerOptions.languageCode, this.providerOptions.languageName);
         needRestart = true;
+      }
+
+      // OpenAI model quality changed: the model rides in the websocket URL, so
+      // only a reconnect (restart) picks it up. Irrelevant for other providers.
+      const newOpenAiModel = newSettings.openai_model ?? 'full';
+      if (newOpenAiModel !== this.currentOpenAiModel) {
+        this.logger.info(`OpenAI model quality changed from ${this.currentOpenAiModel} to ${newOpenAiModel}`);
+        this.currentOpenAiModel = newOpenAiModel;
+        if (this.currentProviderId === 'openai-realtime') {
+          needRestart = true;
+        }
       }
 
       // Check if AI instructions changed

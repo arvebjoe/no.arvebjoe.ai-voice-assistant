@@ -197,6 +197,13 @@ The TTS API now supports **13 voices**. Three are missing from the selector:
 
 ## 8. Simplify VAD Response Trigger
 
+> **Resolution (2026-07-07): won't do.** The text-anchored-replies flow (see COMPLETED.md §2)
+> *deliberately* keeps `create_response: false`: the committed audio item is deleted and replaced
+> with the sidecar transcript so the model answers the (far more accurate) transcript instead of
+> its own hearing of the audio — measurably better in Norwegian. Auto-created responses would
+> answer the audio and undo that fix. Barge-in (`interrupt_response`) remains possible as a
+> separate future item if ever wanted.
+
 **File:** `src/llm/providers/openai-realtime-agent.mts:836–838` and `614–629`
 
 **Current approach:**
@@ -300,10 +307,10 @@ The existing reconnect logic will re-establish the connection when the next voic
 | 5 | Handle transcription delta/failed events | UX / Error handling | Low | ✅ Done |
 | 6 | Add `instructions` to TTS call | Voice quality / Customisation | Low | ✅ Done |
 | 7 | Add missing voices (fable, nova, onyx) | Feature completeness | Trivial | ✅ Done |
-| 8 | Simplify VAD → response trigger | Code quality / UX | Medium | TODO |
-| 9 | Expose `gpt-realtime-mini` as option | Cost reduction | Medium | TODO |
+| 8 | Simplify VAD → response trigger | Code quality / UX | Medium | ❌ Won't do — superseded by text-anchored replies (see §8 note) |
+| 9 | Expose `gpt-realtime-mini` as option | Cost reduction | Medium | ✅ Done — 'Model quality' setting (`openai_model`) |
 | 10 | Document beta header removal | Future-proofing | Trivial | ✅ Done |
-| 11 | Act on `rate_limits.updated` | Observability | Low | TODO (optional) |
+| 11 | Act on `rate_limits.updated` | Observability | Low | ✅ Done — log warning <20%, Homey notification <5% (throttled) |
 | 12 | Set `idle_timeout_ms` | Cost / Resource efficiency | Trivial | ✅ Done |
 
 ---

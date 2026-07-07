@@ -1,7 +1,7 @@
 Turn ESPHome voice assistant devices into a natural voice interface for Homey. Speak normally to get quick answers, control lights, thermostats, locks and more, set timers and alarms, and keep the conversation going with follow-up questions — no need to repeat the wake word.
 
 You choose the AI engine:
-    - OpenAI Realtime — low-latency cloud speech-to-speech.
+    - OpenAI Realtime — low-latency cloud speech-to-speech, with a choice between the full model (best quality) and the mini model (cheaper and faster).
     - Google Gemini Live — the same real-time pipeline, powered by Gemini.
     - Local / self-hosted — Whisper, Ollama, LM Studio, Piper, Wyoming and any OpenAI-compatible server. Mix and match per stage; with a fully local setup no audio leaves your network.
 
