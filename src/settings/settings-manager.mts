@@ -125,7 +125,7 @@ export class SettingsManager {
       // Ollama/Mistral, Piper/Voxtral) and the shared Mistral credentials/models
       'local_stt_host', 'local_stt_port', 'local_llm_host', 'local_llm_port', 'local_llm_model', 'local_tts_host', 'local_tts_port',
       'local_stt_provider', 'local_llm_provider', 'local_tts_provider',
-      'mistral_api_key', 'mistral_model', 'mistral_stt_model', 'mistral_tts_model',
+      'mistral_api_key', 'mistral_model', 'mistral_stt_model', 'mistral_stt_realtime_model', 'mistral_tts_model',
       // Generic OpenAI-compatible backends (per-stage base URL / key / model)
       'openai_stt_url', 'openai_stt_key', 'openai_stt_model',
       'openai_llm_url', 'openai_llm_key', 'openai_llm_model',

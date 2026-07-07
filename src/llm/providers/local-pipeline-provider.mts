@@ -17,6 +17,7 @@ import { ChatMessage, ILlmClient } from "./local/llm-client.mjs";
 import { OllamaClient, LocalLlmConfig } from "./local/ollama-client.mjs";
 import { MistralClient, MistralConfig } from "./local/mistral-client.mjs";
 import { MistralSttClient } from "./local/mistral-stt-client.mjs";
+import { MistralRealtimeSttClient } from "./local/mistral-realtime-stt-client.mjs";
 import { MistralTtsClient, listMistralTtsVoices, mistralVoiceOptions } from "./local/mistral-tts-client.mjs";
 import { PiperClient, LocalTtsConfig, listPiperVoices, PIPER_SERVER_DEFAULT_VOICE } from "./local/piper-client.mjs";
 import { OpenAiLlmClient, OpenAiLlmConfig } from "./local/openai-llm-client.mjs";
@@ -43,7 +44,7 @@ const HEALTH_INTERVAL_MS = 60_000;
 export const LOCAL_DEFAULT_PORTS = { stt: 9000, llm: 11434, tts: 5000, wyomingStt: 10300, wyomingTts: 10200, lmstudio: 1234 } as const;
 
 /** Selectable backends per pipeline stage (settings: local_stt/llm/tts_provider). */
-export type LocalSttProviderId = 'whisper' | 'wyoming' | 'mistral' | 'openai';
+export type LocalSttProviderId = 'whisper' | 'wyoming' | 'mistral' | 'mistral-realtime' | 'openai';
 export type LocalLlmProviderId = 'ollama' | 'lmstudio' | 'mistral' | 'openai';
 export type LocalTtsProviderId = 'piper' | 'wyoming' | 'mistral' | 'openai';
 
@@ -59,6 +60,7 @@ type LocalConfigs = {
     piper: LocalTtsConfig;
     wyomingTts: WyomingTtsConfig;
     mistralSttModel: string;
+    mistralRealtimeSttModel: string;
     mistralTtsModel: string;
     openaiStt: OpenAiSttConfig;
     openaiLlm: OpenAiLlmConfig;
@@ -76,7 +78,7 @@ function readLocalConfigs(): LocalConfigs {
         return valid.includes(v) ? v : fallback;
     };
     return {
-        sttProvider: stage('local_stt_provider', ['whisper', 'wyoming', 'mistral', 'openai'], 'whisper') as LocalSttProviderId,
+        sttProvider: stage('local_stt_provider', ['whisper', 'wyoming', 'mistral', 'mistral-realtime', 'openai'], 'whisper') as LocalSttProviderId,
         whisper: {
             host: s('local_stt_host'),
             port: Number(g('local_stt_port', LOCAL_DEFAULT_PORTS.stt)) || LOCAL_DEFAULT_PORTS.stt,
@@ -110,6 +112,7 @@ function readLocalConfigs(): LocalConfigs {
             port: Number(g('wyoming_tts_port', LOCAL_DEFAULT_PORTS.wyomingTts)) || LOCAL_DEFAULT_PORTS.wyomingTts,
         },
         mistralSttModel: s('mistral_stt_model'),
+        mistralRealtimeSttModel: s('mistral_stt_realtime_model'),
         mistralTtsModel: s('mistral_tts_model'),
         // Generic OpenAI-compatible backends: each stage may point at a
         // different server (Groq STT + LM Studio LLM + OpenAI TTS, etc.).
@@ -124,6 +127,7 @@ function buildSttClient(configs: LocalConfigs): ISttClient {
     switch (configs.sttProvider) {
         case 'wyoming': return new WyomingSttClient(configs.wyomingStt);
         case 'mistral': return new MistralSttClient({ apiKey: configs.mistral.apiKey, model: configs.mistralSttModel });
+        case 'mistral-realtime': return new MistralRealtimeSttClient({ apiKey: configs.mistral.apiKey, model: configs.mistralRealtimeSttModel });
         case 'openai': return new OpenAiSttClient(configs.openaiStt);
         default: return new WhisperClient(configs.whisper);
     }

@@ -250,6 +250,7 @@
           <option value="whisper">Whisper — HTTP (local)</option>
           <option value="wyoming">Wyoming — faster-whisper (local)</option>
           <option value="mistral">Mistral Voxtral (cloud API)</option>
+          <option value="mistral-realtime">Mistral Voxtral Realtime (cloud, streaming)</option>
           <option value="openai">OpenAI-compatible (cloud or custom)</option>
         </select>
       </div>
@@ -293,6 +294,16 @@
             placeholder="voxtral-mini-latest" />
           <div class="help-text">Mistral's Voxtral transcription API. Empty = <code>voxtral-mini-latest</code>.
             Your voice recordings are sent to Mistral for transcription.</div>
+        </div>
+      </div>
+      <div id="local_stt_mistral_realtime" style="display: none;">
+        <div class="homey-form-group">
+          <label class="homey-form-label" for="mistral_stt_realtime_model">Model</label>
+          <input type="text" class="homey-form-input" id="mistral_stt_realtime_model" autocomplete="off"
+            placeholder="voxtral-mini-transcribe-realtime-2602" />
+          <div class="help-text">Mistral's streaming transcription websocket (sub-500 ms). Empty =
+            <code>voxtral-mini-transcribe-realtime-2602</code>. Your voice recordings are sent to Mistral for
+            transcription.</div>
         </div>
       </div>
       <div id="local_stt_openai" style="display: none;">
@@ -532,7 +543,7 @@
       // Local pipeline settings: inputs/selects that load and save 1:1 with a
       // global setting key of the same id.
       var localSettingIds = [
-        "local_stt_provider", "local_stt_host", "local_stt_port", "mistral_stt_model",
+        "local_stt_provider", "local_stt_host", "local_stt_port", "mistral_stt_model", "mistral_stt_realtime_model",
         "wyoming_stt_host", "wyoming_stt_port",
         "local_llm_provider", "local_llm_host", "local_llm_port", "local_llm_model", "mistral_model",
         "lmstudio_host", "lmstudio_port", "lmstudio_model",
@@ -555,14 +566,14 @@
         // Each stage shows exactly one of its three backend blocks
         // (<lan default> / mistral / openai) based on its dropdown.
         var stages = [
-          { select: sttProviderSelectElement, blocks: { whisper: "local_stt_whisper", wyoming: "local_stt_wyoming", mistral: "local_stt_mistral", openai: "local_stt_openai" }, def: "whisper" },
+          { select: sttProviderSelectElement, blocks: { whisper: "local_stt_whisper", wyoming: "local_stt_wyoming", mistral: "local_stt_mistral", "mistral-realtime": "local_stt_mistral_realtime", openai: "local_stt_openai" }, def: "whisper" },
           { select: llmProviderSelectElement, blocks: { ollama: "local_llm_ollama", lmstudio: "local_llm_lmstudio", mistral: "local_llm_mistral", openai: "local_llm_openai" }, def: "ollama" },
           { select: ttsProviderSelectElement, blocks: { piper: "local_tts_piper", wyoming: "local_tts_wyoming", mistral: "local_tts_mistral", openai: "local_tts_openai" }, def: "piper" }
         ];
         var anyMistral = false;
         stages.forEach(function (stage) {
           var value = stage.blocks[stage.select.value] ? stage.select.value : stage.def;
-          if (value === "mistral") anyMistral = true;
+          if (value === "mistral" || value === "mistral-realtime") anyMistral = true;
           Object.keys(stage.blocks).forEach(function (backend) {
             document.getElementById(stage.blocks[backend]).style.display = backend === value ? "" : "none";
           });
@@ -614,7 +625,8 @@
             stage: "stt", backend: sttBackend,
             host: sttBackend === "wyoming" ? v("wyoming_stt_host") : v("local_stt_host"),
             port: sttBackend === "wyoming" ? v("wyoming_stt_port") : v("local_stt_port"),
-            model: sttBackend === "mistral" ? v("mistral_stt_model") : v("openai_stt_model"),
+            model: sttBackend === "mistral" ? v("mistral_stt_model")
+              : sttBackend === "mistral-realtime" ? v("mistral_stt_realtime_model") : v("openai_stt_model"),
             mistralApiKey: v("mistral_api_key"),
             url: v("openai_stt_url"), key: v("openai_stt_key"),
             language: languageSelectElement.value

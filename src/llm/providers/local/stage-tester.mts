@@ -6,6 +6,7 @@ import { OllamaClient } from './ollama-client.mjs';
 import { PiperClient } from './piper-client.mjs';
 import { MistralClient } from './mistral-client.mjs';
 import { MistralSttClient } from './mistral-stt-client.mjs';
+import { MistralRealtimeSttClient } from './mistral-realtime-stt-client.mjs';
 import { MistralTtsClient } from './mistral-tts-client.mjs';
 import { OpenAiLlmClient } from './openai-llm-client.mjs';
 import { OpenAiSttClient } from './openai-stt-client.mjs';
@@ -69,6 +70,7 @@ function buildSttClient(req: StageTestRequest): ISttClient {
     switch (req.backend) {
         case 'wyoming': return new WyomingSttClient({ host: str(req.host), port: num(req.port, LOCAL_DEFAULT_PORTS.wyomingStt) });
         case 'mistral': return new MistralSttClient({ apiKey: str(req.mistralApiKey), model: str(req.model) });
+        case 'mistral-realtime': return new MistralRealtimeSttClient({ apiKey: str(req.mistralApiKey), model: str(req.model) });
         case 'openai': return new OpenAiSttClient({ baseUrl: str(req.url), apiKey: str(req.key), model: str(req.model) });
         default: return new WhisperClient({ host: str(req.host), port: num(req.port, LOCAL_DEFAULT_PORTS.stt) });
     }
