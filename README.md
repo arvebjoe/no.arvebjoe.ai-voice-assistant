@@ -183,9 +183,7 @@ engines.
 * **Bring! shopping list** *(opt-in)* — tick the box and enter your Bring! account e-mail and
   password to let the assistant read and edit your shopping list. Optionally name a specific list
   (defaults to your account's default list). While it's off, the shopping-list tools and prompt
-  aren't loaded at all. Note: Bring! has no official public API — this uses the same unofficial
-  endpoints the Bring! apps use, reverse engineered by the community, so it may break if Bring!
-  changes them.
+  aren't loaded at all.
 * **Local pipeline settings** *(Local provider only)* — per-stage backend choice plus host/port
   or URL/key/model for each, with Test buttons.
 

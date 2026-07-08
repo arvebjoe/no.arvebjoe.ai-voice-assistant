@@ -2,9 +2,9 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { BringClient } from '../src/helpers/bring-client.mjs';
 
 /**
- * Routes the client's fetch calls to canned responses by URL so the reverse
- * engineered Bring! flow (login -> resolve list -> read/PUT) can be exercised
- * without a network. `putBodies` records every list-change PUT for assertions.
+ * Routes the client's fetch calls to canned responses by URL so the Bring! flow
+ * (login -> resolve list -> read/PUT) can be exercised without a network.
+ * `putBodies` records every list-change PUT for assertions.
  */
 function installFetchMock(opts?: { purchase?: Array<{ name: string; specification: string }> }) {
     const putBodies: string[] = [];

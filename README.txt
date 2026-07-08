@@ -7,7 +7,7 @@ You choose the AI engine:
 
 The assistant can also search the web for current information (opening hours, departures, what's on at the cinema) using OpenAI web search or the Brave Search API, and it can tell you what it is able to do when you ask for help.
 
-If you use Bring!, you can turn on the optional shopping-list feature in settings and enter your Bring! account details. Then just say "what's on the shopping list?", "add milk" or "take bread off the list". If an item is already there, the assistant asks whether to increase the amount. (Bring! has no official public API; this uses community-maintained endpoints and may break if Bring! changes them.)
+If you use Bring!, you can turn on the optional shopping-list feature in settings and enter your Bring! account details. Then just say "what's on the shopping list?", "add milk" or "take bread off the list". If an item is already there, the assistant asks whether to increase the amount.
 
 Supported devices:
     - Home Assistant Voice Preview Edition (stock ESPHome firmware, no Home Assistant needed)

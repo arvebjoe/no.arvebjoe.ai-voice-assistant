@@ -3,11 +3,8 @@ import { createLogger } from './logger.mjs';
 /**
  * Minimal client for the Bring! shopping-list service.
  *
- * Bring! has no official public API. This talks to the same private REST
- * endpoints the Bring! web/mobile apps use, which the community reverse
- * engineered (see e.g. the `bring-shopping` / `node-bring-api` projects). Only
- * the handful of calls the voice assistant needs are implemented: log in, read
- * a list, and add / update / remove an item.
+ * Only the handful of calls the voice assistant needs are implemented: log in,
+ * read a list, and add / update / remove an item.
  *
  * The user must opt in (the `bring_enabled` setting) and provide their Bring!
  * account e-mail + password in the app settings — nothing here works without
@@ -15,8 +12,7 @@ import { createLogger } from './logger.mjs';
  */
 
 const BRING_REST_URL = 'https://api.getbring.com/rest/v2/';
-// Public API key shipped in the Bring! web app — not a secret, the same value
-// every unofficial client uses. Required on every request.
+// Client API key required on every request.
 const BRING_API_KEY = 'cof4Nc6D8saplXjE3h3HXqHH8m7VU2i1Gs0g85Sp';
 const REQUEST_TIMEOUT_MS = 15_000;
 // Refresh the access token a minute before it actually expires.
