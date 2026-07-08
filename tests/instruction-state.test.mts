@@ -75,6 +75,19 @@ describe('InstructionState', () => {
         expect(flakyLoader).toHaveBeenCalledTimes(2);
     });
 
+    it('appends the Bring! shopping-list block only when supportsShoppingList is set', async () => {
+        const { loader } = echoLoader();
+
+        const off = new InstructionState(undefined, loader);
+        await off.reload({ ...params, supportsShoppingList: false });
+        expect(off.text).not.toMatch(/get_shopping_list/);
+
+        const on = new InstructionState(undefined, loader);
+        await on.reload({ ...params, supportsShoppingList: true });
+        expect(on.text).toMatch(/get_shopping_list/);
+        expect(on.text).toMatch(/ITEM_ALREADY_EXISTS/);
+    });
+
     it('overrideText() replaces the prompt directly (updateAllInstructions seam)', async () => {
         const { loader } = echoLoader();
         const state = new InstructionState(undefined, loader);

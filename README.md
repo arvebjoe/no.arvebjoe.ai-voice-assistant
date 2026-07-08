@@ -31,6 +31,9 @@ just speak naturally:
 * **Ask anything** — general questions answered by the AI.
 * **Search the web** — *"what's playing at the cinema today?"*, *"when does the next bus leave?"* —
   current and local information via OpenAI web search or the Brave Search API (pick one in settings).
+* **Manage your Bring! shopping list** — *"what's on the shopping list?"*, *"add milk"*, *"take bread
+  off the list"*. If you add something that's already there, the assistant asks whether to increase
+  the amount or leave it. Opt-in — enable it and enter your Bring! account details in settings.
 * **Ask for help** — *"what can you do?"* and the assistant explains its own capabilities.
 
 The assistant understands and replies in **English, Dutch, German, French, Italian, Swedish,
@@ -175,6 +178,12 @@ engines.
   (and, for the local engine, to the selected TTS backend).
 * **Optional AI instructions** — personality or behaviour tweaks. Be careful: this **will**
   affect the AI. Write it in English.
+* **Web search** — **OpenAI web search** (uses your OpenAI key), **Brave Search API** (its own
+  free-tier key), or **Disabled**.
+* **Bring! shopping list** *(opt-in)* — tick the box and enter your Bring! account e-mail and
+  password to let the assistant read and edit your shopping list. Optionally name a specific list
+  (defaults to your account's default list). While it's off, the shopping-list tools and prompt
+  aren't loaded at all.
 * **Local pipeline settings** *(Local provider only)* — per-stage backend choice plus host/port
   or URL/key/model for each, with Test buttons.
 

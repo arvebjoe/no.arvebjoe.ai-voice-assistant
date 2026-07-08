@@ -123,6 +123,8 @@ export class SettingsManager {
     const knownKeys = ['openai_api_key', 'openai_model', 'gemini_api_key', 'openweather_api_key', 'selected_language_code', 'selected_language_name', 'selected_voice', 'ai_instructions', 'voice_provider', 'input_buffer_debug',
       // Web search tool (backend choice + the Brave key; 'openai' reuses openai_api_key)
       'web_search_provider', 'brave_api_key',
+      // Bring! shopping-list integration (opt-in): enable flag + account creds + optional list name
+      'bring_enabled', 'bring_email', 'bring_password', 'bring_list_name',
       // Local pipeline endpoints + per-stage backend selection (Whisper/Voxtral,
       // Ollama/Mistral, Piper/Voxtral) and the shared Mistral credentials/models
       'local_stt_host', 'local_stt_port', 'local_llm_host', 'local_llm_port', 'local_llm_model', 'local_tts_host', 'local_tts_port',
