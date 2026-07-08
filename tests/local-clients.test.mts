@@ -655,4 +655,50 @@ describe('PiperClient', () => {
         expect(fetchCalls.length).toBe(1);
         expect(fetchCalls[0].url).toBe('http://tts.local:5000/');
     });
+
+    it('sends a selected voice only when the server lists it, and caches the list', async () => {
+        const client = new PiperClient({ host: 'tts.local', port: 5000, voice: 'no_NO-talesyntese-medium' });
+        fetchImpl = (url, init) => {
+            if (url.endsWith('/voices')) return jsonResponse({ 'no_NO-talesyntese-medium': {}, 'en_US-lessac-medium': {} });
+            expect(JSON.parse(init!.body).voice).toBe('no_NO-talesyntese-medium');
+            return binaryResponse(wav);
+        };
+        await client.synthesize('Hei.');
+
+        // Voice list cached: the second synthesis fetches no /voices again.
+        fetchCalls = [];
+        await client.synthesize('Igjen.');
+        expect(fetchCalls.map((c) => c.url)).toEqual(['http://tts.local:5000/synthesize']);
+    });
+
+    it('drops a voice the server does not have (stale cross-backend selected_voice)', async () => {
+        const client = new PiperClient({ host: 'tts.local', port: 5000, voice: 'ash' });
+        fetchImpl = (url, init) => {
+            if (url.endsWith('/voices')) return jsonResponse({ 'en_US-lessac-medium': {} });
+            expect(JSON.parse(init!.body)).toEqual({ text: 'hello' });
+            return binaryResponse(wav);
+        };
+        await client.synthesize('hello');
+    });
+
+    it('disables voice selection when the server has no /voices endpoint', async () => {
+        const client = new PiperClient({ host: 'tts.local', port: 5000 });
+        client.setVoice('no_NO-talesyntese-medium');
+        fetchImpl = (url, init) => {
+            if (url.endsWith('/voices')) return jsonResponse('nope', 404);
+            expect(JSON.parse(init!.body)).toEqual({ text: 'hei' });
+            return binaryResponse(wav);
+        };
+        await client.synthesize('hei');
+    });
+
+    it('treats the server-default sentinel as no voice', async () => {
+        const client = new PiperClient({ host: 'tts.local', port: 5000, voice: 'server-default' });
+        fetchImpl = (url, init) => {
+            expect(url.endsWith('/voices')).toBe(false);
+            expect(JSON.parse(init!.body)).toEqual({ text: 'hi' });
+            return binaryResponse(wav);
+        };
+        await client.synthesize('hi');
+    });
 });

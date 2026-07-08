@@ -3,8 +3,9 @@
 Done items moved out of [`TODO.md`](./TODO.md). The full context is kept here **so we don't
 re-investigate** — several of these were expensive diagnoses. Section numbers mirror TODO.md.
 
-Items marked *(verify pending)* are implemented and believed correct, but still need a real-world
-test before the store release — they are tracked in TODO.md §0 (release testing checklist).
+Items marked *(verify pending)* are implemented and believed correct, but never got a real-world
+test — the release-testing checklist was dropped in the 2026-07-07 triage (§6 below), so verify
+ad-hoc if one of them misbehaves.
 
 ---
 
@@ -108,6 +109,18 @@ test before the store release — they are tracked in TODO.md §0 (release testi
 - [x] Done in gap analysis: `WAKE_WORD_END`, `ERROR` events, `INTENT_PROGRESS`, version-check,
   `SubscribeStates`, extra entity-type handlers.
 
+- [x] **Wake-word selection (2026-07-07, gap analysis #7).** The ESP client parses the wake-word
+  data already present in `VoiceAssistantConfigurationResponse` (`available_wake_words`,
+  `active_wake_words`, `max_active_wake_words`), stores it, and emits a `wake_words` event on every
+  config response (fires on each connect and after a change). New client methods
+  `getAvailableWakeWords()` / `getActiveWakeWords()` / `setActiveWakeWords(ids)` — the setter sends
+  `VoiceAssistantSetConfiguration` (id 123, the same call Home Assistant uses) then re-requests the
+  config so the cached state reflects what the device applied. PE device settings gained a read-only
+  **Available wake words** label (kept in sync from the device, active one marked) and a **Wake word**
+  text field; `onSettings` resolves the typed name/id case-and-separator-insensitively against the
+  reported list and activates it, rejecting an unknown word with the available list in the error
+  (which the SDK surfaces to the user). No new proto — the fields were always in `api.proto`.
+
 ---
 
 ## 2. OpenAI Realtime API (`src/llm/providers/openai-realtime-agent.mts`)
@@ -123,6 +136,25 @@ Sub-items of the still-open "Improve STT accuracy" work:
   (`conversation.item.delete` + `sendUserText` + `createResponse`), so the model answers what
   `gpt-4o-transcribe` heard. Near-zero latency cost since we already waited for
   `transcription.completed`.
+- [x] **#9 Model quality setting (2026-07-07).** New `openai_model` global setting (`full` |
+  `mini`) with a "Model quality" dropdown in the OpenAI section of the settings page. `full` =
+  `gpt-realtime-2025-08-28` (the previous hardcode), `mini` = `gpt-realtime-mini`. The model rides
+  in the websocket URL, so the URL is resolved fresh in `start()` (`realtimeUrl()`) and the device
+  forces a provider restart when the setting changes (`handleSettingsChange`). An explicit
+  `options.url` still wins (tests / overrides).
+- [x] **#11 Act on `rate_limits.updated` (2026-07-07).** `checkRateLimits()` in the agent: log
+  warning when any quota window drops below 20% remaining; Homey notification below 5%, throttled
+  to one per hour (`lastQuotaNotificationAt`) since the event arrives after every response.
+- [x] **STT vocabulary prompt (2026-07-07).** The sidecar transcription now carries a `prompt`
+  with the device/zone names: `DeviceManager.getVocabularyNames()` (unique zones + device names)
+  → `ToolManager.getSttVocabulary()` → `sttVocabularyPrompt()` in `sendSessionUpdate`, capped at
+  800 chars. Empty until the catalog loads — the next session.update (reconnect, settings change,
+  30 s idle-timeout reopen) picks it up. *(Real-speech Norwegian verification never happened —
+  dropped with the rest of the hardware checklist in the 2026-07-07 triage, test ad-hoc.)*
+- [x] **#8 Simplify VAD response trigger — closed as won't-do (2026-07-07).** `create_response:
+  true` would make the model answer the *audio*, undoing the text-anchored-replies fix above
+  (the whole point is answering the far-more-accurate sidecar transcript). Rationale recorded in
+  OPENAI_API_IMPROVEMENTS.md §8. Barge-in (`interrupt_response`) could be a separate future item.
 
 ---
 
@@ -133,6 +165,23 @@ Sub-items of the still-open "Improve STT accuracy" work:
   conversations both work; the reply is delivered in-band on `TTS_END` and the PE auto-reopens the mic
   for each subsequent turn. The session ends on a silent turn (user has nothing to say) or after the
   context TTL. See §1 (follow-up audio bug, fixed) and branch `fix/followup-turn-audio`.
+
+- [x] **Help! (2026-07-07)** — new `get_assistant_capabilities` tool: "what can you do?" returns a
+  summary plus the live registered tool list (name + description), built from `ToolManager.tools`
+  so it stays correct as tools come and go (timer tools only listed when the device supports them).
+  The tool description instructs the model to summarize conversationally in the user's language.
+
+- [x] **Web search (2026-07-07)** — new `web_search` tool for current/local info ("what's on at the
+  cinema today?", "when does the next bus leave?"). Backend chosen by the `web_search_provider`
+  setting (`src/helpers/web-search.mts`):
+  - `openai` (default): OpenAI Responses API with the hosted `web_search` tool, reusing
+    `openai_api_key`. The model searches AND summarizes; the tool returns `{ answer, sources }`.
+    The device's IANA timezone is passed as `user_location.approximate` (Homey exposes no
+    city/country) so "the local cinema" resolves. Model `gpt-5-mini`.
+  - `brave`: Brave Search API (`brave_api_key`, free tier) — returns raw `{ results[] }` snippets;
+    the voice agent's own LLM summarizes.
+  - `disabled`: the tool returns a WEB_SEARCH_DISABLED error the model relays.
+  Settings page: a "Web search" dropdown + a Brave key field shown only for the Brave backend.
 
 ---
 
@@ -243,3 +292,56 @@ real services is still open — TODO §5.)* Backends delivered:
   of silence, LLM answers "Reply with exactly: OK", TTS synthesizes "OK"), so wrong model ids,
   rejected keys and bad voices surface, with latency and the underlying cause (ECONNREFUSED …)
   shown inline. 30 s bound per test.
+- [x] **Per-request Piper voice selection (2026-07-07).** `PiperClient` now sends the app's
+  `selected_voice` as `/synthesize {voice}` (piper1-gpl supports it), but only after confirming
+  the id against the server's own `GET /voices` dict (fetched once, cached) — so a stale
+  cross-backend `selected_voice` (an OpenAI name / Voxtral UUID left over from a backend switch)
+  falls back to the server default instead of 4xx-ing every synthesis; a server without `/voices`
+  disables voice selection entirely. The Voice dropdown for the Piper backend lists the server's
+  installed voices behind a "Server default voice" entry (`listPiperVoices` +
+  `getAvailableVoices('piper')`). Sentinel `server-default` = no voice sent.
+- [x] **Mistral Voxtral Realtime — streaming STT backend (2026-07-07).** Fifth STT dropdown option
+  "Mistral Voxtral Realtime (cloud, streaming)" using Mistral's websocket transcription endpoint
+  (`wss://api.mistral.ai/v1/audio/transcriptions/realtime?model=…`), much lower latency than the
+  batch upload. `local/mistral-realtime-stt-client.mts` — the wire protocol was reverse-engineered
+  from the official `mistralai` Python SDK v2.6.0 (`mistralai/extra/realtime/`), since the docs
+  pages are behind a bot wall: on `session.created` send `session.update` with
+  `audio_format {encoding:pcm_s16le, sample_rate:16000}` + `target_streaming_delay_ms:480`, then
+  base64 `input_audio.append` chunks (kept under the 256 KiB decoded cap), then `input_audio.flush`
+  + `input_audio.end`; collect `transcription.text.delta`, resolve on `transcription.done`. Shares
+  `mistral_api_key`; optional `mistral_stt_realtime_model` override (default
+  `voxtral-mini-transcribe-realtime-2602`). No language param — the model detects it. Test button
+  supported. *(Verify against the live Mistral API — like the other Voxtral stages, only unit-tested
+  so far with a fake websocket.)*
+
+---
+
+## 6. 2026-07-07 triage — dropped items
+
+The old TODO list was emptied on 2026-07-07: every item was either completed (archived in the
+sections above) or explicitly dropped by the owner. Dropped items and their context, in case any
+come back:
+
+- **§0 release-testing checklist** (3-question quiz re-run, LED-phase fidelity on the PE, fresh
+  `[CONVO]` trace, STT changes on real speech, timer LED-drift resync, local pipeline against real
+  services, README image refresh) — all needed real hardware; owner chose to test ad-hoc instead
+  of tracking them. The README images (`.resources/settings.jpg` predates the provider redesign)
+  are still stale — remember them before a store release.
+- **§1 conversation-flow warts** — the multi-segment announce race (short first segment's ack
+  arrives before segment 2 exists → premature turn-complete, self-heals by luck) and the
+  keepOpen-with-no-audio edge (`peConversationActive=true` but no TTS URL → PE may not reopen).
+  Details survive in memory `followup-turn-no-audio-rootcause.md` if the bugs resurface.
+- **§1 multiple concurrent timers** — single-timer limitation stays; the agent asks to replace.
+- **§1 ESPHome Noise encryption** — plaintext-only client stays; revisit when a user asks
+  (a satellite with an API encryption key set cannot connect at all).
+- **§2 #8 simplify VAD response trigger** — closed as won't-do (see §2 above).
+- **§3 start flows by voice / change settings by voice / unchunked flow-triggered replies** —
+  dropped; the unchunked-replies idea touches the announce queue with the known race, riskier
+  than it looks.
+- **§4 LED thinking-phase bug** (old white pulse despite `Cold Rainbow` in the config; suspected
+  stale flash) — hardware-only diagnosis, dropped from tracking. The debug steps if it returns:
+  confirm the running build via boot-log `compiled on` timestamp, verify the editor config,
+  watch device LOGS during the thinking phase.
+- **§5 SimpleVad threshold tuning / wake-word→reply latency measurement / optional auth on the
+  LAN endpoints** — dropped.
+- **§6 image analysis** — dropped (web search survived and was implemented).

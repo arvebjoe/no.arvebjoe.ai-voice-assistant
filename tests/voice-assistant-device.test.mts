@@ -95,6 +95,47 @@ describe('VoiceAssistantDevice (harness)', () => {
         });
     });
 
+    describe('wake-word selection', () => {
+        const nabu = { id: 'okay_nabu', wakeWord: 'Okay Nabu', trainedLanguages: ['en'] };
+        const homey = { id: 'hey_homey', wakeWord: 'Hey Homey', trainedLanguages: ['en'] };
+
+        it('activates a wake word by name (case/space-insensitive) via onSettings', async () => {
+            const h = await createHarness();
+            h.esp.availableWakeWords = [nabu, homey];
+
+            const msg = await (h.device as any).onSettings({
+                oldSettings: { wake_word: '' },
+                newSettings: { wake_word: 'hey homey' },
+                changedKeys: ['wake_word'],
+            });
+
+            expect(msg).toContain('Hey Homey');
+            const set = h.esp.calls.find(c => c.method === 'setActiveWakeWords');
+            expect(set?.args[0]).toEqual(['hey_homey']);
+        });
+
+        it('rejects an unknown wake word with the available list in the error', async () => {
+            const h = await createHarness();
+            h.esp.availableWakeWords = [nabu];
+
+            await expect((h.device as any).onSettings({
+                oldSettings: { wake_word: '' },
+                newSettings: { wake_word: 'alexa' },
+                changedKeys: ['wake_word'],
+            })).rejects.toThrow(/Okay Nabu/);
+            expect(h.esp.countOf('setActiveWakeWords')).toBe(0);
+        });
+
+        it('updates the available_wake_words label when the device reports its config', async () => {
+            const h = await createHarness();
+            h.esp.emit('wake_words', [nabu, homey], ['okay_nabu'], 1);
+            await h.settle(0);
+            const settings = (h.device as any).getSettings();
+            expect(settings.available_wake_words).toContain('Okay Nabu (okay_nabu) — active');
+            expect(settings.available_wake_words).toContain('Hey Homey (hey_homey)');
+        });
+    });
+
     describe('H-l — announce segments play in order', () => {
         function chunk(marker: number): Buffer {
             // First byte is the marker the fake buildStream keys its delay/URL on.

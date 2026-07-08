@@ -399,34 +399,47 @@ describe('LocalPipelineProvider', () => {
     });
 
     it('offers voices matching the TTS backend', async () => {
-        // Saved setting decides when no override is passed.
-        expect((await LocalPipelineProvider.getAvailableVoices()).map((v) => v.value)).toEqual(['server-default']);
-
-        // Voxtral without a saved key: one sentinel entry ('' = client picks), no network.
-        homey.setMockSetting('local_tts_provider', 'mistral');
-        homey.setMockSetting('mistral_api_key', '');
-        expect((await LocalPipelineProvider.getAvailableVoices()).map((v) => v.value)).toEqual(['']);
-
-        // With a key the list comes live from GET /v1/audio/voices.
-        homey.setMockSetting('mistral_api_key', 'sk-provider-voices-test');
-        vi.stubGlobal('fetch', vi.fn(async () => ({
-            ok: true,
-            status: 200,
-            json: async () => ({
-                items: [{ id: '530e2e20-58e2-45d8-b0a5-4594f4915944', name: 'Paul - Sad', slug: 'en_paul_sad', languages: ['en_us'] }],
-                total: 1,
-            }),
-        })));
+        // Piper with no /voices endpoint (older server): the single default entry.
+        // Stubbed fetch rejects so the live voice-list probe fails fast.
+        vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('no /voices'); }));
         try {
+            // Saved setting decides when no override is passed.
+            expect((await LocalPipelineProvider.getAvailableVoices()).map((v) => v.value)).toEqual(['server-default']);
+
+            // Voxtral without a saved key: one sentinel entry ('' = client picks), no network.
+            homey.setMockSetting('local_tts_provider', 'mistral');
+            homey.setMockSetting('mistral_api_key', '');
+            expect((await LocalPipelineProvider.getAvailableVoices()).map((v) => v.value)).toEqual(['']);
+
+            // With a key the list comes live from GET /v1/audio/voices.
+            homey.setMockSetting('mistral_api_key', 'sk-provider-voices-test');
+            vi.stubGlobal('fetch', vi.fn(async () => ({
+                ok: true,
+                status: 200,
+                json: async () => ({
+                    items: [{ id: '530e2e20-58e2-45d8-b0a5-4594f4915944', name: 'Paul - Sad', slug: 'en_paul_sad', languages: ['en_us'] }],
+                    total: 1,
+                }),
+            })));
             expect(await LocalPipelineProvider.getAvailableVoices()).toEqual([
                 { value: '530e2e20-58e2-45d8-b0a5-4594f4915944', name: 'Paul - Sad (EN-US)' },
+            ]);
+
+            // Piper with a piper1-gpl server: its GET /voices dict becomes the list,
+            // behind the server-default entry. Override (settings preview) wins
+            // over the saved 'mistral' setting.
+            homey.setMockSetting('local_tts_host', 'tts.local');
+            vi.stubGlobal('fetch', vi.fn(async () => ({
+                ok: true,
+                status: 200,
+                json: async () => ({ 'no_NO-talesyntese-medium': {}, 'en_US-lessac-medium': {} }),
+            })));
+            expect((await LocalPipelineProvider.getAvailableVoices('piper')).map((v) => v.value)).toEqual([
+                'server-default', 'en_US-lessac-medium', 'no_NO-talesyntese-medium',
             ]);
         } finally {
             vi.unstubAllGlobals();
         }
-
-        // An explicit override (settings-page preview) wins over the saved setting.
-        expect((await LocalPipelineProvider.getAvailableVoices('piper')).map((v) => v.value)).toEqual(['server-default']);
         // The generic backend offers OpenAI's standard voices.
         expect((await LocalPipelineProvider.getAvailableVoices('openai')).map((v) => v.value)).toContain('alloy');
     });

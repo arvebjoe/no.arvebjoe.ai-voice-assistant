@@ -478,6 +478,28 @@
       "id": "home-assistant-voice-preview-edition",
       "settings": [
         {
+          "id": "available_wake_words",
+          "type": "label",
+          "label": {
+            "en": "Available wake words"
+          },
+          "value": "",
+          "hint": {
+            "en": "Wake words installed on the device, reported when it connects. The active one is marked."
+          }
+        },
+        {
+          "id": "wake_word",
+          "type": "text",
+          "label": {
+            "en": "Wake word"
+          },
+          "value": "",
+          "hint": {
+            "en": "Type one of the available wake words (name or id, e.g. 'Okay Nabu' or 'okay_nabu') to activate it on the device. Leave empty to keep the current one."
+          }
+        },
+        {
           "id": "initial_audio_skip",
           "type": "number",
           "label": {

@@ -45,4 +45,11 @@ export class EspVoiceAssistantClient extends EventEmitter {
     playAudioFromUrl(url: string, startConversation: boolean) { this.record('playAudioFromUrl', url, startConversation); }
     setVolume(v: number) { this.record('setVolume', v); }
     setMute(v: boolean) { this.record('setMute', v); }
+
+    // Wake-word configuration (tests preload availableWakeWords)
+    public availableWakeWords: Array<{ id: string; wakeWord: string; trainedLanguages: string[] }> = [];
+    public activeWakeWords: string[] = [];
+    getAvailableWakeWords() { return this.availableWakeWords; }
+    getActiveWakeWords() { return this.activeWakeWords; }
+    setActiveWakeWords(ids: string[]) { this.record('setActiveWakeWords', ids); this.activeWakeWords = ids; }
 }

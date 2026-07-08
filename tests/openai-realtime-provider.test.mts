@@ -77,6 +77,28 @@ describe('OpenAIRealtimeProvider (fake WebSocket harness)', () => {
         expect(openSpy).toHaveBeenCalled();
     });
 
+    it('connects to the full model by default and feeds device/zone names into the transcription prompt', async () => {
+        const homey = new MockHomey();
+        const tm = fakeToolManager();
+        (tm as any).getSttVocabulary = () => ['Kitchen', 'Taklampe stue'];
+        provider = new OpenAIRealtimeProvider(homey as any, tm as any, { ...baseOpts });
+
+        const ws = await connect();
+        expect(ws.url).toContain('model=gpt-realtime-2025-08-28');
+
+        const update = ws.parsedSent().find(m => m.type === 'session.update');
+        const transcription = update.session.audio.input.transcription;
+        expect(transcription.prompt).toContain('Kitchen');
+        expect(transcription.prompt).toContain('Taklampe stue');
+    });
+
+    it('omits the transcription prompt while the device catalog is empty', async () => {
+        makeProvider(); // module-level fake tool manager returns no vocabulary
+        const ws = await connect();
+        const update = ws.parsedSent().find(m => m.type === 'session.update');
+        expect(update.session.audio.input.transcription.prompt).toBeUndefined();
+    });
+
     it('decodes base64 audio deltas into a Buffer', async () => {
         makeProvider();
         const ws = await connect();

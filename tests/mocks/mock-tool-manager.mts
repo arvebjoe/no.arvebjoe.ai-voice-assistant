@@ -12,6 +12,7 @@ export function fakeToolManager(
     return {
         getToolDefinitions: () => defs,
         getToolHandlers: () => handlers,
+        getSttVocabulary: () => [] as string[],
         setStandardZone: () => { },
         execute: async (name: string, args: any): Promise<{ output: any; failed: boolean }> => {
             const fn = handlers[name];

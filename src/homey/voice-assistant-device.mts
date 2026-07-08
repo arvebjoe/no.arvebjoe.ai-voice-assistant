@@ -42,6 +42,10 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
   // handleSettingsChange so switching the 'voice_provider' setting rebuilds the
   // provider at runtime instead of silently keeping the old one until restart.
   private currentProviderId: string = DEFAULT_VOICE_PROVIDER;
+  // Last seen 'openai_model' quality setting ('full' | 'mini'). The model is
+  // baked into the Realtime websocket URL, so a change needs a provider restart
+  // (handleSettingsChange) rather than a session.update.
+  private currentOpenAiModel: string = 'full';
 
   private settingsUnsubscribe?: () => void;
   private providerOptions!: VoiceProviderOptions;
@@ -178,6 +182,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     // Remember which id it was built from so handleSettingsChange can detect a
     // runtime provider switch and rebuild (see rebuildProvider).
     this.currentProviderId = settingsManager.getGlobal('voice_provider', DEFAULT_VOICE_PROVIDER);
+    this.currentOpenAiModel = settingsManager.getGlobal('openai_model', 'full');
     this.provider = createVoiceProvider(this.homey, this.toolManager, this.providerOptions, this.currentProviderId);
     this.configureResampler();
 
@@ -481,6 +486,19 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       // the handshake is complete and the device renders the ring. No-op on the
       // initial connect (no timer running yet).
       this.timerManager?.reissue();
+    });
+
+    // The satellite reported its wake-word configuration (fires on every
+    // connect and after a setActiveWakeWords). Surface it in the device
+    // settings: a read-only list of what's on board, with the active one
+    // marked, so the user knows what to type in the 'wake_word' text setting.
+    this.esp.on('wake_words', (available, active) => {
+      const lines = available
+        .map(w => `${w.wakeWord} (${w.id})${active.includes(w.id) ? ' — active' : ''}`)
+        .join('\n');
+      this.setSettings({ available_wake_words: lines }).catch(err => {
+        this.logger.error('Failed to update available_wake_words setting', err);
+      });
     });
 
 
@@ -809,6 +827,17 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
         this.providerOptions.languageName = newLanguageName || 'English';
         this.provider.updateLanguage(this.providerOptions.languageCode, this.providerOptions.languageName);
         needRestart = true;
+      }
+
+      // OpenAI model quality changed: the model rides in the websocket URL, so
+      // only a reconnect (restart) picks it up. Irrelevant for other providers.
+      const newOpenAiModel = newSettings.openai_model ?? 'full';
+      if (newOpenAiModel !== this.currentOpenAiModel) {
+        this.logger.info(`OpenAI model quality changed from ${this.currentOpenAiModel} to ${newOpenAiModel}`);
+        this.currentOpenAiModel = newOpenAiModel;
+        if (this.currentProviderId === 'openai-realtime') {
+          needRestart = true;
+        }
       }
 
       // Check if AI instructions changed
@@ -1200,6 +1229,35 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     this.followupSkipBytes = this.msToBytes(followupSkipMs, 16000, 1, 2);
 
     this.logger.info(`Audio skip updated: initial=${skipMs ?? 'unset'}ms, followup=${followupSkipMs}ms`);
+
+    // Wake-word change: resolve the typed name/id against what the satellite
+    // reported and activate it (VoiceAssistantSetConfiguration). Throwing here
+    // rejects the settings save with the message shown to the user.
+    if (changedKeys.includes('wake_word')) {
+      const wanted = String(newSettings.wake_word ?? '').trim();
+      if (wanted) {
+        return this.applyWakeWord(wanted);
+      }
+    }
+  }
+
+  /** Resolve + activate a wake word typed in the device settings. */
+  private applyWakeWord(wanted: string): string {
+    if (!this.esp?.isConnected) {
+      throw new Error('The device is not connected — try again when it is online.');
+    }
+    const available = this.esp.getAvailableWakeWords();
+    if (available.length === 0) {
+      throw new Error('The device has not reported any selectable wake words.');
+    }
+    const norm = (s: string) => s.toLowerCase().replace(/[\s_-]+/g, '_');
+    const match = available.find(w => norm(w.id) === norm(wanted) || norm(w.wakeWord) === norm(wanted));
+    if (!match) {
+      throw new Error(`Unknown wake word '${wanted}'. Available: ${available.map(w => `${w.wakeWord} (${w.id})`).join(', ')}`);
+    }
+    this.esp.setActiveWakeWords([match.id]);
+    this.logger.info(`Wake word set to ${match.wakeWord} (${match.id})`);
+    return `Wake word set to "${match.wakeWord}".`;
   }
 
   /**

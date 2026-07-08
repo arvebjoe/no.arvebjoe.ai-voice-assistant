@@ -227,6 +227,22 @@ export class DeviceManager implements IDeviceManager {
     }
 
     /**
+     * Unique zone + device names, for the STT vocabulary prompt: domain words
+     * ("Taklampe stue") the transcriber would otherwise mis-hear. Zones first
+     * (short list), then devices. Empty until fetchData() has run.
+     */
+    getVocabularyNames(): string[] {
+        const names = new Set<string>();
+        for (const zone of this.zoneList) {
+            if (zone) names.add(zone);
+        }
+        for (const device of this.devices) {
+            if (device?.name) names.add(device.name);
+        }
+        return Array.from(names);
+    }
+
+    /**
      * Get a distinct list of all device types (classes) in the system
      * @returns Array of unique device types
      */

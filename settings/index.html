@@ -204,6 +204,14 @@
         </div>
         <div class="help-text">Visit https://platform.openai.com to get one</div>
       </div>
+      <div class="homey-form-group">
+        <label class="homey-form-label" for="openai_model">Model quality</label>
+        <select class="homey-form-input" id="openai_model">
+          <option value="full">Full (gpt-realtime) — best quality</option>
+          <option value="mini">Mini (gpt-realtime-mini) — cheaper &amp; faster</option>
+        </select>
+        <div class="help-text">Mini costs a fraction of Full per minute; Full understands tricky requests better.</div>
+      </div>
     </div>
 
     <div id="gemini_realtime_settings" style="display: none;">
@@ -242,6 +250,7 @@
           <option value="whisper">Whisper — HTTP (local)</option>
           <option value="wyoming">Wyoming — faster-whisper (local)</option>
           <option value="mistral">Mistral Voxtral (cloud API)</option>
+          <option value="mistral-realtime">Mistral Voxtral Realtime (cloud, streaming)</option>
           <option value="openai">OpenAI-compatible (cloud or custom)</option>
         </select>
       </div>
@@ -285,6 +294,16 @@
             placeholder="voxtral-mini-latest" />
           <div class="help-text">Mistral's Voxtral transcription API. Empty = <code>voxtral-mini-latest</code>.
             Your voice recordings are sent to Mistral for transcription.</div>
+        </div>
+      </div>
+      <div id="local_stt_mistral_realtime" style="display: none;">
+        <div class="homey-form-group">
+          <label class="homey-form-label" for="mistral_stt_realtime_model">Model</label>
+          <input type="text" class="homey-form-input" id="mistral_stt_realtime_model" autocomplete="off"
+            placeholder="voxtral-mini-transcribe-realtime-2602" />
+          <div class="help-text">Mistral's streaming transcription websocket (sub-500 ms). Empty =
+            <code>voxtral-mini-transcribe-realtime-2602</code>. Your voice recordings are sent to Mistral for
+            transcription.</div>
         </div>
       </div>
       <div id="local_stt_openai" style="display: none;">
@@ -503,6 +522,26 @@
         placeholder="Enter optional instructions for the AI, such as personality traits, behavior guidelines, or specific responses you'd like..."></textarea>
       <div class="help-text">Customize the AI's personality and behavior with additional instructions. Examples: "You act like Santa Claus" or "Be super sarcastic like GLaDOS."</div>
     </div>
+
+    <div class="homey-form-group">
+      <label class="homey-form-label" for="web_search_provider">Web search</label>
+      <select class="homey-form-input" id="web_search_provider">
+        <option value="openai">OpenAI web search (uses your OpenAI key)</option>
+        <option value="brave">Brave Search API</option>
+        <option value="disabled">Disabled</option>
+      </select>
+      <div class="help-text">Lets the assistant answer questions about current events, opening hours, departures, etc.
+        OpenAI searches and summarizes with your OpenAI API key; Brave uses its own free-tier key.</div>
+    </div>
+    <div class="homey-form-group" id="brave_key_group" style="display: none;">
+      <label class="homey-form-label" for="brave_api_key">Brave Search API key</label>
+      <div class="secret-wrap">
+        <input type="password" class="homey-form-input" id="brave_api_key" autocomplete="off"
+          placeholder="Enter your Brave Search API key here..." />
+        <button type="button" class="secret-toggle" data-for="brave_api_key">Show</button>
+      </div>
+      <div class="help-text">Visit https://api.search.brave.com to get one (free tier available).</div>
+    </div>
   </fieldset>
 
   <button id="save" class="homey-button-primary-full">Save changes</button>
@@ -524,7 +563,7 @@
       // Local pipeline settings: inputs/selects that load and save 1:1 with a
       // global setting key of the same id.
       var localSettingIds = [
-        "local_stt_provider", "local_stt_host", "local_stt_port", "mistral_stt_model",
+        "local_stt_provider", "local_stt_host", "local_stt_port", "mistral_stt_model", "mistral_stt_realtime_model",
         "wyoming_stt_host", "wyoming_stt_port",
         "local_llm_provider", "local_llm_host", "local_llm_port", "local_llm_model", "mistral_model",
         "lmstudio_host", "lmstudio_port", "lmstudio_model",
@@ -547,14 +586,14 @@
         // Each stage shows exactly one of its three backend blocks
         // (<lan default> / mistral / openai) based on its dropdown.
         var stages = [
-          { select: sttProviderSelectElement, blocks: { whisper: "local_stt_whisper", wyoming: "local_stt_wyoming", mistral: "local_stt_mistral", openai: "local_stt_openai" }, def: "whisper" },
+          { select: sttProviderSelectElement, blocks: { whisper: "local_stt_whisper", wyoming: "local_stt_wyoming", mistral: "local_stt_mistral", "mistral-realtime": "local_stt_mistral_realtime", openai: "local_stt_openai" }, def: "whisper" },
           { select: llmProviderSelectElement, blocks: { ollama: "local_llm_ollama", lmstudio: "local_llm_lmstudio", mistral: "local_llm_mistral", openai: "local_llm_openai" }, def: "ollama" },
           { select: ttsProviderSelectElement, blocks: { piper: "local_tts_piper", wyoming: "local_tts_wyoming", mistral: "local_tts_mistral", openai: "local_tts_openai" }, def: "piper" }
         ];
         var anyMistral = false;
         stages.forEach(function (stage) {
           var value = stage.blocks[stage.select.value] ? stage.select.value : stage.def;
-          if (value === "mistral") anyMistral = true;
+          if (value === "mistral" || value === "mistral-realtime") anyMistral = true;
           Object.keys(stage.blocks).forEach(function (backend) {
             document.getElementById(stage.blocks[backend]).style.display = backend === value ? "" : "none";
           });
@@ -606,7 +645,8 @@
             stage: "stt", backend: sttBackend,
             host: sttBackend === "wyoming" ? v("wyoming_stt_host") : v("local_stt_host"),
             port: sttBackend === "wyoming" ? v("wyoming_stt_port") : v("local_stt_port"),
-            model: sttBackend === "mistral" ? v("mistral_stt_model") : v("openai_stt_model"),
+            model: sttBackend === "mistral" ? v("mistral_stt_model")
+              : sttBackend === "mistral-realtime" ? v("mistral_stt_realtime_model") : v("openai_stt_model"),
             mistralApiKey: v("mistral_api_key"),
             url: v("openai_stt_url"), key: v("openai_stt_key"),
             language: languageSelectElement.value
@@ -665,6 +705,28 @@
       Homey.get("gemini_api_key", function (err, apiKey) {
         if (err) return Homey.alert(err);
         if (apiKey) geminiApiKeyElement.value = apiKey;
+      });
+
+      Homey.get("openai_model", function (err, model) {
+        if (err) return Homey.alert(err);
+        document.getElementById("openai_model").value = model || "full";
+      });
+
+      // Web search: backend dropdown + the Brave key (shown only for Brave).
+      var webSearchSelectElement = document.getElementById("web_search_provider");
+      function refreshWebSearchVisibility() {
+        document.getElementById("brave_key_group").style.display =
+          webSearchSelectElement.value === "brave" ? "" : "none";
+      }
+      webSearchSelectElement.addEventListener("change", refreshWebSearchVisibility);
+      Homey.get("web_search_provider", function (err, backend) {
+        if (err) return Homey.alert(err);
+        webSearchSelectElement.value = backend || "openai";
+        refreshWebSearchVisibility();
+      });
+      Homey.get("brave_api_key", function (err, key) {
+        if (err) return Homey.alert(err);
+        if (key) document.getElementById("brave_api_key").value = key;
       });
 
       // Show/hide toggles for the masked API-key inputs.
@@ -744,6 +806,19 @@
 
         // Save Gemini API key
         Homey.set("gemini_api_key", geminiApiKeyElement.value.trim(), function (err) {
+          if (err) return Homey.alert(err);
+        });
+
+        // Save OpenAI Realtime model quality (full vs mini)
+        Homey.set("openai_model", document.getElementById("openai_model").value, function (err) {
+          if (err) return Homey.alert(err);
+        });
+
+        // Save the web-search backend + Brave key
+        Homey.set("web_search_provider", webSearchSelectElement.value, function (err) {
+          if (err) return Homey.alert(err);
+        });
+        Homey.set("brave_api_key", document.getElementById("brave_api_key").value.trim(), function (err) {
           if (err) return Homey.alert(err);
         });
 

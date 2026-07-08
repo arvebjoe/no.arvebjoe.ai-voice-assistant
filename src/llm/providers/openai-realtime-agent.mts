@@ -7,6 +7,7 @@ import { IVoiceProvider, VoiceProviderEvents, VoiceProviderOptions } from '../vo
 import { InstructionState } from '../instruction-state.mjs';
 import { ReconnectPolicy } from '../reconnect-policy.mjs';
 import { isBlankOrHallucinatedTranscript } from '../transcript-hallucinations.mjs';
+import { settingsManager } from '../../settings/settings-manager.mjs';
 
 /**
  * Event/option shapes now live in the provider-agnostic seam (`voice-provider.mts`).
@@ -71,6 +72,17 @@ const OPENAI_DEFAULT_VOICE = 'ash';
 const OPENAI_VOICE_VALUES = new Set(OPENAI_VOICES.map((v) => v.value));
 
 /**
+ * Realtime models selectable via the 'openai_model' global setting.
+ * 'full' is the flagship (best quality), 'mini' is cheaper and faster.
+ * The model rides in the websocket URL, so changing it requires a reconnect
+ * (the device forces a restart when the setting changes).
+ */
+const OPENAI_REALTIME_MODELS: Record<string, string> = {
+    full: 'gpt-realtime-2025-08-28',
+    mini: 'gpt-realtime-mini',
+};
+
+/**
  * Normalize a stored voice to a valid OpenAI voice. The app keeps a single
  * `selected_voice` setting shared across providers, so it may hold another
  * provider's voice name after a provider switch — fall back rather than send an
@@ -125,6 +137,10 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
     // Output mode configuration
     private outputMode: "audio" | "text" = "audio"; // Default to audio output
 
+    // Throttle for the low-quota Homey notification (one per hour, not per turn —
+    // rate_limits.updated arrives after every response).
+    private lastQuotaNotificationAt = 0;
+
     constructor(homey: any, toolManager: ToolManager, opts: RealtimeOptions) {
         super();
 
@@ -133,7 +149,9 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
 
         this.options = {
             apiKey: opts.apiKey ?? '',
-            url: opts.url ?? `wss://api.openai.com/v1/realtime?model=gpt-realtime-2025-08-28`,
+            // Empty = resolve from the 'openai_model' setting at connect time
+            // (see realtimeUrl). A caller-supplied url always wins (tests).
+            url: opts.url ?? '',
             voice: openaiVoiceName(opts.voice),
             languageCode: opts.languageCode ?? "en",
             languageName: opts.languageName ?? "English",
@@ -151,6 +169,43 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
         // Kick off the instruction load; session.created awaits it before
         // configuring the session (see ensureLoaded there).
         void this.instructionState.reload(this.instructionParams());
+    }
+
+    /**
+     * Websocket URL for this connection. An explicit options.url wins; otherwise
+     * the model comes from the 'openai_model' global setting ('full' | 'mini'),
+     * read fresh on every connect so a settings change + restart picks it up.
+     */
+    private realtimeUrl(): string {
+        if (this.options.url) return this.options.url;
+        const quality = settingsManager.getGlobal<string>('openai_model', 'full');
+        const model = OPENAI_REALTIME_MODELS[quality] ?? OPENAI_REALTIME_MODELS.full;
+        return `wss://api.openai.com/v1/realtime?model=${model}`;
+    }
+
+    /**
+     * Act on rate_limits.updated (OPENAI_API_IMPROVEMENTS #11): warn in the log
+     * when a quota window is running low, and surface a Homey notification
+     * (throttled to one per hour) when it is nearly exhausted so the user learns
+     * about it before requests start failing.
+     */
+    private checkRateLimits(msg: any): void {
+        const limits = Array.isArray(msg?.rate_limits) ? msg.rate_limits : [];
+        for (const l of limits) {
+            if (typeof l?.remaining !== "number" || typeof l?.limit !== "number" || l.limit <= 0) continue;
+            const fraction = l.remaining / l.limit;
+            if (fraction >= 0.2) continue;
+
+            this.logger.warn(`OpenAI quota low: '${l.name}' has ${l.remaining}/${l.limit} left` +
+                (typeof l.reset_seconds === "number" ? ` (resets in ${Math.round(l.reset_seconds)}s)` : ""));
+
+            if (fraction < 0.05 && Date.now() - this.lastQuotaNotificationAt > 60 * 60 * 1000) {
+                this.lastQuotaNotificationAt = Date.now();
+                this.homey?.notifications?.createNotification?.({
+                    excerpt: `AI Assistant: OpenAI rate limit '${l.name}' almost exhausted (${l.remaining}/${l.limit} left). Responses may fail until the quota resets.`,
+                }).catch((err: any) => this.logger.error("Failed to send quota notification", err));
+            }
+        }
     }
 
     /** The option fields the system prompt is built from. */
@@ -187,11 +242,12 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
         // A manual start() supersedes any scheduled reconnect attempt.
         this.reconnect.clearTimer();
 
-        this.logger.info("Connecting WS:", 'START', this.options.url);
+        const url = this.realtimeUrl();
+        this.logger.info("Connecting WS:", 'START', url);
 
         try {
 
-            this.ws = new WebSocket(this.options.url, {
+            this.ws = new WebSocket(url, {
                 headers: {
                     Authorization: `Bearer ${this.options.apiKey}`
                 },
@@ -564,6 +620,7 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
                 break;
 
             case "rate_limits.updated":
+                this.checkRateLimits(msg);
                 this.emit("rate_limits.updated", msg);
                 break;
 
@@ -842,9 +899,32 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
         this.send(evt);
     }
 
+    /**
+     * Domain-vocabulary prompt for the sidecar transcriber: device and zone
+     * names from DeviceManager so commands like "slå på Taklampe stue"
+     * transcribe correctly. Capped so an unusually large home can't blow the
+     * transcription prompt budget. Undefined while the catalog is still empty
+     * (the next session.update after a reconnect picks it up).
+     */
+    private sttVocabularyPrompt(): string | undefined {
+        const names = this.toolManager.getSttVocabulary();
+        if (names.length === 0) return undefined;
+
+        const MAX_CHARS = 800;
+        const parts: string[] = [];
+        let length = 0;
+        for (const name of names) {
+            if (length + name.length + 2 > MAX_CHARS) break;
+            parts.push(name);
+            length += name.length + 2;
+        }
+        return `Smart home voice commands. Device and room names: ${parts.join(', ')}.`;
+    }
+
     private sendSessionUpdate() {
         // tools schema
         const tools = this.sessionToolsArray();
+        const sttPrompt = this.sttVocabularyPrompt();
 
         // Configure session: model, voice, audio formats, STT language, VAD, instructions.
         const payload = {
@@ -863,11 +943,12 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
                         // response.create timing. gpt-4o-transcribe is OpenAI's most accurate
                         // STT and clearly better than the whisper family on Norwegian.
                         // NOTE: `delay` is only supported with gpt-realtime-whisper — do not
-                        // add it back here. A `prompt` with domain vocabulary (device/zone
-                        // names) is the next accuracy lever if needed.
+                        // add it back here. The `prompt` carries domain vocabulary
+                        // (device/zone names) so commands transcribe correctly.
                         transcription: {
                             model: "gpt-4o-transcribe",
                             language: this.options.languageCode,
+                            ...(sttPrompt ? { prompt: sttPrompt } : {}),
                         },
                         noise_reduction: {
                             type: "far_field"  // "near_field" for close-mic, "far_field" for room/speakerphone setups
