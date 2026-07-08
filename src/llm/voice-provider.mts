@@ -83,6 +83,7 @@ export type VoiceProviderOptions = {
     additionalInstructions: string | null;
     deviceZone: string;
     supportsTimers?: boolean; // device advertised the TIMERS feature flag
+    supportsShoppingList?: boolean; // Bring! integration enabled in app settings
 };
 
 /**
@@ -132,4 +133,10 @@ export interface IVoiceProvider extends TypedEmitter<VoiceProviderEvents> {
     updateAdditionalInstructions(newAdditionalInstructions: string | null): Promise<void> | void;
     updateZone(newDeviceZone: string): Promise<void> | void;
     updateTimerSupport(supportsTimers: boolean): Promise<void> | void;
+    /**
+     * Enable/disable the Bring! shopping-list section of the prompt. The tool
+     * set itself is (un)registered on the ToolManager by the device; the device
+     * also restarts the provider so the new tool list is re-sent to the backend.
+     */
+    updateShoppingListSupport(supportsShoppingList: boolean): Promise<void> | void;
 }

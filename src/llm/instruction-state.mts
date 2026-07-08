@@ -1,4 +1,5 @@
 import { loadInstructionModule, InstructionModule } from './agent-instructions.mjs';
+import { getShoppingListInstructions } from './instructions/shopping-list-instructions.mjs';
 
 /** The option fields the system prompt is built from. */
 export type InstructionParams = {
@@ -6,6 +7,7 @@ export type InstructionParams = {
     languageName: string;
     additionalInstructions?: string | null;
     supportsTimers?: boolean;
+    supportsShoppingList?: boolean;
 };
 
 /**
@@ -50,11 +52,17 @@ export class InstructionState {
     private async doReload(params: InstructionParams): Promise<void> {
         try {
             this.instructionModule = await this.loader(params.languageCode);
-            this.instructionText = this.instructionModule.getDefaultInstructions(
+            let text = this.instructionModule.getDefaultInstructions(
                 params.languageName,
                 params.additionalInstructions,
                 params.supportsTimers,
             );
+            // The Bring! shopping-list block lives in one shared file (not the
+            // per-language modules) and is only added when the feature is on.
+            if (params.supportsShoppingList) {
+                text += getShoppingListInstructions(params.languageCode);
+            }
+            this.instructionText = text;
         } catch (error) {
             this.logger?.error('Failed to load instruction module:', error);
             this.instructionText = '';

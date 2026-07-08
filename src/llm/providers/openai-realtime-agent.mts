@@ -119,6 +119,7 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
             | "additionalInstructions"
             | "deviceZone"
             | "supportsTimers"
+            | "supportsShoppingList"
         >
     >;
     // keep your existing maps, but store full records keyed by callId
@@ -157,7 +158,8 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
             languageName: opts.languageName ?? "English",
             additionalInstructions: opts.additionalInstructions ?? "",
             deviceZone: opts.deviceZone ?? "<Unknown Zone>",
-            supportsTimers: opts.supportsTimers ?? false
+            supportsTimers: opts.supportsTimers ?? false,
+            supportsShoppingList: opts.supportsShoppingList ?? false
         };
 
         this.reconnect = new ReconnectPolicy(homey, {
@@ -215,6 +217,7 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
             languageName: this.options.languageName,
             additionalInstructions: this.options.additionalInstructions,
             supportsTimers: this.options.supportsTimers,
+            supportsShoppingList: this.options.supportsShoppingList,
         };
     }
 
@@ -553,6 +556,23 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
         }
         this.logger.info(`Timer support ${supportsTimers ? 'enabled' : 'disabled'}, rebuilding instructions`);
         this.options.supportsTimers = supportsTimers;
+        await this.instructionState.reload(this.instructionParams());
+        if (this.isConnected()) {
+            this.sendSessionUpdate();
+        }
+    }
+
+    /**
+     * Enable/disable the Bring! shopping-list section of the prompt. Rebuilds the
+     * instructions; the live session gets the new prompt immediately, but the
+     * device also restarts the provider so the (un)registered tools are re-sent.
+     */
+    async updateShoppingListSupport(supportsShoppingList: boolean): Promise<void> {
+        if (this.options.supportsShoppingList === supportsShoppingList) {
+            return;
+        }
+        this.logger.info(`Shopping list ${supportsShoppingList ? 'enabled' : 'disabled'}, rebuilding instructions`);
+        this.options.supportsShoppingList = supportsShoppingList;
         await this.instructionState.reload(this.instructionParams());
         if (this.isConnected()) {
             this.sendSessionUpdate();

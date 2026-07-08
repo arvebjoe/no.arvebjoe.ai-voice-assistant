@@ -403,6 +403,7 @@ export class LocalPipelineProvider extends (EventEmitter as new () => TypedEmitt
             languageName: this.options.languageName,
             additionalInstructions: this.options.additionalInstructions,
             supportsTimers: this.options.supportsTimers,
+            supportsShoppingList: this.options.supportsShoppingList,
         };
     }
 
@@ -737,6 +738,12 @@ export class LocalPipelineProvider extends (EventEmitter as new () => TypedEmitt
     async updateTimerSupport(supportsTimers: boolean): Promise<void> {
         if (this.options.supportsTimers === supportsTimers) return;
         this.options.supportsTimers = supportsTimers;
+        await this.instructionState.reload(this.instructionParams());
+    }
+
+    async updateShoppingListSupport(supportsShoppingList: boolean): Promise<void> {
+        if (this.options.supportsShoppingList === supportsShoppingList) return;
+        this.options.supportsShoppingList = supportsShoppingList;
         await this.instructionState.reload(this.instructionParams());
     }
 }

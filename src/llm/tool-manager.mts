@@ -7,6 +7,7 @@ import { GeoHelper } from "../helpers/geo-helper.mjs";
 import { settingsManager } from "../settings/settings-manager.mjs";
 import { TimerManager } from "../voice_assistant/timer-manager.mjs";
 import { openaiWebSearch, braveWebSearch } from "../helpers/web-search.mjs";
+import { BringClient } from "../helpers/bring-client.mjs";
 
 type ToolHandler = (args: any) => Promise<any> | any;
 
@@ -34,6 +35,15 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
     private tools: Map<string, ToolDefinition> = new Map();
     private logger = createLogger('ToolManager', true);
     private standardZone: string;
+
+    // Bring! shopping-list integration (opt-in via settings). The client is
+    // created lazily on first use; `shoppingListActive` mirrors whether the
+    // four shopping tools below are currently registered.
+    private bringClient?: BringClient;
+    private shoppingListActive = false;
+    private static readonly SHOPPING_TOOL_NAMES = [
+        'get_shopping_list', 'add_to_shopping_list', 'update_shopping_list_item', 'remove_from_shopping_list',
+    ];
 
     constructor(homey: any, standardZone: string, deviceManager: DeviceManager, geoHelper: GeoHelper, weatherHelper: WeatherHelper, timerManager?: TimerManager) {
         super();
@@ -64,6 +74,12 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
     registerTool(definition: ToolDefinition): void {
         this.logger.info(definition.name, "REGISTER TOOL");
         this.tools.set(definition.name, definition);
+    }
+
+    unregisterTool(name: string): void {
+        if (this.tools.delete(name)) {
+            this.logger.info(name, "UNREGISTER TOOL");
+        }
     }
 
     getToolHandlers(): Record<string, ToolHandler> {
@@ -187,6 +203,46 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
         if (this.timerManager) {
             this.registerTimerTools();
         }
+        this.refreshShoppingListTools();
+    }
+
+    /** Whether the Bring! shopping-list tools are currently registered. */
+    isShoppingListActive(): boolean {
+        return this.shoppingListActive;
+    }
+
+    /**
+     * Read the Bring! settings and reconcile the shopping-list tools with them:
+     * the four tools are registered only when the feature is enabled AND the
+     * account credentials are present, and removed otherwise. Returns the new
+     * active state so the device can gate the prompt block to match and restart
+     * the provider when it flips.
+     */
+    refreshShoppingListTools(): boolean {
+        const enabledSetting = settingsManager.getGlobal<any>('bring_enabled', false);
+        const enabled = enabledSetting === true || enabledSetting === 'true';
+        const email = (settingsManager.getGlobal<string>('bring_email', '') || '').trim();
+        const password = settingsManager.getGlobal<string>('bring_password', '') || '';
+        const listName = (settingsManager.getGlobal<string>('bring_list_name', '') || '').trim();
+        const active = enabled && email.length > 0 && password.length > 0;
+
+        if (active) {
+            if (!this.bringClient) this.bringClient = new BringClient();
+            this.bringClient.setCredentials(email, password, listName);
+        }
+
+        if (active === this.shoppingListActive) {
+            return active; // no change (credentials may have been refreshed above)
+        }
+
+        if (active) {
+            this.registerShoppingListTools();
+        } else {
+            for (const name of ToolManager.SHOPPING_TOOL_NAMES) this.unregisterTool(name);
+        }
+        this.shoppingListActive = active;
+        this.logger.info(`Shopping list tools ${active ? 'registered' : 'removed'}`);
+        return active;
     }
 
     private registerSystemTools(): void {
@@ -318,6 +374,7 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
                             "tell the current local time and date; " +
                             "search the web for current information (news, opening hours, departures — when configured in the app settings); " +
                             (this.timerManager ? "set, check and cancel a countdown timer or alarm on the voice device; " : "") +
+                            (this.shoppingListActive ? "read the Bring! shopping list and add, change or remove items on it; " : "") +
                             "and answer general questions conversationally.",
                         tools
                     }
@@ -388,6 +445,131 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
                 this.logger.info('get_timer', 'TOOL', 'Executing get_timer...');
                 const active = this.timerManager!.getActiveTimer();
                 return { ok: true, data: { active_timer: active } };
+            }
+        });
+    }
+
+    private registerShoppingListTools(): void {
+
+        this.registerTool({
+            type: "function",
+            name: "get_shopping_list",
+            description: "Get the items currently on the Bring! shopping list. Use for questions like \"what's on the shopping list?\" or \"do we need milk?\". No parameters needed.",
+            parameters: {
+                type: "object",
+                properties: {},
+                required: [],
+                additionalProperties: false
+            },
+            handler: async () => {
+                this.logger.info('get_shopping_list', 'TOOL', 'Executing get_shopping_list...');
+                try {
+                    const snapshot = await this.bringClient!.getList();
+                    return { ok: true, data: { list_name: snapshot.listName, item_count: snapshot.items.length, items: snapshot.items } };
+                } catch (error: any) {
+                    this.logger.error('Error executing get_shopping_list', error);
+                    return { ok: false, error: { code: "SHOPPING_LIST_UNAVAILABLE", message: String(error?.message ?? error) } };
+                }
+            }
+        });
+
+        this.registerTool({
+            type: "function",
+            name: "add_to_shopping_list",
+            description: "Add a single item to the Bring! shopping list. If the item is already on the list this returns code ITEM_ALREADY_EXISTS with the existing amount — in that case do NOT add it again; ask the user whether to increase the amount (use update_shopping_list_item) or leave it. Only pass force=true after the user explicitly confirms adding/overwriting a duplicate.",
+            parameters: {
+                type: "object",
+                properties: {
+                    item: { type: "string", description: "The item to add, e.g. \"milk\" or \"bananas\". One item per call." },
+                    specification: { type: "string", description: "Optional amount or note, e.g. \"2\" or \"2 liters\". Only set it if the user stated an amount." },
+                    force: { type: "boolean", description: "Set true only after the user confirms adding an item that already exists (overwrites its amount).", default: false }
+                },
+                required: ["item"],
+                additionalProperties: false
+            },
+            handler: async ({ item, specification, force }) => {
+                this.logger.info('add_to_shopping_list', 'TOOL', `item=${item}, specification=${specification}, force=${force}`);
+                const name = String(item ?? '').trim();
+                if (!name) {
+                    return { ok: false, error: { code: "EMPTY_ITEM", message: "An item name is required." } };
+                }
+                try {
+                    if (force !== true) {
+                        const existing = await this.bringClient!.findItem(name);
+                        if (existing) {
+                            return {
+                                ok: false,
+                                error: {
+                                    code: "ITEM_ALREADY_EXISTS",
+                                    message: `"${existing.name}" is already on the shopping list${existing.specification ? ` (${existing.specification})` : ''}. Ask the user whether to increase the amount or leave it.`
+                                },
+                                existing: { name: existing.name, specification: existing.specification }
+                            };
+                        }
+                    }
+                    await this.bringClient!.saveItem(name, specification || '');
+                    return { ok: true, data: { added: { name, specification: (specification || '').trim() } } };
+                } catch (error: any) {
+                    this.logger.error('Error executing add_to_shopping_list', error);
+                    return { ok: false, error: { code: "SHOPPING_LIST_ADD_FAILED", message: String(error?.message ?? error) } };
+                }
+            }
+        });
+
+        this.registerTool({
+            type: "function",
+            name: "update_shopping_list_item",
+            description: "Change the amount/specification of an item already on the Bring! shopping list. Use this when the user wants to increase the amount of a duplicate item (e.g. after add_to_shopping_list reported ITEM_ALREADY_EXISTS).",
+            parameters: {
+                type: "object",
+                properties: {
+                    item: { type: "string", description: "The existing item to update, e.g. \"milk\"." },
+                    specification: { type: "string", description: "The new amount or note, e.g. \"3\" or \"3 liters\"." }
+                },
+                required: ["item", "specification"],
+                additionalProperties: false
+            },
+            handler: async ({ item, specification }) => {
+                this.logger.info('update_shopping_list_item', 'TOOL', `item=${item}, specification=${specification}`);
+                const name = String(item ?? '').trim();
+                if (!name) {
+                    return { ok: false, error: { code: "EMPTY_ITEM", message: "An item name is required." } };
+                }
+                try {
+                    await this.bringClient!.saveItem(name, String(specification ?? '').trim());
+                    return { ok: true, data: { updated: { name, specification: String(specification ?? '').trim() } } };
+                } catch (error: any) {
+                    this.logger.error('Error executing update_shopping_list_item', error);
+                    return { ok: false, error: { code: "SHOPPING_LIST_UPDATE_FAILED", message: String(error?.message ?? error) } };
+                }
+            }
+        });
+
+        this.registerTool({
+            type: "function",
+            name: "remove_from_shopping_list",
+            description: "Remove a single item from the Bring! shopping list, e.g. \"take bread off the shopping list\".",
+            parameters: {
+                type: "object",
+                properties: {
+                    item: { type: "string", description: "The item to remove, e.g. \"bread\"." }
+                },
+                required: ["item"],
+                additionalProperties: false
+            },
+            handler: async ({ item }) => {
+                this.logger.info('remove_from_shopping_list', 'TOOL', `item=${item}`);
+                const name = String(item ?? '').trim();
+                if (!name) {
+                    return { ok: false, error: { code: "EMPTY_ITEM", message: "An item name is required." } };
+                }
+                try {
+                    await this.bringClient!.removeItem(name);
+                    return { ok: true, data: { removed: name } };
+                } catch (error: any) {
+                    this.logger.error('Error executing remove_from_shopping_list', error);
+                    return { ok: false, error: { code: "SHOPPING_LIST_REMOVE_FAILED", message: String(error?.message ?? error) } };
+                }
             }
         });
     }

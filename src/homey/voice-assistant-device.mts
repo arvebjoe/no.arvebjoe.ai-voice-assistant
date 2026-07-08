@@ -147,7 +147,10 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       deviceZone: this.currentZone,
       // Start false; flipped on once the ESP handshake reports the TIMERS flag
       // (see the 'capabilities' handler below), which rebuilds the instructions.
-      supportsTimers: false
+      supportsTimers: false,
+      // Set from the ToolManager right after it is built (Bring! is opt-in and
+      // needs credentials); kept in sync by handleSettingsChange.
+      supportsShoppingList: false
     };
 
     // Initialize ESP voice client - Uses stored address and port.
@@ -176,6 +179,11 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
     // Initialize tool manager - This will define all the function the agent can call.
     this.toolManager = new ToolManager(this.homey, this.currentZone, this.deviceManager, this.geoHelper, this.weatherHelper, this.timerManager);
+
+    // The ToolManager decides whether the Bring! shopping-list tools are active
+    // (feature enabled + credentials present); mirror that into the prompt so
+    // the shopping-list instruction block is only added when the tools exist.
+    this.providerOptions.supportsShoppingList = this.toolManager.isShoppingListActive();
 
     // Initialize the voice/LLM provider (via the factory, selected by the
     // 'voice_provider' setting) - it uses the tool manager for function calls.
@@ -846,6 +854,18 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
         this.logger.info('AI instructions changed, updating...');
         this.providerOptions.additionalInstructions = newInstructions || '';
         this.provider.updateAdditionalInstructions(this.providerOptions.additionalInstructions);
+        needRestart = true;
+      }
+
+      // Bring! shopping-list settings changed: reconcile the tool set with the
+      // new settings, then keep the prompt block in sync. A change in the active
+      // state also needs a restart so the (un)registered tools are re-sent to
+      // the backend (the tool list is sent once, at session config on connect).
+      const shoppingActive = this.toolManager.refreshShoppingListTools();
+      if (shoppingActive !== this.providerOptions.supportsShoppingList) {
+        this.logger.info(`Shopping list ${shoppingActive ? 'enabled' : 'disabled'}, updating agent.`);
+        this.providerOptions.supportsShoppingList = shoppingActive;
+        await this.provider.updateShoppingListSupport(shoppingActive);
         needRestart = true;
       }
 

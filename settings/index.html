@@ -544,6 +544,40 @@
     </div>
   </fieldset>
 
+  <fieldset class="homey-form-fieldset">
+    <div class="homey-form-group">
+      <label class="homey-form-label" for="bring_enabled">Bring! shopping list</label>
+      <label style="display:flex; align-items:center; gap:8px; font-weight:400;">
+        <input type="checkbox" id="bring_enabled" style="width:auto;" />
+        Let the assistant read and edit your Bring! shopping list
+      </label>
+      <div class="help-text">Bring! has no official public API — this uses the same unofficial endpoints the
+        Bring! apps use, reverse engineered by the community. Enter your Bring! account e-mail and password below.
+        Both are required for the feature to work.</div>
+    </div>
+    <div id="bring_settings" style="display: none;">
+      <div class="homey-form-group">
+        <label class="homey-form-label" for="bring_email">Bring! account e-mail</label>
+        <input type="email" class="homey-form-input" id="bring_email" autocomplete="off"
+          placeholder="you@example.com" />
+      </div>
+      <div class="homey-form-group">
+        <label class="homey-form-label" for="bring_password">Bring! account password</label>
+        <div class="secret-wrap">
+          <input type="password" class="homey-form-input" id="bring_password" autocomplete="off"
+            placeholder="Enter your Bring! password here..." />
+          <button type="button" class="secret-toggle" data-for="bring_password">Show</button>
+        </div>
+      </div>
+      <div class="homey-form-group">
+        <label class="homey-form-label" for="bring_list_name">List name (optional)</label>
+        <input type="text" class="homey-form-input" id="bring_list_name" autocomplete="off"
+          placeholder="Leave empty for your default list" />
+        <div class="help-text">The name of the Bring! list to use. Leave empty to use your account's default list.</div>
+      </div>
+    </div>
+  </fieldset>
+
   <button id="save" class="homey-button-primary-full">Save changes</button>
 
   <script type="text/javascript">
@@ -729,6 +763,31 @@
         if (key) document.getElementById("brave_api_key").value = key;
       });
 
+      // Bring! shopping list: the enable checkbox toggles the credential fields.
+      var bringEnabledElement = document.getElementById("bring_enabled");
+      function refreshBringVisibility() {
+        document.getElementById("bring_settings").style.display =
+          bringEnabledElement.checked ? "" : "none";
+      }
+      bringEnabledElement.addEventListener("change", refreshBringVisibility);
+      Homey.get("bring_enabled", function (err, enabled) {
+        if (err) return Homey.alert(err);
+        bringEnabledElement.checked = enabled === true || enabled === "true";
+        refreshBringVisibility();
+      });
+      Homey.get("bring_email", function (err, value) {
+        if (err) return Homey.alert(err);
+        if (value) document.getElementById("bring_email").value = value;
+      });
+      Homey.get("bring_password", function (err, value) {
+        if (err) return Homey.alert(err);
+        if (value) document.getElementById("bring_password").value = value;
+      });
+      Homey.get("bring_list_name", function (err, value) {
+        if (err) return Homey.alert(err);
+        if (value) document.getElementById("bring_list_name").value = value;
+      });
+
       // Show/hide toggles for the masked API-key inputs.
       document.querySelectorAll(".secret-toggle").forEach(function (btn) {
         btn.addEventListener("click", function () {
@@ -819,6 +878,20 @@
           if (err) return Homey.alert(err);
         });
         Homey.set("brave_api_key", document.getElementById("brave_api_key").value.trim(), function (err) {
+          if (err) return Homey.alert(err);
+        });
+
+        // Save the Bring! shopping-list settings (enable flag + credentials + optional list)
+        Homey.set("bring_enabled", bringEnabledElement.checked, function (err) {
+          if (err) return Homey.alert(err);
+        });
+        Homey.set("bring_email", document.getElementById("bring_email").value.trim(), function (err) {
+          if (err) return Homey.alert(err);
+        });
+        Homey.set("bring_password", document.getElementById("bring_password").value, function (err) {
+          if (err) return Homey.alert(err);
+        });
+        Homey.set("bring_list_name", document.getElementById("bring_list_name").value.trim(), function (err) {
           if (err) return Homey.alert(err);
         });
 
