@@ -150,7 +150,9 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       supportsTimers: false,
       // Set from the ToolManager right after it is built (Bring! is opt-in and
       // needs credentials); kept in sync by handleSettingsChange.
-      supportsShoppingList: false
+      supportsShoppingList: false,
+      // Same contract as supportsShoppingList, for the Music Assistant tools.
+      supportsMusic: false
     };
 
     // Initialize ESP voice client - Uses stored address and port.
@@ -184,6 +186,16 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     // (feature enabled + credentials present); mirror that into the prompt so
     // the shopping-list instruction block is only added when the tools exist.
     this.providerOptions.supportsShoppingList = this.toolManager.isShoppingListActive();
+
+    // Music Assistant: same gating contract, plus tell the music tools which
+    // physical satellite this is so "play music" targets the speaker the user
+    // is talking to (matched against MA's player list by IP, then name/zone).
+    this.providerOptions.supportsMusic = this.toolManager.isMusicActive();
+    this.toolManager.setMusicPlayerHint(() => ({
+      address: this.getStoreValue('address'),
+      deviceName: this.getName(),
+      zone: this.currentZone,
+    }));
 
     // Initialize the voice/LLM provider (via the factory, selected by the
     // 'voice_provider' setting) - it uses the tool manager for function calls.
@@ -875,6 +887,17 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
         this.logger.info(`Shopping list ${shoppingActive ? 'enabled' : 'disabled'}, updating agent.`);
         this.providerOptions.supportsShoppingList = shoppingActive;
         await this.provider.updateShoppingListSupport(shoppingActive);
+        needRestart = true;
+      }
+
+      // Music Assistant settings changed: same reconcile-then-restart dance as
+      // the Bring! block above (refreshMusicTools also re-points the shared MA
+      // client at a changed server address without flipping the active state).
+      const musicActive = this.toolManager.refreshMusicTools();
+      if (musicActive !== this.providerOptions.supportsMusic) {
+        this.logger.info(`Music ${musicActive ? 'enabled' : 'disabled'}, updating agent.`);
+        this.providerOptions.supportsMusic = musicActive;
+        await this.provider.updateMusicSupport(musicActive);
         needRestart = true;
       }
 

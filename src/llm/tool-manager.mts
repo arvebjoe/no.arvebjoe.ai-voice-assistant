@@ -8,6 +8,7 @@ import { settingsManager } from "../settings/settings-manager.mjs";
 import { TimerManager } from "../voice_assistant/timer-manager.mjs";
 import { openaiWebSearch, braveWebSearch } from "../helpers/web-search.mjs";
 import { BringClient } from "../helpers/bring-client.mjs";
+import { MusicAssistantClient, getMusicAssistantClient, MaPlayer, MaMediaItem, MaQueueCommand } from "../helpers/music-assistant-client.mjs";
 
 type ToolHandler = (args: any) => Promise<any> | any;
 
@@ -43,6 +44,20 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
     private shoppingListActive = false;
     private static readonly SHOPPING_TOOL_NAMES = [
         'get_shopping_list', 'add_to_shopping_list', 'update_shopping_list_item', 'remove_from_shopping_list',
+    ];
+
+    // Music Assistant integration (opt-in via settings). One shared client for
+    // the whole app (see getMusicAssistantClient); `musicActive` mirrors
+    // whether the music tools below are currently registered.
+    private musicClient?: MusicAssistantClient;
+    private musicActive = false;
+    // Identifies THIS satellite so "play music" without a room targets the
+    // speaker the user is talking to (matched against the MA player list by
+    // IP address, then name). Set by the device after construction.
+    private musicPlayerHint?: () => { address?: string; deviceName?: string; zone?: string };
+    private musicPlayersCache: { players: MaPlayer[]; fetchedAt: number } | null = null;
+    private static readonly MUSIC_TOOL_NAMES = [
+        'search_music', 'play_music', 'music_control', 'get_music_state',
     ];
 
     constructor(homey: any, standardZone: string, deviceManager: DeviceManager, geoHelper: GeoHelper, weatherHelper: WeatherHelper, timerManager?: TimerManager) {
@@ -204,11 +219,58 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
             this.registerTimerTools();
         }
         this.refreshShoppingListTools();
+        this.refreshMusicTools();
     }
 
     /** Whether the Bring! shopping-list tools are currently registered. */
     isShoppingListActive(): boolean {
         return this.shoppingListActive;
+    }
+
+    /** Whether the Music Assistant tools are currently registered. */
+    isMusicActive(): boolean {
+        return this.musicActive;
+    }
+
+    /**
+     * Tell the music tools which physical satellite this ToolManager belongs
+     * to, so playback targets the speaker the user is talking to by default.
+     * A callback (not a snapshot) because the device's IP and name can change.
+     */
+    setMusicPlayerHint(hint: () => { address?: string; deviceName?: string; zone?: string }): void {
+        this.musicPlayerHint = hint;
+    }
+
+    /**
+     * Read the Music Assistant settings and reconcile the music tools with
+     * them: registered only when the feature is enabled AND a server host is
+     * set, removed otherwise. Returns the new active state so the device can
+     * gate the prompt block to match (same contract as the Bring! refresh).
+     */
+    refreshMusicTools(): boolean {
+        const enabledSetting = settingsManager.getGlobal<any>('music_assistant_enabled', false);
+        const enabled = enabledSetting === true || enabledSetting === 'true';
+        const host = (settingsManager.getGlobal<string>('music_assistant_host', '') || '').trim();
+        const port = Number(settingsManager.getGlobal<any>('music_assistant_port', 8095)) || 8095;
+        const active = enabled && host.length > 0;
+
+        if (active) {
+            if (!this.musicClient) this.musicClient = getMusicAssistantClient();
+            this.musicClient.configure(host, port);
+        }
+
+        if (active === this.musicActive) {
+            return active; // no change (the address may have been refreshed above)
+        }
+
+        if (active) {
+            this.registerMusicTools();
+        } else {
+            for (const name of ToolManager.MUSIC_TOOL_NAMES) this.unregisterTool(name);
+        }
+        this.musicActive = active;
+        this.logger.info(`Music tools ${active ? 'registered' : 'removed'}`);
+        return active;
     }
 
     /**
@@ -375,6 +437,7 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
                             "search the web for current information (news, opening hours, departures — when configured in the app settings); " +
                             (this.timerManager ? "set, check and cancel a countdown timer or alarm on the voice device; " : "") +
                             (this.shoppingListActive ? "read the Bring! shopping list and add, change or remove items on it; " : "") +
+                            (this.musicActive ? "find and play music (artists, albums, tracks, playlists, radio) on the speakers via Music Assistant, and pause, skip or shuffle playback; " : "") +
                             "and answer general questions conversationally.",
                         tools
                     }
@@ -569,6 +632,295 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
                 } catch (error: any) {
                     this.logger.error('Error executing remove_from_shopping_list', error);
                     return { ok: false, error: { code: "SHOPPING_LIST_REMOVE_FAILED", message: String(error?.message ?? error) } };
+                }
+            }
+        });
+    }
+
+    // ------------------------------------------------------------------
+    // Music Assistant tools
+    // ------------------------------------------------------------------
+
+    /** Lowercase, letters/digits only, single spaces — for player/item matching. */
+    private static normalizeMusicName(s: string): string {
+        return (s || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+    }
+
+    /** MA player list, cached briefly so one conversation turn is one fetch. */
+    private async getMusicPlayers(): Promise<MaPlayer[]> {
+        const now = Date.now();
+        if (this.musicPlayersCache && now - this.musicPlayersCache.fetchedAt < 10_000) {
+            return this.musicPlayersCache.players;
+        }
+        const players = await this.musicClient!.getPlayers();
+        this.musicPlayersCache = { players, fetchedAt: now };
+        return players;
+    }
+
+    /**
+     * Pick the MA player to act on. An explicit name from the user wins;
+     * otherwise the satellite the user is talking to (matched by IP, then by
+     * device name, then by zone name); otherwise a single available player.
+     * Failure returns the list of available player names so the model can ask.
+     */
+    private async resolveMusicPlayer(explicitName?: string): Promise<{ player: MaPlayer } | { error: { code: string; message: string } }> {
+        const all = await this.getMusicPlayers();
+        const players = all.filter(p => p.available);
+        if (players.length === 0) {
+            return { error: { code: "NO_PLAYERS", message: "Music Assistant reports no available players." } };
+        }
+        const names = players.map(p => p.name).join(', ');
+
+        if (explicitName && explicitName.trim()) {
+            const wanted = ToolManager.normalizeMusicName(explicitName);
+            const match = players.find(p => ToolManager.normalizeMusicName(p.name) === wanted)
+                ?? players.find(p => ToolManager.normalizeMusicName(p.name).includes(wanted) || wanted.includes(ToolManager.normalizeMusicName(p.name)));
+            if (match) return { player: match };
+            return { error: { code: "PLAYER_NOT_FOUND", message: `No music player matches "${explicitName}". Available players: ${names}.` } };
+        }
+
+        const hint = this.musicPlayerHint?.();
+        if (hint) {
+            if (hint.address) {
+                const byIp = players.find(p => p.ipAddress && p.ipAddress === hint.address);
+                if (byIp) return { player: byIp };
+            }
+            for (const candidate of [hint.deviceName, hint.zone]) {
+                if (!candidate) continue;
+                const wanted = ToolManager.normalizeMusicName(candidate);
+                if (!wanted) continue;
+                const match = players.find(p => ToolManager.normalizeMusicName(p.name) === wanted)
+                    ?? players.find(p => ToolManager.normalizeMusicName(p.name).includes(wanted) || wanted.includes(ToolManager.normalizeMusicName(p.name)));
+                if (match) return { player: match };
+            }
+        }
+
+        if (players.length === 1) {
+            return { player: players[0] };
+        }
+        return { error: { code: "PLAYER_AMBIGUOUS", message: `This speaker is not a music player in Music Assistant — ask the user which player to use. Available players: ${names}.` } };
+    }
+
+    /**
+     * Pick the item to play from search results: exact name match first, then
+     * partial, preferring artists > albums > tracks > playlists > radio.
+     * When the model stated a media_type only that list is considered.
+     */
+    private static pickMusicItem(results: { artists: MaMediaItem[]; albums: MaMediaItem[]; tracks: MaMediaItem[]; playlists: MaMediaItem[]; radio: MaMediaItem[] }, query: string, mediaType?: string): MaMediaItem | null {
+        const listByType: Record<string, MaMediaItem[]> = {
+            artist: results.artists, album: results.albums, track: results.tracks,
+            playlist: results.playlists, radio: results.radio,
+        };
+        const lists: MaMediaItem[][] = mediaType
+            ? [listByType[mediaType] ?? []]
+            : [results.artists, results.albums, results.tracks, results.playlists, results.radio];
+        const wanted = ToolManager.normalizeMusicName(query);
+
+        let best: MaMediaItem | null = null;
+        let bestScore = 0;
+        for (const list of lists) {
+            for (const item of list ?? []) {
+                const name = ToolManager.normalizeMusicName(item.name);
+                let score = 1;
+                if (name === wanted) score = 3;
+                else if (name.includes(wanted) || wanted.includes(name)) score = 2;
+                if (score > bestScore) {
+                    best = item;
+                    bestScore = score;
+                }
+            }
+            // An exact hit in a higher-priority list wins outright.
+            if (bestScore === 3) break;
+        }
+        return best;
+    }
+
+    /** Compact search-result lists for the model (top 5 per type, with URIs). */
+    private static compactMusicResults(results: { artists: MaMediaItem[]; albums: MaMediaItem[]; tracks: MaMediaItem[]; playlists: MaMediaItem[]; radio: MaMediaItem[] }) {
+        const compact = (list: MaMediaItem[]) => list.slice(0, 5).map(i => ({
+            name: i.name,
+            ...(i.artists ? { artists: i.artists } : {}),
+            ...(i.album ? { album: i.album } : {}),
+            uri: i.uri,
+        }));
+        return {
+            artists: compact(results.artists),
+            albums: compact(results.albums),
+            tracks: compact(results.tracks),
+            playlists: compact(results.playlists),
+            radio: compact(results.radio),
+        };
+    }
+
+    private registerMusicTools(): void {
+
+        this.registerTool({
+            type: "function",
+            name: "search_music",
+            description: "Search Music Assistant (the user's music library and streaming providers) for artists, albums, tracks, playlists or radio stations. " +
+                "Use it to browse or disambiguate (\"which albums do we have by X?\"); to just play something, call play_music directly.",
+            parameters: {
+                type: "object",
+                properties: {
+                    query: { type: "string", description: "What to search for, e.g. \"Abbey Road\" or \"Beatles\"." },
+                    media_type: { type: "string", enum: ["artist", "album", "track", "playlist", "radio"], description: "Optional: only search this kind of item." }
+                },
+                required: ["query"],
+                additionalProperties: false
+            },
+            handler: async ({ query, media_type }) => {
+                this.logger.info('search_music', 'TOOL', `query=${query}, media_type=${media_type}`);
+                const q = String(query ?? '').trim();
+                if (!q) {
+                    return { ok: false, error: { code: "EMPTY_QUERY", message: "A search query is required." } };
+                }
+                try {
+                    const results = await this.musicClient!.search(q, media_type ? [media_type] : undefined, 8);
+                    return { ok: true, data: ToolManager.compactMusicResults(results) };
+                } catch (error: any) {
+                    this.logger.error('Error executing search_music', error);
+                    return { ok: false, error: { code: "MUSIC_UNAVAILABLE", message: String(error?.message ?? error) } };
+                }
+            }
+        });
+
+        this.registerTool({
+            type: "function",
+            name: "play_music",
+            description: "Find music in Music Assistant and play it on a speaker. Give either a search query (with an optional media_type) or a uri from an earlier search_music result. " +
+                "Plays on the speaker the user is talking to unless the user names another player/room. Confirm briefly what started playing (the tool returns it).",
+            parameters: {
+                type: "object",
+                properties: {
+                    query: { type: "string", description: "What to play, e.g. \"Abbey Road\", \"Queen\", \"NRK P1\". Not needed when uri is given." },
+                    media_type: { type: "string", enum: ["artist", "album", "track", "playlist", "radio"], description: "What kind of item the user asked for, e.g. album for \"play the album X\". Strongly recommended when the user said it." },
+                    uri: { type: "string", description: "A Music Assistant item uri from a previous search_music call. Takes precedence over query." },
+                    mode: { type: "string", enum: ["play", "next", "add"], description: "play (default) = play now replacing the queue; next = play after the current track; add = append to the queue." },
+                    radio_mode: { type: "boolean", description: "Set true for \"play music LIKE X\": keeps the queue going with similar tracks.", default: false },
+                    player: { type: "string", description: "Player/room name, only when the user names one (e.g. \"in the kitchen\")." }
+                },
+                required: [],
+                additionalProperties: false
+            },
+            handler: async ({ query, media_type, uri, mode, radio_mode, player }) => {
+                this.logger.info('play_music', 'TOOL', `query=${query}, media_type=${media_type}, uri=${uri}, mode=${mode}, radio_mode=${radio_mode}, player=${player}`);
+                try {
+                    const resolved = await this.resolveMusicPlayer(player);
+                    if ('error' in resolved) {
+                        return { ok: false, error: resolved.error };
+                    }
+                    const queue = await this.musicClient!.getActiveQueue(resolved.player.playerId);
+                    const option = mode === 'next' ? 'next' : mode === 'add' ? 'add' : 'replace';
+
+                    if (uri && String(uri).trim()) {
+                        await this.musicClient!.playMedia(queue.queueId, String(uri).trim(), option, radio_mode === true);
+                        return { ok: true, data: { playing: String(uri).trim(), player: resolved.player.name, mode: option } };
+                    }
+
+                    const q = String(query ?? '').trim();
+                    if (!q) {
+                        return { ok: false, error: { code: "EMPTY_QUERY", message: "Either a query or a uri is required." } };
+                    }
+                    const type = typeof media_type === 'string' && media_type ? media_type : undefined;
+                    const results = await this.musicClient!.search(q, type ? [type] : undefined, 8);
+                    const item = ToolManager.pickMusicItem(results, q, type);
+                    if (!item) {
+                        return { ok: false, error: { code: "NO_MATCH", message: `Nothing found in Music Assistant for "${q}"${type ? ` (${type})` : ''}. Tell the user briefly.` } };
+                    }
+                    await this.musicClient!.playMedia(queue.queueId, item.uri, option, radio_mode === true);
+                    return {
+                        ok: true,
+                        data: {
+                            playing: {
+                                name: item.name,
+                                ...(item.artists ? { artists: item.artists } : {}),
+                                ...(item.album ? { album: item.album } : {}),
+                                media_type: item.mediaType,
+                            },
+                            player: resolved.player.name,
+                            mode: option,
+                        }
+                    };
+                } catch (error: any) {
+                    this.logger.error('Error executing play_music', error);
+                    return { ok: false, error: { code: "MUSIC_UNAVAILABLE", message: String(error?.message ?? error) } };
+                }
+            }
+        });
+
+        this.registerTool({
+            type: "function",
+            name: "music_control",
+            description: "Control music playback: pause, resume, stop, skip to the next or previous track, or toggle shuffle. " +
+                "Acts on the speaker the user is talking to unless the user names another player/room.",
+            parameters: {
+                type: "object",
+                properties: {
+                    action: { type: "string", enum: ["pause", "resume", "stop", "next", "previous", "shuffle_on", "shuffle_off"], description: "What to do." },
+                    player: { type: "string", description: "Player/room name, only when the user names one." }
+                },
+                required: ["action"],
+                additionalProperties: false
+            },
+            handler: async ({ action, player }) => {
+                this.logger.info('music_control', 'TOOL', `action=${action}, player=${player}`);
+                try {
+                    const resolved = await this.resolveMusicPlayer(player);
+                    if ('error' in resolved) {
+                        return { ok: false, error: resolved.error };
+                    }
+                    const queue = await this.musicClient!.getActiveQueue(resolved.player.playerId);
+                    if (action === 'shuffle_on' || action === 'shuffle_off') {
+                        await this.musicClient!.setShuffle(queue.queueId, action === 'shuffle_on');
+                    } else {
+                        // 'play' unpauses; 'resume' restarts a stopped/idle queue.
+                        const command: MaQueueCommand = action === 'resume'
+                            ? (queue.state === 'paused' ? 'play' : 'resume')
+                            : action as MaQueueCommand;
+                        await this.musicClient!.queueCommand(queue.queueId, command);
+                    }
+                    return { ok: true, data: { action, player: resolved.player.name } };
+                } catch (error: any) {
+                    this.logger.error('Error executing music_control', error);
+                    return { ok: false, error: { code: "MUSIC_UNAVAILABLE", message: String(error?.message ?? error) } };
+                }
+            }
+        });
+
+        this.registerTool({
+            type: "function",
+            name: "get_music_state",
+            description: "Get what is currently playing on a speaker (track, artist, play/pause state, shuffle/repeat). Use for \"what's playing?\" or before changing playback.",
+            parameters: {
+                type: "object",
+                properties: {
+                    player: { type: "string", description: "Player/room name, only when the user names one." }
+                },
+                required: [],
+                additionalProperties: false
+            },
+            handler: async ({ player }) => {
+                this.logger.info('get_music_state', 'TOOL', `player=${player}`);
+                try {
+                    const resolved = await this.resolveMusicPlayer(player);
+                    if ('error' in resolved) {
+                        return { ok: false, error: resolved.error };
+                    }
+                    const queue = await this.musicClient!.getActiveQueue(resolved.player.playerId);
+                    return {
+                        ok: true,
+                        data: {
+                            player: resolved.player.name,
+                            state: queue.state,
+                            now_playing: queue.nowPlaying,
+                            shuffle: queue.shuffleEnabled,
+                            repeat: queue.repeatMode,
+                            items_in_queue: queue.itemsInQueue,
+                        }
+                    };
+                } catch (error: any) {
+                    this.logger.error('Error executing get_music_state', error);
+                    return { ok: false, error: { code: "MUSIC_UNAVAILABLE", message: String(error?.message ?? error) } };
                 }
             }
         });

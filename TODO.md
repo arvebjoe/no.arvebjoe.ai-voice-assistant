@@ -1,42 +1,25 @@
 # TODO — single source of truth
 
-## Music via Music Assistant (PE + TR) — researched 2026-07-09, not started
+## Music via Music Assistant (PE + TR) — implemented 2026-07-09, live verification pending
 
-Goal: stream music (Spotify, Apple Music, radio, local library…) to the Voice PE and ThirdReality
-speakers, and control it by voice (find/play artist/album/track, pause, next, prev).
+The control-plane integration is implemented and unit-tested (full context archived in
+[`COMPLETED.md` §3](./COMPLETED.md)); the music audio itself never touches this app — Music
+Assistant ≥ 2.7 streams to the PE and TR directly over Sendspin.
 
-**Key finding: our app never needs to touch the music audio.** Both devices are native
-[Sendspin](https://www.sendspin-audio.com/) players, and Music Assistant ≥ 2.7 ships a Sendspin
-player provider (experimental, on by default):
+**Remaining: verify against a real MA server + speakers** (needs the owner's network):
 
-- **PE:** stock firmware includes the Sendspin client — see `sendspin:` hub +
-  `media_player: platform: sendspin` in our own `.esp_home/home-assistant-voice.yaml` (merged into
-  upstream ESPHome 2026.5; PE firmware 26.x has it).
-- **TR:** ships `sendspin-client` in firmware (see `docs/thirdreality-voice-and-music/README.md`
-  §Music — already documented as orthogonal to our voice path).
-- MA discovers both over mDNS and streams to them directly (multi-room sync included). No Home
-  Assistant required — MA runs standalone (docker) or as an HA add-on.
-
-**What our app adds: the control plane** (so the LLM can drive MA):
-
-1. Small Music Assistant WebSocket client (`ws://<ma-host>:8095/ws`, JSON-RPC; docs auto-generated
-   at `http://<ma-host>:8095/api-docs`, reference impls: python `music-assistant/client`, TS in
-   `music-assistant/frontend` `src/plugins/api/index.ts`). New global settings: MA host/port,
-   opt-in like Bring!.
-2. ToolManager tools (follow the Bring! opt-in pattern): `search_music`,
-   `play_music` (artist/album/track/playlist/radio → player queue), `pause/resume/next/previous`,
-   maybe queue transfer between rooms. Transport commands go to **MA** (the queue lives there),
-   not to the device's media_player entity.
-3. Player↔device mapping: resolve which MA player corresponds to the satellite the user is
-   talking to (match on mDNS name/MAC), so "play X" targets the room you spoke in.
-
-**To verify live:** announcement ducking over Sendspin playback on both devices (PE firmware has a
-separate announcement pipeline; TR docs claim ducking works out of the box); wake word while music
-plays (PE has XMOS AEC; TR uses WebRTC/PulseAudio AEC); exact MA player IDs for Sendspin players.
-
-**Notes:** the Homey MA app (`com.cyrilhendriks.musicassistant`) speaks the same MA API and can
-coexist (useful for flows), but voice needs direct MA API access so the LLM can search and
-disambiguate. XiaoZhi has no Sendspin client — music support there stays out of scope.
+- [ ] MA discovers the PE (stock 26.x firmware) and TR as Sendspin players; check what the
+      players' `device_info.ip_address` / names look like so the satellite→player auto-matching
+      in `resolveMusicPlayer` (IP first, then device name, then zone name) actually hits.
+- [ ] End-to-end voice flow on both devices: "play <album> by <artist>", pause/resume/next/
+      previous, shuffle, "what's playing?", explicit room targeting ("…in the kitchen").
+- [ ] Announcement ducking while Sendspin music plays (PE has a separate announcement pipeline;
+      TR docs claim ducking works out of the box) — and that music resumes after the reply.
+- [ ] Wake word while music is playing (PE has XMOS AEC; TR uses WebRTC/PulseAudio AEC).
+- [ ] `resume` behavior on a long-stopped queue (the tool maps resume→`play` when paused,
+      `resume` otherwise — check the idle case restarts where it left off).
+- [ ] Partial-result accumulation against a big real library (implemented per the API models;
+      only exercised with a fake server so far).
 
 ---
 

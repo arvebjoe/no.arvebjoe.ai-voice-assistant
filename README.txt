@@ -9,13 +9,17 @@ The assistant can also search the web for current information (opening hours, de
 
 If you use Bring!, you can turn on the optional shopping-list feature in settings and enter your Bring! account details. Then just say "what's on the shopping list?", "add milk" or "take bread off the list". If an item is already there, the assistant asks whether to increase the amount.
 
+Music, too: if you run a Music Assistant server on your network, enable the music feature in settings and point it at the server. Then ask for any artist, album, track, playlist or radio station — "play Abbey Road by the Beatles", "pause", "next song", "what's playing?". The music streams from your server straight to the speaker; asking on a speaker plays it right there, or name another room.
+
 Supported devices:
     - Home Assistant Voice Preview Edition (stock ESPHome firmware, no Home Assistant needed)
+    - ThirdReality Voice & Music Assistant (works out of the box, and doubles as a Music Assistant multi-room speaker)
     - XiaoZhi AI devices (running RealDeco's ESPHome firmware)
 
 Requirements:
     - A compatible ESPHome voice device with microphone and speaker
     - An API key for your chosen cloud engine (OpenAI or Google Gemini), or your own local AI services
+    - Optional: a Music Assistant server for music playback
 
 Useful Flow cards:
     - "Ask assistant" a question, output as text or spoken on the device.

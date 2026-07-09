@@ -84,6 +84,7 @@ export type VoiceProviderOptions = {
     deviceZone: string;
     supportsTimers?: boolean; // device advertised the TIMERS feature flag
     supportsShoppingList?: boolean; // Bring! integration enabled in app settings
+    supportsMusic?: boolean; // Music Assistant integration enabled in app settings
 };
 
 /**
@@ -139,4 +140,10 @@ export interface IVoiceProvider extends TypedEmitter<VoiceProviderEvents> {
      * also restarts the provider so the new tool list is re-sent to the backend.
      */
     updateShoppingListSupport(supportsShoppingList: boolean): Promise<void> | void;
+    /**
+     * Enable/disable the Music Assistant section of the prompt. Same contract
+     * as updateShoppingListSupport: the tool set is reconciled by the device,
+     * which also restarts the provider when the active state flips.
+     */
+    updateMusicSupport(supportsMusic: boolean): Promise<void> | void;
 }

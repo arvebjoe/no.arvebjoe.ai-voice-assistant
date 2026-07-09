@@ -10,7 +10,10 @@
     "bring_enabled": true,
     "bring_email": "",
     "bring_password": "",
-    "bring_list_name": ""
+    "bring_list_name": "",
+    "music_assistant_enabled": false,
+    "music_assistant_host": "",
+    "music_assistant_port": 8095
   },
   "env": {
     "HE_HOST_IP": "",
