@@ -466,6 +466,15 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       });
     });
 
+    // A stateless Event entity fired on the satellite — today that is the
+    // ThirdReality's physical top button. Surface it to Homey Flow as the
+    // 'button-pressed' device trigger. The card is filtered to drivers whose
+    // hardware actually has such a button, so other models simply never fire it.
+    this.esp.on('entity_event', (objectId: string, eventType: string) => {
+      this.convo.info(`Button pressed (${objectId}${eventType ? `: ${eventType}` : ''})`, 'BTN');
+      this.fireButtonPressedTrigger(eventType);
+    });
+
     this.esp.on('Healthy', async () => {
       this.logger.info('ESP Voice Client healthy');
       this.isEspClientHealthy = true;
@@ -1050,6 +1059,21 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
         .catch((err: any) => this.logger.error(`Error firing ${cardId} trigger:`, err));
     } catch (err) {
       this.logger.error(`Error firing ${cardId} trigger:`, err);
+    }
+  }
+
+  /**
+   * Fire the 'button-pressed' device trigger (the physical top button on the
+   * ThirdReality). Same device-trigger pattern as the timer cards above; the
+   * event type string from the firmware rides along as a token.
+   */
+  private fireButtonPressedTrigger(eventType: string): void {
+    try {
+      this.homey.flow.getDeviceTriggerCard('button-pressed')
+        .trigger(this, { event: eventType || '' })
+        .catch((err: any) => this.logger.error('Error firing button-pressed trigger:', err));
+    } catch (err) {
+      this.logger.error('Error firing button-pressed trigger:', err);
     }
   }
 

@@ -53,6 +53,10 @@ type EspVoiceEvents = {
   mute: (isMuted: boolean) => void; // Mute state change event
   // The satellite's wake-word configuration arrived/changed (available + active).
   wake_words: (available: EspWakeWord[], active: string[], maxActive: number) => void;
+  // A stateless Event entity fired on the device (EventResponse, msg id 108) —
+  // e.g. the ThirdReality's physical top button. Carries the entity's object_id
+  // and the event type string the firmware sent (e.g. 'single_press').
+  entity_event: (objectId: string, eventType: string) => void;
 }
 
 
@@ -108,6 +112,10 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
   private entityKeys: {
     [objectId: string]: number
   } = {};
+
+  // Reverse lookup for Event entities (key -> object_id) so an incoming
+  // EventResponse can be attributed to the entity that fired it.
+  private eventEntityIds: Map<number, string> = new Map();
 
   // Track device state
   private currentVolume: number = 0.5;
@@ -398,16 +406,16 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
         if (rawMessage.includes('nabu casa')
           || rawMessage.includes('nabucasa')
           || rawMessage.includes('home assistant voice')
-          || rawMessage.includes('home-assistant-voice')
-          // POC (branch ThirdReality): treat the ThirdReality Voice & Music
-          // Assistant as a PE so it pairs through the existing PE driver.
-          // Its DeviceInfoResponse reports manufacturer "ThirdReality" /
-          // project "ThirdReality.Linux Voice Assistant (C++)"; HelloResponse
-          // name is "3RSPK…". Real support = its own deviceType + driver
-          // (see docs/thirdreality-voice-and-music/README.md).
-          || rawMessage.includes('thirdreality')
-          || rawMessage.includes('3rspk')) {
+          || rawMessage.includes('home-assistant-voice')) {
           this.deviceType = 'pe';
+          this.discoveryMode = false;
+        } else if (rawMessage.includes('thirdreality')
+          || rawMessage.includes('3rspk')) {
+          // ThirdReality Voice & Music Assistant: DeviceInfoResponse reports
+          // manufacturer "ThirdReality" / project "ThirdReality.Linux Voice
+          // Assistant (C++)"; HelloResponse name is "3RSPK…". Pairs through its
+          // own driver (see docs/thirdreality-voice-and-music/README.md).
+          this.deviceType = 'tr';
           this.discoveryMode = false;
         } else if (rawMessage.includes('xiaozhi')) {
           this.deviceType = 'xiaozhi';
@@ -512,6 +520,14 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
       if (message.objectId && message.key) {
         this.entityKeys[message.objectId] = message.key;
         this.logger.info(`Registered binary sensor: ${message.objectId} with key ${message.key}`);
+      }
+    }
+
+    else if (name === 'ListEntitiesEventResponse') {
+      if (message.objectId && message.key) {
+        this.entityKeys[message.objectId] = message.key;
+        this.eventEntityIds.set(message.key, message.objectId);
+        this.logger.info(`Registered event entity: ${message.objectId} with key ${message.key} (types: ${(message.eventTypes ?? []).join(', ') || 'none'})`);
       }
     }
 
@@ -635,6 +651,15 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
       }
     }
 
+    else if (name === 'EventResponse') {
+      // Delivered through the SubscribeStatesRequest subscription like any other
+      // entity state. The ThirdReality's top button is its only Event entity.
+      const objectId = this.eventEntityIds.get(message.key) ?? '';
+      const eventType = message.eventType ?? '';
+      this.logger.info(`Event entity fired: ${objectId || `key ${message.key}`} -> ${eventType}`);
+      this.emit('entity_event', objectId, eventType);
+    }
+
     else if (name === 'VoiceAssistantRequest' && message.start) {
       this.emit('starting');
 
@@ -678,6 +703,7 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
     this.subscribeVoiceAssistantCount = 0;
     this.voiceAssistantConfigurationCount = 0;
     this.entityKeys = {};
+    this.eventEntityIds.clear();
 
     // Stream the device's own ESPHome logs over this same connection (opt-in).
     // Sent before ListEntities so we capture the device-side view from the start.

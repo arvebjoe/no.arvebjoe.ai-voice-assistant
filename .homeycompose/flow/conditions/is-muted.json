@@ -9,7 +9,7 @@
       "title": {
         "en": "Device"
       },
-      "filter": "driver_id=home-assistant-voice-preview-edition"
+      "filter": "driver_id=home-assistant-voice-preview-edition|thirdreality-voice--music-assistant"
     }
   ]
 }

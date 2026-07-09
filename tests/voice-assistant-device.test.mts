@@ -309,6 +309,40 @@ describe('VoiceAssistantDevice (harness)', () => {
         });
     });
 
+    describe('button-pressed trigger (ThirdReality top button)', () => {
+        it('fires the button-pressed device trigger with the event type as token', async () => {
+            const h = await createHarness();
+            const triggered: Array<{ cardId: string; device: any; tokens: any }> = [];
+            h.homey.flow.getDeviceTriggerCard = (cardId: string) => ({
+                trigger: async (device: any, tokens: any) => { triggered.push({ cardId, device, tokens }); },
+                registerRunListener: () => { },
+            });
+
+            // The ESP client saw an EventResponse from the device's Event entity.
+            h.esp.emit('entity_event', 'button_press', 'single_press');
+            await h.settle(0);
+
+            expect(triggered).toHaveLength(1);
+            expect(triggered[0].cardId).toBe('button-pressed');
+            expect(triggered[0].device).toBe(h.device);
+            expect(triggered[0].tokens).toEqual({ event: 'single_press' });
+        });
+
+        it('fires with an empty token when the firmware sends no event type', async () => {
+            const h = await createHarness();
+            const triggered: any[] = [];
+            h.homey.flow.getDeviceTriggerCard = () => ({
+                trigger: async (_d: any, tokens: any) => { triggered.push(tokens); },
+                registerRunListener: () => { },
+            });
+
+            h.esp.emit('entity_event', 'button_press', '');
+            await h.settle(0);
+
+            expect(triggered).toEqual([{ event: '' }]);
+        });
+    });
+
     describe('M4 — runtime voice_provider switch', () => {
         it('rebuilds the provider when voice_provider changes', async () => {
             const h = await createHarness();
