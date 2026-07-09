@@ -6,7 +6,11 @@
     "selected_voice": "alloy",
     "ai_instructions": "",
     "openweather_api_key": "",
-    "input_buffer_debug": false
+    "input_buffer_debug": false,
+    "bring_enabled": true,
+    "bring_email": "",
+    "bring_password": "",
+    "bring_list_name": ""
   },
   "env": {
     "HE_HOST_IP": "",

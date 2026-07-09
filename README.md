@@ -183,7 +183,9 @@ engines.
 * **Bring! shopping list** *(opt-in)* — tick the box and enter your Bring! account e-mail and
   password to let the assistant read and edit your shopping list. Optionally name a specific list
   (defaults to your account's default list). While it's off, the shopping-list tools and prompt
-  aren't loaded at all.
+  aren't loaded at all. Note: the account must have an e-mail + password login — accounts created
+  with "Sign in with Apple/Google/Facebook" have no password and can't be used until you set one
+  in the Bring! app.
 * **Local pipeline settings** *(Local provider only)* — per-stage backend choice plus host/port
   or URL/key/model for each, with Test buttons.
 
