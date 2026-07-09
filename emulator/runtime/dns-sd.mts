@@ -7,6 +7,7 @@
 // parsing PTR/SRV/TXT/A answer records (with name compression). The packet
 // encode/parse functions are pure so they can be unit-tested without sockets.
 import dgram from 'node:dgram';
+import os from 'node:os';
 
 export const TYPE_A = 1;
 export const TYPE_PTR = 12;
@@ -220,15 +221,32 @@ export function collate(records: DnsRecord[], serviceName: string, services: Map
 
 // ---- browsing ---------------------------------------------------------------
 
+/** Non-internal, non-link-local IPv4 addresses, one per candidate LAN interface. */
+function listIPv4Addresses(): string[] {
+  const addrs: string[] = [];
+  for (const infos of Object.values(os.networkInterfaces())) {
+    for (const info of infos ?? []) {
+      if (info.family === 'IPv4' && !info.internal && !info.address.startsWith('169.254.')) {
+        addrs.push(info.address);
+      }
+    }
+  }
+  return addrs;
+}
+
 /**
  * Browse `serviceName` for `durationMs` and return every instance seen.
  *
- * Two sockets are used so discovery works in as many network setups as possible:
- * - an ephemeral-port socket sending legacy (QU) queries — responders unicast
- *   the reply straight back to us, no multicast group needed;
- * - a best-effort socket bound to 5353 + joined to the mDNS group, catching
- *   responders that only ever answer via multicast. Binding 5353 can fail when
- *   another daemon holds it exclusively; that path is then silently skipped.
+ * Multicast egress does NOT follow the default route: on a multi-homed machine
+ * (VPN adapters, WSL/Hyper-V vEthernets) the OS-default interface is often a
+ * virtual one where no satellite lives. So queries are sent per interface:
+ * - one ephemeral-port socket per IPv4 interface, `setMulticastInterface`'d to
+ *   it, sending legacy (QU) queries — responders unicast the reply straight
+ *   back to us, no multicast group needed;
+ * - a best-effort socket bound to 5353 + joined to the mDNS group on every
+ *   interface, catching responders that only ever answer via multicast.
+ *   Binding 5353 can fail when another daemon holds it exclusively; that path
+ *   is then silently skipped.
  */
 export async function browse(serviceName: string, durationMs: number = 4000): Promise<MdnsService[]> {
   const services = new Map<string, MdnsService>();
@@ -248,18 +266,38 @@ export async function browse(serviceName: string, durationMs: number = 4000): Pr
     }
   };
 
-  const sockets: dgram.Socket[] = [];
+  const legacySockets: dgram.Socket[] = [];
+  const allSockets: dgram.Socket[] = [];
+  const ifaceAddrs = listIPv4Addresses();
 
-  // Socket 1: ephemeral port, legacy unicast-response query.
-  const legacy = await new Promise<dgram.Socket | null>((resolve) => {
-    const s = dgram.createSocket({ type: 'udp4', reuseAddr: true });
-    s.on('error', () => resolve(null));
-    s.on('message', onMessage);
-    s.bind(0, () => resolve(s));
-  });
-  if (legacy) sockets.push(legacy);
+  // Legacy sockets: one ephemeral-port socket per interface, multicast egress
+  // pinned to that interface. Fall back to a single OS-default socket when
+  // interface enumeration comes up empty.
+  const openLegacy = (ifaceAddr?: string) =>
+    new Promise<dgram.Socket | null>((resolve) => {
+      const s = dgram.createSocket({ type: 'udp4', reuseAddr: true });
+      s.on('error', () => resolve(null));
+      s.on('message', onMessage);
+      s.bind(0, ifaceAddr, () => {
+        try {
+          if (ifaceAddr) s.setMulticastInterface(ifaceAddr);
+          resolve(s);
+        } catch {
+          try { s.close(); } catch { }
+          resolve(null);
+        }
+      });
+    });
 
-  // Socket 2 (best-effort): true mDNS listener on 5353.
+  for (const addr of ifaceAddrs.length > 0 ? ifaceAddrs : [undefined]) {
+    const s = await openLegacy(addr);
+    if (s) legacySockets.push(s);
+  }
+  allSockets.push(...legacySockets);
+
+  // Multicast socket (best-effort): true mDNS listener on 5353, joined to the
+  // group on every interface so multicast-only responders are heard wherever
+  // they live.
   const multicast = await new Promise<dgram.Socket | null>((resolve) => {
     const s = dgram.createSocket({ type: 'udp4', reuseAddr: true });
     let settled = false;
@@ -267,24 +305,30 @@ export async function browse(serviceName: string, durationMs: number = 4000): Pr
     s.on('error', fail);
     s.on('message', onMessage);
     s.bind(MDNS_PORT, () => {
-      try {
-        s.addMembership(MDNS_ADDR);
+      let joined = 0;
+      for (const addr of ifaceAddrs.length > 0 ? ifaceAddrs : [undefined]) {
+        try {
+          s.addMembership(MDNS_ADDR, addr);
+          joined++;
+        } catch { }
+      }
+      if (joined > 0) {
         settled = true;
         resolve(s);
-      } catch {
+      } else {
         fail();
       }
     });
   });
-  if (multicast) sockets.push(multicast);
+  if (multicast) allSockets.push(multicast);
 
-  if (sockets.length === 0) {
+  if (allSockets.length === 0) {
     throw new Error('Could not open a UDP socket for mDNS discovery');
   }
 
   const sendQueries = () => {
-    for (const s of sockets) {
-      const qu = s === legacy; // QU only makes sense off-port-5353
+    for (const s of allSockets) {
+      const qu = legacySockets.includes(s); // QU only makes sense off-port-5353
       const query = buildQuery(serviceName, TYPE_PTR, qu);
       s.send(query, MDNS_PORT, MDNS_ADDR, () => { /* ignore send errors */ });
     }
@@ -305,7 +349,7 @@ export async function browse(serviceName: string, durationMs: number = 4000): Pr
     }
     await sleep(durationMs - elapsed);
   } finally {
-    for (const s of sockets) {
+    for (const s of allSockets) {
       try { s.close(); } catch { }
     }
   }
