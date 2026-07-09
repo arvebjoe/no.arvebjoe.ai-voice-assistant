@@ -1,0 +1,30 @@
+{
+  "title": {
+    "en": "Button pressed"
+  },
+  "hint": {
+    "en": "Fires when the physical button on top of the device is pressed."
+  },
+  "args": [
+    {
+      "type": "device",
+      "name": "device",
+      "title": {
+        "en": "Device"
+      },
+      "filter": "driver_id=thirdreality-voice--music-assistant"
+    }
+  ],
+  "tokens": [
+    {
+      "name": "event",
+      "type": "string",
+      "title": {
+        "en": "Event type"
+      },
+      "example": {
+        "en": "single_press"
+      }
+    }
+  ]
+}

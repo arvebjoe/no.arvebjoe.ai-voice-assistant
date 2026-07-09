@@ -144,11 +144,13 @@ What it takes for our ESPHome client (`esp-voice-assistant-client.mts`) to drive
    handshake (send `ConnectRequest`, don't wait for the response) is fine — this firmware actually
    still answers msg id 3, and either way we proceed immediately. API 1.10 passes our ≥ 1.5 gate.
 2. **Discovery: works as-is.** `_esphomelib._tcp` matches our `.homeycompose/discovery/esphome.json`.
-3. **Pairing sniff: MUST be extended.** The identity sniff (HelloResponse/DeviceInfoResponse
-   substring match in `esp-voice-assistant-client.mts`) has no pattern that matches this device.
-   Add e.g. `thirdreality` and/or `3rspk` → a new `deviceType` (e.g. `'3rspk'`), plus a new driver
-   folder subclassing `VoiceAssistantDevice`/`VoiceAssistantDriver` (per-model flags TBD — start
-   with `needDelayedPlayback = false` and test).
+3. **Pairing sniff: done.** The identity sniff (HelloResponse/DeviceInfoResponse substring match
+   in `esp-voice-assistant-client.mts`) matches `thirdreality` / `3rspk` → `deviceType 'tr'`,
+   paired through `drivers/thirdreality-voice--music-assistant/` (subclassing
+   `VoiceAssistantDevice`/`VoiceAssistantDriver` with `needDelayedPlayback = false`). The physical
+   top (Home) button arrives as an ESPHome **Event entity** (`EventResponse`, msg id 108) via the
+   existing `SubscribeStatesRequest` subscription; the client emits `entity_event` and the device
+   fires the `button-pressed` WHEN flow card (event type string as a token).
 4. **Feature flags line up.** TIMERS (bit 3) → our timer flow cards work;
    ANNOUNCE + START_CONVERSATION → both our announce path and the in-band conversation flow have
    firmware support. API_AUDIO (bit 2) means mic audio arrives as API messages — same as the PE.

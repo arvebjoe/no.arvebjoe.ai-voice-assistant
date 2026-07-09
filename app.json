@@ -80,6 +80,37 @@
     "triggers": [
       {
         "title": {
+          "en": "Button pressed"
+        },
+        "hint": {
+          "en": "Fires when the physical button on top of the device is pressed."
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "title": {
+              "en": "Device"
+            },
+            "filter": "driver_id=thirdreality-voice--music-assistant"
+          }
+        ],
+        "tokens": [
+          {
+            "name": "event",
+            "type": "string",
+            "title": {
+              "en": "Event type"
+            },
+            "example": {
+              "en": "single_press"
+            }
+          }
+        ],
+        "id": "button-pressed"
+      },
+      {
+        "title": {
           "en": "Timer cancelled"
         },
         "hint": {
@@ -208,7 +239,7 @@
             "title": {
               "en": "Device"
             },
-            "filter": "driver_id=home-assistant-voice-preview-edition"
+            "filter": "driver_id=home-assistant-voice-preview-edition|thirdreality-voice--music-assistant"
           }
         ],
         "id": "is-muted"
@@ -251,7 +282,7 @@
             "title": {
               "en": "Device"
             },
-            "filter": "driver_id=home-assistant-voice-preview-edition|xiaozhi-ai"
+            "filter": "driver_id=home-assistant-voice-preview-edition|xiaozhi-ai|thirdreality-voice--music-assistant"
           },
           {
             "type": "text",
@@ -292,7 +323,7 @@
             "title": {
               "en": "Device"
             },
-            "filter": "driver_id=home-assistant-voice-preview-edition|xiaozhi-ai"
+            "filter": "driver_id=home-assistant-voice-preview-edition|xiaozhi-ai|thirdreality-voice--music-assistant"
           },
           {
             "type": "text",
@@ -343,7 +374,7 @@
             "title": {
               "en": "Device"
             },
-            "filter": "driver_id=home-assistant-voice-preview-edition|xiaozhi-ai"
+            "filter": "driver_id=home-assistant-voice-preview-edition|xiaozhi-ai|thirdreality-voice--music-assistant"
           },
           {
             "type": "text",
@@ -375,7 +406,7 @@
             "title": {
               "en": "Device"
             },
-            "filter": "driver_id=home-assistant-voice-preview-edition|xiaozhi-ai"
+            "filter": "driver_id=home-assistant-voice-preview-edition|xiaozhi-ai|thirdreality-voice--music-assistant"
           },
           {
             "type": "text",
@@ -541,6 +572,7 @@
       "discovery": "esphome",
       "capabilities": [
         "volume_set",
+        "onoff",
         "volume_mute"
       ],
       "platforms": [
@@ -567,7 +599,63 @@
           "template": "add_devices"
         }
       ],
-      "id": "thirdreality-voice--music-assistant"
+      "id": "thirdreality-voice--music-assistant",
+      "settings": [
+        {
+          "id": "available_wake_words",
+          "type": "label",
+          "label": {
+            "en": "Available wake words"
+          },
+          "value": "",
+          "hint": {
+            "en": "Wake words installed on the device, reported when it connects. The active one is marked."
+          }
+        },
+        {
+          "id": "wake_word",
+          "type": "text",
+          "label": {
+            "en": "Wake word"
+          },
+          "value": "",
+          "hint": {
+            "en": "Type one of the available wake words (name or id, e.g. 'Okay Nabu' or 'okay_nabu') to activate it on the device. Leave empty to keep the current one."
+          }
+        },
+        {
+          "id": "initial_audio_skip",
+          "type": "number",
+          "label": {
+            "en": "Initial audio skip"
+          },
+          "hint": {
+            "en": "Audio trimmed from the start of a wake-word turn to swallow the wake-word sound."
+          },
+          "value": 0,
+          "min": 0,
+          "max": 2000,
+          "units": {
+            "en": "ms"
+          }
+        },
+        {
+          "id": "followup_audio_skip",
+          "type": "number",
+          "label": {
+            "en": "Follow-up audio skip"
+          },
+          "hint": {
+            "en": "Audio trimmed from the start of a follow-up (conversation) turn. There is no wake-word sound here — keep this small, just enough to swallow the mic-open noise burst."
+          },
+          "value": 0,
+          "min": 0,
+          "max": 2000,
+          "units": {
+            "en": "ms"
+          }
+        }
+      ]
     },
     {
       "name": {
