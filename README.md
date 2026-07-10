@@ -196,7 +196,8 @@ to the speaker** (never through Homey or this app).
 Setup:
 
 1. Run a **Music Assistant server 2.7 or newer** on your network (Docker, or the Home Assistant
-   add-on) and add your music providers in its web UI.
+   add-on) and add your music providers in its web UI. A ready-to-run compose file with setup
+   notes is in [docs/music-assistant](./docs/music-assistant/README.md).
 2. Add your speakers to MA as **Sendspin players** — both the Voice PE (stock firmware) and the
    ThirdReality speaker have the Sendspin client built in, so MA discovers them on the LAN.
 3. In this app's settings, enable **Music Assistant** and enter the server's address
