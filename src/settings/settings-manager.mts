@@ -130,7 +130,7 @@ export class SettingsManager {
       'music_assistant_enabled', 'music_assistant_host', 'music_assistant_port',
       // Local pipeline endpoints + per-stage backend selection (Whisper/Voxtral,
       // Ollama/Mistral, Piper/Voxtral) and the shared Mistral credentials/models
-      'local_stt_host', 'local_stt_port', 'local_llm_host', 'local_llm_port', 'local_llm_model', 'local_tts_host', 'local_tts_port',
+      'local_stt_host', 'local_stt_port', 'local_llm_host', 'local_llm_port', 'local_llm_model', 'local_llm_num_ctx', 'local_tts_host', 'local_tts_port',
       'local_stt_provider', 'local_llm_provider', 'local_tts_provider',
       'mistral_api_key', 'mistral_model', 'mistral_stt_model', 'mistral_stt_realtime_model', 'mistral_tts_model',
       // Generic OpenAI-compatible backends (per-stage base URL / key / model)

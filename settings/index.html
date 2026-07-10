@@ -364,6 +364,14 @@
           <div class="help-text">An Ollama model that supports tool calling (e.g. <code>qwen3</code>, <code>llama3.1</code>,
             <code>gpt-oss</code>). Empty = the first model from <code>ollama list</code>.</div>
         </div>
+        <div class="homey-form-group">
+          <label class="homey-form-label" for="local_llm_num_ctx">Context window (num_ctx)</label>
+          <input type="number" class="homey-form-input" id="local_llm_num_ctx" min="2048" step="1024"
+            placeholder="8192" />
+          <div class="help-text">Tokens of context requested from Ollama per reply. Ollama's own default (4096) is too
+            small for the assistant's instructions and tools, which makes the model silently forget its rules. Empty =
+            8192. Raise it if you enable many features; lower values use less RAM/VRAM.</div>
+        </div>
       </div>
       <div id="local_llm_lmstudio" style="display: none;">
         <div class="local-host-port">
@@ -625,7 +633,7 @@
       var localSettingIds = [
         "local_stt_provider", "local_stt_host", "local_stt_port", "mistral_stt_model", "mistral_stt_realtime_model",
         "wyoming_stt_host", "wyoming_stt_port",
-        "local_llm_provider", "local_llm_host", "local_llm_port", "local_llm_model", "mistral_model",
+        "local_llm_provider", "local_llm_host", "local_llm_port", "local_llm_model", "local_llm_num_ctx", "mistral_model",
         "lmstudio_host", "lmstudio_port", "lmstudio_model",
         "local_tts_provider", "local_tts_host", "local_tts_port", "mistral_tts_model",
         "wyoming_tts_host", "wyoming_tts_port",

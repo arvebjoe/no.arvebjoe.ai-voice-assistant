@@ -261,6 +261,52 @@ describe('LocalPipelineProvider', () => {
         expect(messages3.filter((m) => m.role === 'user').length).toBe(1);
     });
 
+    it('drops tool chatter from history once the turn is over (keeps the spoken text)', async () => {
+        llmChat
+            .mockImplementationOnce(async () => ({
+                content: '',
+                toolCalls: [{ id: 'abc123XYZ', name: 'get_time', args: { zone: 'Office' } }],
+            }))
+            .mockImplementationOnce(async () => ({ content: 'It is noon.', toolCalls: [] }));
+
+        const done1 = once(provider, 'response.done');
+        feedAll(provider, speech(600));
+        feedAll(provider, silence(900));
+        await done1;
+        await new Promise((r) => setTimeout(r, 0));
+
+        const done2 = once(provider, 'response.done');
+        feedAll(provider, speech(600));
+        feedAll(provider, silence(900));
+        await done2;
+
+        // Turn 2 (llm call 3) still sees turn 1's question and answer, but the
+        // tool-call step and the tool result were pruned when turn 1 ended.
+        const messages: any[] = llmChat.mock.calls[2][0];
+        expect(messages.some((m) => m.role === 'tool')).toBe(false);
+        expect(messages.some((m) => m.toolCalls?.length)).toBe(false);
+        expect(messages.filter((m) => m.role === 'assistant')).toEqual([{ role: 'assistant', content: 'It is noon.' }]);
+    });
+
+    it('caps history at the last 20 messages so long sessions cannot outgrow a small context window', async () => {
+        for (let i = 0; i < 12; i++) {
+            const done = once(provider, 'text.done');
+            provider.sendTextForTextResponse(`question ${i}`);
+            await done;
+        }
+        const done = once(provider, 'text.done');
+        provider.sendTextForTextResponse('final question');
+        await done;
+
+        // 12 finished turns = 24 messages, capped to 20 (question 2 onward);
+        // turn 13 adds its own user message on top: system + 20 + 1.
+        const messages: any[] = llmChat.mock.calls[12][0];
+        expect(messages.length).toBe(22);
+        expect(messages[0].role).toBe('system');
+        expect(messages[1]).toMatchObject({ role: 'user', content: 'question 2' });
+        expect(messages[messages.length - 1]).toMatchObject({ role: 'user', content: 'final question' });
+    });
+
     it('answers text questions with text.done and no TTS', async () => {
         const done = once(provider, 'text.done');
         provider.sendTextForTextResponse('what time is it?');
