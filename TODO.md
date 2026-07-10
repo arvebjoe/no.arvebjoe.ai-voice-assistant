@@ -23,7 +23,60 @@ Assistant ≥ 2.7 streams to the PE and TR directly over Sendspin.
 
 ---
 
-Nothing else outstanding right now.
+## Feature ideas — 2026-07-10 brainstorm (owner-approved, not yet started)
+
+Ordered roughly by wow-per-effort. None are started; pick one and spec it before coding.
+Explicitly avoids the items dropped in the 2026-07-07 triage (flows-by-voice, multi-timers,
+image analysis — see [`COMPLETED.md` §6](./COMPLETED.md)).
+
+### Easy wins (fit the existing architecture almost directly)
+
+- [ ] **Room-to-room intercom / broadcast** — *"tell the kids dinner is ready"*, *"announce
+      upstairs that we're leaving in 5 minutes"*. `DeviceManager` already tracks every voice
+      satellite and the announce/TTS path exists (the *Say* flow card); a
+      `broadcast_message(room?, message)` tool is a thin layer over both. Turns the satellites
+      into a whole-house intercom.
+- [ ] **Household memory** — *"remember that the spare key is in the blue cabinet"* →
+      `remember`/`recall`/`forget` tools persisted in app settings, stored facts injected into
+      the system prompt. Makes the assistant feel personal rather than generic.
+- [ ] **Moods** — Homey has native Moods and there is no mood tool today. `list_moods` +
+      `set_mood` via `ApiHelper`, same pattern as the zone/device tools. Covers the "scenes"
+      ask without touching the dropped start-flows-by-voice idea.
+- [ ] **Presence** — *"is anyone home?"*, *"is Anna home yet?"*. Read-only tool over Homey's
+      user/presence API.
+
+### High value, more work
+
+- [ ] **Reminders (the missing sibling of timers)** — *"remind me tomorrow at 8 to take out the
+      recycling"*. Unlike timers these need persistence (app settings) and delivery: spoken
+      announcement on the satellite that set it, plus a Homey timeline/push notification as
+      backup if nobody's listening. The most-used feature on Alexa/Google that we lack.
+- [ ] **Energy & history questions via Homey Insights** — *"how much power are we using right
+      now?"*, *"how much energy did the heat pump use yesterday?"*. Read-only tool over the
+      Insights API; gives the assistant the time dimension it completely lacks today.
+- [ ] **Electricity spot prices (Nord Pool)** — *"when is power cheapest today?"*, *"should I
+      run the dishwasher now or tonight?"*. Public API (e.g. hvakosterstrommen.no) → small HTTP
+      helper + one tool. Pairs with the Insights tool for genuinely smart answers.
+- [ ] **Calendar (read-only iCal/CalDAV URL)** — *"what's on today?"*. Opt-in like Bring!:
+      paste an iCal URL in settings, one `get_calendar_events` tool. Also feeds the briefing
+      card below.
+- [ ] **"Morning briefing" flow card** — one flow-card action ("Play briefing on device") where
+      the LLM composes weather + today's calendar + spot-price note + shopping list into one
+      short spoken update. Pure composition of existing tools (plus calendar/spot prices).
+
+### Stretch / just-plain-cool
+
+- [ ] **Follow-me music** — we already control Music Assistant and know each satellite's zone;
+      with per-zone motion/presence, *"follow me"* transfers the MA queue between Sendspin
+      players as you move. Prototype behind an opt-in setting.
+
+**Suggested first picks:** intercom/broadcast, memory, and reminders — they change how the
+product feels day-to-day. Moods and presence are cheap enough to bundle into any of them.
+
+Remember: each shipped feature must update `README.md` + `README.txt` (and usually the agent
+instructions/`get_assistant_capabilities`) before commit.
+
+---
 
 The 2026-07-07 session cleared this list: every item was either implemented (archived with full
 context in [`COMPLETED.md`](./COMPLETED.md)) or explicitly dropped by the owner (dropped items and
