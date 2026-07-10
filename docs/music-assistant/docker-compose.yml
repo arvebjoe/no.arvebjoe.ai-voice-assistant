@@ -1,0 +1,45 @@
+# Music Assistant server — the music backend for this app's voice-controlled
+# music feature (see README.md § "Playing music (Music Assistant)").
+#
+# Start it on any always-on box on the SAME LAN as your speakers and Homey:
+#
+#   docker compose up -d
+#
+# Then open the web UI at http://<host-ip>:8095 to add your music providers
+# (Spotify, Apple Music, local files, radio, …) and your speakers — the
+# Voice PE and ThirdReality show up under the Sendspin player provider
+# automatically. Finally, point this app's "Music Assistant" setting at
+# <host-ip>, port 8095.
+#
+# Based on the official install docs: https://www.music-assistant.io/installation/
+services:
+  music-assistant-server:
+    # This app needs Music Assistant 2.7 or newer (Sendspin player support).
+    image: ghcr.io/music-assistant/server:latest
+    container_name: music-assistant-server
+    restart: unless-stopped
+
+    # Host networking is REQUIRED: MA discovers players via mDNS/multicast and
+    # streams audio to them from its own ports — the web UI/API on TCP 8095
+    # (what this app talks to) and the audio stream server on TCP 8097/8098.
+    # Port mappings can't forward multicast, so a bridge network won't work.
+    network_mode: host
+
+    volumes:
+      # All MA state (config, database, cache). Keep it next to this file.
+      - ./music-assistant-data:/data/
+      # Optional: expose a local music folder to MA's "Filesystem" provider.
+      # - /path/to/your/music:/media/music:ro
+
+    # Only needed if you mount remote SMB/NFS music shares from INSIDE Music
+    # Assistant (Settings → Providers → Filesystem). Harmless otherwise, but
+    # feel free to remove all three entries if you don't use network shares.
+    cap_add:
+      - SYS_ADMIN
+      - DAC_READ_SEARCH
+    security_opt:
+      - apparmor:unconfined
+
+    environment:
+      # critical | error | warning | info | debug | verbose
+      - LOG_LEVEL=info

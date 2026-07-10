@@ -578,6 +578,32 @@
     </div>
   </fieldset>
 
+  <fieldset class="homey-form-fieldset">
+    <div class="homey-form-group">
+      <label class="homey-form-label" for="music_assistant_enabled">Music Assistant</label>
+      <label style="display:flex; align-items:center; gap:8px; font-weight:400;">
+        <input type="checkbox" id="music_assistant_enabled" style="width:auto;" />
+        Let the assistant find and play music via a Music Assistant server
+      </label>
+      <div class="help-text">Requires a Music Assistant server (2.7 or newer) on your network. Add your speakers
+        as Sendspin players in Music Assistant — the music streams from the server straight to the speakers;
+        this app only sends the voice commands (find/play, pause, next…).</div>
+    </div>
+    <div id="music_assistant_settings" style="display: none;">
+      <div class="homey-form-group">
+        <label class="homey-form-label" for="music_assistant_host">Server address</label>
+        <input type="text" class="homey-form-input" id="music_assistant_host" autocomplete="off"
+          placeholder="e.g. 192.168.1.50" />
+      </div>
+      <div class="homey-form-group">
+        <label class="homey-form-label" for="music_assistant_port">Server port</label>
+        <input type="number" class="homey-form-input" id="music_assistant_port" autocomplete="off"
+          placeholder="8095" />
+        <div class="help-text">The Music Assistant web interface port. Leave at 8095 unless you changed it.</div>
+      </div>
+    </div>
+  </fieldset>
+
   <button id="save" class="homey-button-primary-full">Save changes</button>
 
   <script type="text/javascript">
@@ -788,6 +814,27 @@
         if (value) document.getElementById("bring_list_name").value = value;
       });
 
+      // Music Assistant: the enable checkbox toggles the server-address fields.
+      var musicAssistantEnabledElement = document.getElementById("music_assistant_enabled");
+      function refreshMusicAssistantVisibility() {
+        document.getElementById("music_assistant_settings").style.display =
+          musicAssistantEnabledElement.checked ? "" : "none";
+      }
+      musicAssistantEnabledElement.addEventListener("change", refreshMusicAssistantVisibility);
+      Homey.get("music_assistant_enabled", function (err, enabled) {
+        if (err) return Homey.alert(err);
+        musicAssistantEnabledElement.checked = enabled === true || enabled === "true";
+        refreshMusicAssistantVisibility();
+      });
+      Homey.get("music_assistant_host", function (err, value) {
+        if (err) return Homey.alert(err);
+        if (value) document.getElementById("music_assistant_host").value = value;
+      });
+      Homey.get("music_assistant_port", function (err, value) {
+        if (err) return Homey.alert(err);
+        document.getElementById("music_assistant_port").value = value || 8095;
+      });
+
       // Show/hide toggles for the masked API-key inputs.
       document.querySelectorAll(".secret-toggle").forEach(function (btn) {
         btn.addEventListener("click", function () {
@@ -892,6 +939,17 @@
           if (err) return Homey.alert(err);
         });
         Homey.set("bring_list_name", document.getElementById("bring_list_name").value.trim(), function (err) {
+          if (err) return Homey.alert(err);
+        });
+
+        // Save the Music Assistant settings (enable flag + server address)
+        Homey.set("music_assistant_enabled", musicAssistantEnabledElement.checked, function (err) {
+          if (err) return Homey.alert(err);
+        });
+        Homey.set("music_assistant_host", document.getElementById("music_assistant_host").value.trim(), function (err) {
+          if (err) return Homey.alert(err);
+        });
+        Homey.set("music_assistant_port", parseInt(document.getElementById("music_assistant_port").value, 10) || 8095, function (err) {
           if (err) return Homey.alert(err);
         });
 

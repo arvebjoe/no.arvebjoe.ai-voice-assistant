@@ -120,6 +120,7 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
             | "deviceZone"
             | "supportsTimers"
             | "supportsShoppingList"
+            | "supportsMusic"
         >
     >;
     // keep your existing maps, but store full records keyed by callId
@@ -159,7 +160,8 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
             additionalInstructions: opts.additionalInstructions ?? "",
             deviceZone: opts.deviceZone ?? "<Unknown Zone>",
             supportsTimers: opts.supportsTimers ?? false,
-            supportsShoppingList: opts.supportsShoppingList ?? false
+            supportsShoppingList: opts.supportsShoppingList ?? false,
+            supportsMusic: opts.supportsMusic ?? false
         };
 
         this.reconnect = new ReconnectPolicy(homey, {
@@ -218,6 +220,7 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
             additionalInstructions: this.options.additionalInstructions,
             supportsTimers: this.options.supportsTimers,
             supportsShoppingList: this.options.supportsShoppingList,
+            supportsMusic: this.options.supportsMusic,
         };
     }
 
@@ -573,6 +576,23 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
         }
         this.logger.info(`Shopping list ${supportsShoppingList ? 'enabled' : 'disabled'}, rebuilding instructions`);
         this.options.supportsShoppingList = supportsShoppingList;
+        await this.instructionState.reload(this.instructionParams());
+        if (this.isConnected()) {
+            this.sendSessionUpdate();
+        }
+    }
+
+    /**
+     * Enable/disable the Music Assistant section of the prompt. Same shape as
+     * updateShoppingListSupport: the live session gets the new prompt, and the
+     * device restarts the provider so the (un)registered tools are re-sent.
+     */
+    async updateMusicSupport(supportsMusic: boolean): Promise<void> {
+        if (this.options.supportsMusic === supportsMusic) {
+            return;
+        }
+        this.logger.info(`Music ${supportsMusic ? 'enabled' : 'disabled'}, rebuilding instructions`);
+        this.options.supportsMusic = supportsMusic;
         await this.instructionState.reload(this.instructionParams());
         if (this.isConnected()) {
             this.sendSessionUpdate();

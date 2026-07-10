@@ -1,5 +1,6 @@
 import { loadInstructionModule, InstructionModule } from './agent-instructions.mjs';
 import { getShoppingListInstructions } from './instructions/shopping-list-instructions.mjs';
+import { getMusicInstructions } from './instructions/music-instructions.mjs';
 
 /** The option fields the system prompt is built from. */
 export type InstructionParams = {
@@ -8,6 +9,7 @@ export type InstructionParams = {
     additionalInstructions?: string | null;
     supportsTimers?: boolean;
     supportsShoppingList?: boolean;
+    supportsMusic?: boolean;
 };
 
 /**
@@ -61,6 +63,10 @@ export class InstructionState {
             // per-language modules) and is only added when the feature is on.
             if (params.supportsShoppingList) {
                 text += getShoppingListInstructions(params.languageCode);
+            }
+            // Same for the Music Assistant block.
+            if (params.supportsMusic) {
+                text += getMusicInstructions(params.languageCode);
             }
             this.instructionText = text;
         } catch (error) {

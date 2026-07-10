@@ -183,6 +183,41 @@ Sub-items of the still-open "Improve STT accuracy" work:
   - `disabled`: the tool returns a WEB_SEARCH_DISABLED error the model relays.
   Settings page: a "Web search" dropdown + a Brave key field shown only for the Brave backend.
 
+- [x] **Music via Music Assistant (2026-07-09)** *(live verify pending — checklist in TODO.md)* —
+  voice-controlled music on the PE and TR through a [Music Assistant](https://www.music-assistant.io/)
+  server. **The audio never touches this app**: both devices are native Sendspin players (PE stock
+  26.x firmware — see `sendspin:` in `.esp_home/home-assistant-voice.yaml`, merged upstream in
+  ESPHome 2026.5; TR ships `sendspin-client`), and MA ≥ 2.7 streams to them directly. We are the
+  control plane only:
+  - `src/helpers/music-assistant-client.mts` — minimal client for MA's WebSocket JSON API
+    (`ws://<host>:8095/ws`; command/result with `message_id` correlation, `partial` list-chunk
+    accumulation, error mapping, lazy connect + reconnect-on-next-command). One shared instance
+    app-wide (`getMusicAssistantClient()`). Commands used: `players/all`, `music/search`,
+    `player_queues/get_active_queue`, `player_queues/play_media`, `player_queues/<transport>`,
+    `player_queues/shuffle`. Protocol source: `music-assistant/models` api.py + the python/TS
+    reference clients.
+  - Four tools in `ToolManager` (Bring!-style opt-in gating on `music_assistant_enabled` +
+    `music_assistant_host`): `search_music`, `play_music` (query or uri; media_type;
+    play/next/add; radio_mode), `music_control` (pause/resume/stop/next/previous/shuffle_on/off;
+    resume maps to `play` when paused, `resume` otherwise), `get_music_state`. Transport goes to
+    the **active queue** (`get_active_queue`), so group playback is steered at the group leader.
+  - Satellite→player mapping: the device passes a hint callback (IP from the store, Homey device
+    name, zone); `resolveMusicPlayer` matches MA players by IP → device name → zone name, so
+    "play X" targets the speaker being spoken to; explicit `player` arg (fuzzy name match) wins;
+    failures return the available player names for the model to ask with.
+  - Prompt block in `src/llm/instructions/music-instructions.mts` (12 languages, one shared file
+    like the shopping-list block), gated by `supportsMusic` through `InstructionState` and
+    `updateMusicSupport` on all three providers; device reconciles on settings change and
+    restarts the provider when the active state flips (same dance as Bring!).
+  - Tests: `tests/music-assistant-client.test.mts` (scripted in-process WS server: handshake,
+    correlation, partials, errors, reconnect) and `tests/tool-manager-music.test.mts` (gating +
+    handlers with a fake client). READMEs updated (music section + the previously missing
+    ThirdReality hardware section).
+  - Deliberately out of scope: XiaoZhi as a music target (no Sendspin client), MA volume tools
+    (device volume already handled over ESPHome), event subscriptions (player/queue state is
+    fetched on demand). The Homey MA app (`com.cyrilhendriks.musicassistant`) coexists fine —
+    same MA API, different consumer.
+
 ---
 
 ## 4. Custom ESPHome / PE firmware

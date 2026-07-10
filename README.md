@@ -2,9 +2,10 @@
 
 <img src="./assets/images/large.png" alt="App banner" />
 
-Talk to your smart home. This Homey app connects small, inexpensive ESP32-based voice devices
-(Home Assistant Voice Preview Edition, XiaoZhi AI) to an AI assistant that controls your Homey
-devices, answers questions, runs timers, and speaks back — in your language.
+Talk to your smart home. This Homey app connects small, inexpensive voice devices
+(Home Assistant Voice Preview Edition, XiaoZhi AI, ThirdReality Voice & Music Assistant) to an AI
+assistant that controls your Homey devices, answers questions, plays music, runs timers, and
+speaks back — in your language.
 
 You choose the brain: **OpenAI**, **Google Gemini**, or a fully **local / self-hosted** pipeline
 (Whisper + Ollama + Piper and friends) where no audio ever leaves your network.
@@ -34,6 +35,11 @@ just speak naturally:
 * **Manage your Bring! shopping list** — *"what's on the shopping list?"*, *"add milk"*, *"take bread
   off the list"*. If you add something that's already there, the assistant asks whether to increase
   the amount or leave it. Opt-in — enable it and enter your Bring! account details in settings.
+* **Play music** — *"play Abbey Road by the Beatles"*, *"play some Queen in the kitchen"*, *"next
+  song"*, *"what's playing?"*. Works through a [Music Assistant](https://www.music-assistant.io/)
+  server on your network, which brings your music providers (Spotify, Apple Music, local library,
+  radio, …) and streams straight to the speakers. Opt-in — see
+  [Playing music](#playing-music-music-assistant).
 * **Ask for help** — *"what can you do?"* and the assistant explains its own capabilities.
 
 The assistant understands and replies in **English, Dutch, German, French, Italian, Swedish,
@@ -114,6 +120,17 @@ RealDeco.
 * If a device gets stuck after a wrong name/config, enter bootloader mode (usually
   holding/combining buttons) and re-flash over USB.
 
+### 3) ThirdReality Voice & Music Assistant
+
+<img src="./drivers/thirdreality-voice--music-assistant/assets/images/large.png" height="160" alt="ThirdReality Voice & Music Assistant" />
+
+An open-source Linux-based smart speaker that speaks the same ESPHome native API as the Voice PE,
+so it **works with this app out of the box — no flashing needed**. It has an LED ring, a Home
+button, a hardware mic-mute switch, and on-device wake words (default *"Okay Nabu"*). It is also
+a native **Music Assistant / Sendspin multi-room speaker**, which pairs nicely with the
+[music feature](#playing-music-music-assistant) below. Technical deep-dive:
+[docs/thirdreality-voice-and-music](./docs/thirdreality-voice-and-music/README.md).
+
 ---
 
 ## Choosing an AI engine
@@ -165,6 +182,40 @@ engines.
 
 ---
 
+## Playing music (Music Assistant)
+
+The assistant can find and play music by voice — *"play Abbey Road by the Beatles"*, *"play some
+Queen in the kitchen"*, *"pause"*, *"next song"*, *"what's playing?"*.
+
+It works through [Music Assistant](https://www.music-assistant.io/) (MA), the open-source music
+server: MA connects your music providers (Spotify, Apple Music, Tidal, YouTube Music, local
+files, internet radio, …) and streams to your speakers. This app is only the **control plane** —
+it searches MA and starts/steers playback, while the audio streams from the MA server **directly
+to the speaker** (never through Homey or this app).
+
+Setup:
+
+1. Run a **Music Assistant server 2.7 or newer** on your network (Docker, or the Home Assistant
+   add-on) and add your music providers in its web UI. A ready-to-run compose file with setup
+   notes is in [docs/music-assistant](./docs/music-assistant/README.md).
+2. Add your speakers to MA as **Sendspin players** — both the Voice PE (stock firmware) and the
+   ThirdReality speaker have the Sendspin client built in, so MA discovers them on the LAN.
+3. In this app's settings, enable **Music Assistant** and enter the server's address
+   (default port 8095).
+
+Notes:
+
+* *"Play …"* targets the speaker you're talking to (matched automatically by IP/name/zone). Name
+  another room to play elsewhere — **any** MA player works as a target (Sonos, AirPlay,
+  Chromecast, …), not just the voice satellites.
+* The queue lives in MA, so pause/next/previous also work on grouped/multi-room playback, and
+  *"play music like X"* (radio mode) keeps the queue going with similar tracks.
+* Voice keeps working while music plays: announcements and replies duck the music on the device.
+* XiaoZhi devices have no Sendspin client, so they can't be music targets (controlling *other*
+  players by voice from a XiaoZhi still works).
+
+---
+
 ## App settings
 
 <img src="./.resources/settings.jpg" height="500" alt="Settings" />
@@ -186,6 +237,10 @@ engines.
   aren't loaded at all. Note: the account must have an e-mail + password login — accounts created
   with "Sign in with Apple/Google/Facebook" have no password and can't be used until you set one
   in the Bring! app.
+* **Music Assistant** *(opt-in)* — tick the box and enter your Music Assistant server's address
+  (default port 8095) to enable the music tools
+  (see [Playing music](#playing-music-music-assistant)). While it's off, the music tools and
+  prompt aren't loaded at all.
 * **Local pipeline settings** *(Local provider only)* — per-stage backend choice plus host/port
   or URL/key/model for each, with Test buttons.
 

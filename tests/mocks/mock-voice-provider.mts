@@ -40,6 +40,7 @@ export class FakeVoiceProvider extends EventEmitter {
     async updateZone(_z: string): Promise<void> { this.rec('updateZone'); }
     async updateTimerSupport(_b: boolean): Promise<void> { this.rec('updateTimerSupport'); }
     async updateShoppingListSupport(_b: boolean): Promise<void> { this.rec('updateShoppingListSupport'); }
+    async updateMusicSupport(_b: boolean): Promise<void> { this.rec('updateMusicSupport'); }
 }
 
 /** Drop-in for createVoiceProvider — records instances, returns a fresh fake. */
