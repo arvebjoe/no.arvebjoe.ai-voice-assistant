@@ -71,6 +71,11 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
   private tcp: net.Socket | null;
   private reconnectTimer: NodeJS.Timeout | null;
   private reconnectAttempt: number;
+  // Whether the current offline streak has already been reported as an error.
+  // A satellite that is unplugged or unreachable fails a reconnect every few
+  // seconds; only the first failure is worth a full error report (which goes
+  // to Sentry) — the rest are downgraded to warn until a connect succeeds.
+  private connectErrorReported: boolean = false;
   private readonly MAX_RECONNECT_DELAY: number;
   private lastMessageReceivedTime: number;
   private healthCheckTimer: NodeJS.Timeout | null;
@@ -193,7 +198,12 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
     });
     this.tcp.on('data', (data) => this.onTcpData(data));
     this.tcp.on('error', (err) => {
-      this.logger.error('TCP connection error', err);
+      if (this.connectErrorReported) {
+        this.logger.warn('TCP connection error', err);
+      } else {
+        this.connectErrorReported = true;
+        this.logger.error('TCP connection error', err);
+      }
       this.handleDisconnect();
     });
     this.tcp.on('close', () => {
@@ -238,6 +248,7 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
   async onConnect(): Promise<void> {
     this.logger.info(`Connected to ${this.host}:${this.apiPort}`);
     this.reconnectAttempt = 0;
+    this.connectErrorReported = false;
     // Seed the health-check clock so a connection that TCP-connects but never
     // sends a frame (hung/half-open peer) is still detected as timed-out. The
     // check requires lastMessageReceivedTime > 0.
