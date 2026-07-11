@@ -120,13 +120,15 @@ helps both, so the UI pushes users in the right direction regardless.
 
 **Decision: a dropdown section switcher instead of a tab strip.** Vertical
 space on a phone is scarce and the webview is narrow; a tab strip wide
-enough for "General / Local pipeline / Features" plus one more section
+enough for "General / Custom pipeline / Features" plus one more section
 already scrolls or truncates, while a native `<select>` costs one row,
 gets the platform's own picker UI on mobile, and scales to any number of
 sections. It also unlocks a nicer structure: **each feature is its own
 option in the list** (no separate "Features" section needed), and the
-option labels can carry live state — e.g. `Music — on, ~1,080 tok` — so
-the dropdown itself is a cost overview.
+option labels carry live on/off state — e.g. `Music — on`. Keep the labels
+short: token costs in the option text word-wrap badly in the native picker
+(tried and rejected); costs live in the feature sections and the footer
+breakdown instead.
 
 The Homey settings webview is plain HTML/CSS/JS, so this is hand-rolled
 with the same visibility-toggle mechanism the page already uses for
@@ -138,7 +140,7 @@ provider/backend switching (`refreshLocalVisibility`,
 | Group | Option | Contents |
 |---|---|---|
 | Setup | **General** | Language, voice provider, provider API keys + model quality, voice, additional AI instructions |
-| Setup | **Local pipeline** | The three-stage STT/LLM/TTS configuration with backends, test buttons, `num_ctx` (shown/annotated per selected provider) |
+| Setup | **Custom pipeline** | The three-stage STT/LLM/TTS configuration with backends, test buttons, `num_ctx`. The `local` provider is presented as **"Custom"** in the UI; this dropdown option is **disabled** unless the selected provider is Custom |
 | Features | **Smart home control** | Always on; shows the base cost |
 | Features | **Weather** | Toggle + OpenWeather key |
 | Features | **Timers & alarms** | Toggle (device-dependent note) |
