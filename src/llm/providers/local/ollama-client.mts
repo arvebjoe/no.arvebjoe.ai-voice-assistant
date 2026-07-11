@@ -18,10 +18,18 @@ export interface LocalLlmConfig {
     port: number;
     /** Model name (e.g. 'qwen3:8b'). Empty = auto-pick the first installed model. */
     model: string;
+    /** Context window (num_ctx) requested per chat. Unset = DEFAULT_NUM_CTX. */
+    numCtx?: number;
 }
 
 const CHAT_TIMEOUT_MS = 120_000; // first token can wait on a cold model load
 const PROBE_TIMEOUT_MS = 3_000;
+
+// Ollama's own default num_ctx (4096, older versions 2048) is smaller than the
+// system prompt + tool definitions with every feature enabled (~5k tokens), and
+// Ollama silently truncates the oldest part of an oversized prompt — i.e. the
+// instructions. Always ask for a window that fits (docs/cost-of-growth.md).
+export const DEFAULT_NUM_CTX = 8192;
 
 export class OllamaClient implements ILlmClient {
     private config: LocalLlmConfig;
@@ -100,7 +108,8 @@ export class OllamaClient implements ILlmClient {
         signal?: AbortSignal,
     ): Promise<LlmChatResult> {
         const model = await this.resolveModel();
-        const body: any = { model, messages: messages.map((m) => this.toWire(m)), stream: true };
+        const numCtx = this.config.numCtx && this.config.numCtx > 0 ? this.config.numCtx : DEFAULT_NUM_CTX;
+        const body: any = { model, messages: messages.map((m) => this.toWire(m)), stream: true, options: { num_ctx: numCtx } };
         if (tools.length) {
             body.tools = tools.map((t) => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.parameters } }));
         }

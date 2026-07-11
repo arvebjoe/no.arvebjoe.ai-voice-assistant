@@ -36,6 +36,11 @@ const OUTPUT_SAMPLE_RATE = 24000;
 const SENTENCE_PAD_MS = 350;
 // A model that keeps calling tools forever gets cut off.
 const MAX_TOOL_ROUNDS = 5;
+// History kept between turns, in messages (user + assistant text only — tool
+// chatter is dropped when a turn completes). 20 = the last ~10 exchanges.
+// Keeps a long session from outgrowing a small local model's context window
+// (see docs/cost-of-growth.md).
+const MAX_HISTORY_MESSAGES = 20;
 // Re-probe the three services while idle so availability stays truthful
 // (there is no persistent socket whose close would tell us).
 const HEALTH_INTERVAL_MS = 60_000;
@@ -92,6 +97,7 @@ function readLocalConfigs(): LocalConfigs {
             host: s('local_llm_host'),
             port: Number(g('local_llm_port', LOCAL_DEFAULT_PORTS.llm)) || LOCAL_DEFAULT_PORTS.llm,
             model: s('local_llm_model'),
+            numCtx: Number(g('local_llm_num_ctx', 0)) || undefined, // unset -> client default
         },
         lmstudio: {
             host: s('lmstudio_host'),
@@ -671,7 +677,29 @@ export class LocalPipelineProvider extends (EventEmitter as new () => TypedEmitt
             }
         } finally {
             if (this.turnAbort === abort) this.turnAbort = null;
+            this.compactHistory();
         }
+    }
+
+    /**
+     * Prune the conversation once a turn is over: tool calls and tool results
+     * only matter while the turn that made them is running — afterwards the
+     * user/assistant text carries the conversation, and device listings from
+     * get_devices etc. are the bulk of history growth. Then cap what remains
+     * so an all-day session can't crowd a small model's context window.
+     */
+    private compactHistory(): void {
+        const compacted: ChatMessage[] = [];
+        for (const m of this.messages) {
+            if (m.role === 'tool') continue;
+            if (m.role === 'assistant') {
+                if (!m.content) continue; // pure tool-call step, nothing said
+                compacted.push({ role: 'assistant', content: m.content });
+            } else {
+                compacted.push(m);
+            }
+        }
+        this.messages = compacted.slice(-MAX_HISTORY_MESSAGES);
     }
 
     // --- text in / out ---------------------------------------------------------

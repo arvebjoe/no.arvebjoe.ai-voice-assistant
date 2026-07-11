@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { WhisperClient } from '../src/llm/providers/local/whisper-client.mjs';
-import { OllamaClient } from '../src/llm/providers/local/ollama-client.mjs';
+import { OllamaClient, DEFAULT_NUM_CTX } from '../src/llm/providers/local/ollama-client.mjs';
 import { MistralClient } from '../src/llm/providers/local/mistral-client.mjs';
 import { MistralSttClient } from '../src/llm/providers/local/mistral-stt-client.mjs';
 import { MistralTtsClient, listMistralTtsVoices, mistralVoiceOptions } from '../src/llm/providers/local/mistral-tts-client.mjs';
@@ -203,6 +203,20 @@ describe('OllamaClient', () => {
         const client = new OllamaClient({ host: 'llm.local', port: 11434, model: 'qwen3' });
         fetchImpl = () => streamResponse([{ error: 'model requires more system memory' }]);
         await expect(client.chat([{ role: 'user', content: 'hi' }], [])).rejects.toThrow(/more system memory/);
+    });
+
+    it('always requests a context window: default num_ctx when none is configured', async () => {
+        const client = new OllamaClient({ host: 'llm.local', port: 11434, model: 'qwen3' });
+        fetchImpl = () => streamResponse([{ message: { role: 'assistant', content: 'ok' }, done: true }]);
+        await client.chat([{ role: 'user', content: 'hi' }], []);
+        expect(JSON.parse(fetchCalls[0].init.body).options).toEqual({ num_ctx: DEFAULT_NUM_CTX });
+    });
+
+    it('honors a configured num_ctx', async () => {
+        const client = new OllamaClient({ host: 'llm.local', port: 11434, model: 'qwen3', numCtx: 16384 });
+        fetchImpl = () => streamResponse([{ message: { role: 'assistant', content: 'ok' }, done: true }]);
+        await client.chat([{ role: 'user', content: 'hi' }], []);
+        expect(JSON.parse(fetchCalls[0].init.body).options.num_ctx).toBe(16384);
     });
 });
 

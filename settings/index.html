@@ -12,21 +12,22 @@
 
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-      margin: 10px;
+      margin: 0;
       padding: 0;
+      background: #f6f7f6;
+      color: #1c2823;
     }
-
 
     .homey-title {
       margin: 0;
+      font-size: 17px;
     }
-
 
     .homey-form-fieldset {
       border: 0;
       padding: 0;
+      margin: 0;
     }
-
 
     .homey-form-group {
       margin-bottom: 15px;
@@ -36,28 +37,24 @@
       display: block;
       margin-bottom: 5px;
       font-weight: 600;
-      font-size: 16px;
+      font-size: 15px;
     }
 
     .homey-form-input {
       width: 100%;
       padding: 10px 12px;
       border: 2px solid #ced4da;
-      border-radius: 4px;
+      border-radius: 6px;
       font-size: 14px;
+      background: #fff;
       transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
     }
 
-
-
     .homey-button-primary-full {
       width: 100%;
-
       padding: 12px 20px;
       font-size: 16px;
       font-weight: 600;
-
-
     }
 
     .help-text {
@@ -152,464 +149,985 @@
     .stage-test-result.fail {
       color: #c82333;
     }
+
+    /* ---- page shell: sticky top bar with the section dropdown, sticky footer
+       with the token budget + Save (docs/settings-redesign.md). ---- */
+    .shell {
+      max-width: 560px;
+      margin: 0 auto;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      background: #f6f7f6;
+      padding: 12px 14px 10px;
+      border-bottom: 1px solid #e1e7e3;
+    }
+
+    .topbar .homey-title {
+      margin-bottom: 8px;
+    }
+
+    #section_select {
+      font-weight: 600;
+      font-size: 15px;
+    }
+
+    main {
+      flex: 1;
+      padding: 14px;
+    }
+
+    .section {
+      display: none;
+    }
+
+    .section.active {
+      display: block;
+    }
+
+    .card {
+      background: #fff;
+      border: 1px solid #e1e7e3;
+      border-radius: 10px;
+      box-shadow: 0 1px 3px rgba(28, 40, 35, 0.07);
+      padding: 14px;
+      margin-bottom: 14px;
+    }
+
+    .card> :last-child {
+      margin-bottom: 0;
+    }
+
+    /* ---- feature sections: header with switch, cost line, greyed body when off ---- */
+    .feature-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .feature-title {
+      font-size: 17px;
+      font-weight: 650;
+      margin: 0 0 2px;
+    }
+
+    .feature-sub {
+      font-size: 12.5px;
+      color: #6c757d;
+    }
+
+    .always-chip {
+      font-size: 11px;
+      font-weight: 650;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: #0c7a5b;
+      background: #e2f0ea;
+      border-radius: 99px;
+      padding: 5px 10px;
+      white-space: nowrap;
+      flex: 0 0 auto;
+    }
+
+    .switch {
+      position: relative;
+      flex: 0 0 auto;
+      width: 50px;
+      height: 30px;
+    }
+
+    .switch input {
+      position: absolute;
+      opacity: 0;
+      inset: 0;
+      margin: 0;
+      cursor: pointer;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+    }
+
+    .switch .knob {
+      position: absolute;
+      inset: 0;
+      border-radius: 99px;
+      background: #dde4df;
+      border: 1px solid #ced4da;
+      transition: background 0.15s ease;
+    }
+
+    .switch .knob::after {
+      content: "";
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: #fff;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+      transition: transform 0.15s ease;
+    }
+
+    .switch input:checked+.knob {
+      background: #0c7a5b;
+      border-color: #0c7a5b;
+    }
+
+    .switch input:checked+.knob::after {
+      transform: translateX(20px);
+    }
+
+    .costline {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      background: #f6f7f6;
+      border: 1px solid #e1e7e3;
+      border-radius: 8px;
+      padding: 9px 12px;
+      margin-bottom: 14px;
+    }
+
+    .costline .lbl {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: #6c757d;
+    }
+
+    .costline .val {
+      font-size: 14px;
+      font-weight: 650;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .costline .split {
+      font-size: 12px;
+      color: #6c757d;
+      font-weight: 400;
+    }
+
+    .feature-body.off {
+      opacity: 0.45;
+      pointer-events: none;
+    }
+
+    .note {
+      font-size: 12.5px;
+      line-height: 1.5;
+      color: #6c757d;
+      border-left: 3px solid #e1e7e3;
+      padding: 2px 0 2px 10px;
+      margin-bottom: 14px;
+    }
+
+    /* ---- sticky footer: budget meter + breakdown + save ---- */
+    .footer {
+      position: sticky;
+      bottom: 0;
+      z-index: 20;
+      background: #fff;
+      border-top: 1px solid #e1e7e3;
+      padding: 10px 14px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .breakdown {
+      display: none;
+      flex-direction: column;
+      padding-bottom: 2px;
+    }
+
+    .breakdown.open {
+      display: flex;
+    }
+
+    .bd-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 7px 2px;
+      border-bottom: 1px solid #e9ecef;
+    }
+
+    .bd-row:last-child {
+      border-bottom: none;
+    }
+
+    .bd-row .name {
+      flex: 1;
+      font-size: 14px;
+      font-weight: 550;
+    }
+
+    .bd-row .cost {
+      font-size: 13px;
+      color: #6c757d;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .bd-row .switch {
+      width: 42px;
+      height: 26px;
+    }
+
+    .bd-row .switch .knob::after {
+      width: 20px;
+      height: 20px;
+    }
+
+    .bd-row .switch input:checked+.knob::after {
+      transform: translateX(16px);
+    }
+
+    .bd-always {
+      font-size: 11px;
+      font-weight: 650;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: #6c757d;
+      width: 42px;
+      text-align: center;
+    }
+
+    .meter-btn {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      background: none;
+      border: none;
+      padding: 0;
+      margin: 0;
+      color: inherit;
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+      width: 100%;
+    }
+
+    .meter-top {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .meter-total {
+      font-size: 15px;
+      font-weight: 700;
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .meter-state {
+      font-size: 12.5px;
+      font-weight: 650;
+      padding: 3px 9px;
+      border-radius: 99px;
+      white-space: nowrap;
+    }
+
+    .meter-state.ok {
+      color: #1e7a4c;
+      background: #e2f0e8;
+    }
+
+    .meter-state.warn {
+      color: #9a6b00;
+      background: #f5ecd7;
+    }
+
+    .meter-state.crit {
+      color: #b3372e;
+      background: #f7e3e0;
+    }
+
+    .meter-state.none {
+      color: #6c757d;
+      background: #f6f7f6;
+    }
+
+    .meter-bar {
+      height: 8px;
+      border-radius: 99px;
+      background: #e4eae6;
+      overflow: hidden;
+    }
+
+    .meter-fill {
+      height: 100%;
+      border-radius: 99px;
+      width: 0%;
+      background: #1e7a4c;
+      transition: width 0.25s ease, background 0.25s ease;
+    }
+
+    .meter-sub {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 12px;
+      color: #6c757d;
+    }
+
+    .meter-sub .chev {
+      font-weight: 600;
+      white-space: nowrap;
+    }
   </style>
 </head>
 
 <body>
-  <header class="homey-header">
-    <h1 class="homey-title" data-i18n="settings.title">
-      <!-- This will be filled with the translated string with key 'settings.title'. -->
-    </h1>
-  </header>
-
-  <fieldset class="homey-form-fieldset">
-    <div class="homey-form-group">
-      <label class="homey-form-label" for="language_select">Language</label>
-      <select class="homey-form-input" id="language_select">
-        <option value="en">English</option>
-        <option value="nl">Dutch</option>
-        <option value="de">German</option>
-        <option value="fr">French</option>
-        <option value="it">Italian</option>
-        <option value="sv">Swedish</option>
-        <option value="no">Norwegian</option>
-        <option value="es">Spanish</option>
-        <option value="da">Danish</option>
-        <option value="ru">Russian</option>
-        <option value="pl">Polish</option>
-        <option value="ko">South Korean</option>
+  <div class="shell">
+    <div class="topbar">
+      <h1 class="homey-title" data-i18n="settings.title"></h1>
+      <select class="homey-form-input" id="section_select" aria-label="Settings section">
+        <optgroup label="Setup">
+          <option value="general">General</option>
+          <option value="pipeline" id="pipeline_option">Custom pipeline</option>
+        </optgroup>
+        <optgroup label="Features">
+          <option value="smart">Smart home control</option>
+          <option value="weather">Weather</option>
+          <option value="timers">Timers &amp; alarms</option>
+          <option value="shopping">Shopping list</option>
+          <option value="music">Music</option>
+          <option value="websearch">Web search</option>
+        </optgroup>
       </select>
-      <div class="help-text">The spoken language used by you and the ai</div>
     </div>
 
-    <div class="homey-form-group">
-      <label class="homey-form-label" for="provider_select">Voice provider</label>
-      <select class="homey-form-input" id="provider_select">
-        <option value="openai-realtime">OpenAI Realtime</option>
-        <option value="gemini-realtime">Google Gemini Live</option>
-        <option value="local">Local (Whisper + Ollama + Piper)</option>
-      </select>
-      <div class="help-text">Which backend handles speech &amp; language. The settings below adapt to your choice.</div>
-    </div>
-
-    <!-- Only the selected provider's settings are shown below. -->
-    <div id="openai_realtime_settings">
-      <div class="homey-form-group">
-        <label class="homey-form-label" for="openai_api_key">OpenAI API key</label>
-        <!-- Masked (S6): keys were previously shown in a cleartext textarea. -->
-        <div class="secret-wrap">
-          <input type="password" class="homey-form-input" id="openai_api_key" autocomplete="off"
-            placeholder="Enter your OpenAI API key here..." />
-          <button type="button" class="secret-toggle" data-for="openai_api_key">Show</button>
-        </div>
-        <div class="help-text">Visit https://platform.openai.com to get one</div>
-      </div>
-      <div class="homey-form-group">
-        <label class="homey-form-label" for="openai_model">Model quality</label>
-        <select class="homey-form-input" id="openai_model">
-          <option value="full">Full (gpt-realtime) — best quality</option>
-          <option value="mini">Mini (gpt-realtime-mini) — cheaper &amp; faster</option>
-        </select>
-        <div class="help-text">Mini costs a fraction of Full per minute; Full understands tricky requests better.</div>
-      </div>
-    </div>
-
-    <div id="gemini_realtime_settings" style="display: none;">
-      <div class="homey-form-group">
-        <label class="homey-form-label" for="gemini_api_key">Google Gemini API key</label>
-        <div class="secret-wrap">
-          <input type="password" class="homey-form-input" id="gemini_api_key" autocomplete="off"
-            placeholder="Enter your Google Gemini API key here..." />
-          <button type="button" class="secret-toggle" data-for="gemini_api_key">Show</button>
-        </div>
-        <div class="help-text">Visit https://aistudio.google.com/apikey to get one</div>
-      </div>
-    </div>
-
-    <!-- Local pipeline endpoints — only shown when the 'local' provider is selected.
-         Each stage (STT / LLM / TTS) picks its own backend: a LAN service or Mistral's cloud API. -->
-    <div id="local_settings" style="display: none;">
-
-      <!-- Shared Mistral credentials — shown when ANY stage below selects Mistral. -->
-      <div id="local_mistral_key" style="display: none;">
-        <div class="local-section-title">Mistral API key</div>
-        <div class="homey-form-group">
-          <div class="secret-wrap">
-            <input type="password" class="homey-form-input" id="mistral_api_key" autocomplete="off"
-              placeholder="Enter your Mistral API key here..." />
-            <button type="button" class="secret-toggle" data-for="mistral_api_key">Show</button>
-          </div>
-          <div class="help-text">One key for every Mistral-backed stage below. Visit https://console.mistral.ai to get one.</div>
-        </div>
-      </div>
-
-      <div class="local-section-title">Speech-to-text</div>
-      <div class="homey-form-group">
-        <label class="homey-form-label" for="local_stt_provider">STT backend</label>
-        <select class="homey-form-input" id="local_stt_provider">
-          <option value="whisper">Whisper — HTTP (local)</option>
-          <option value="wyoming">Wyoming — faster-whisper (local)</option>
-          <option value="mistral">Mistral Voxtral (cloud API)</option>
-          <option value="mistral-realtime">Mistral Voxtral Realtime (cloud, streaming)</option>
-          <option value="openai">OpenAI-compatible (cloud or custom)</option>
-        </select>
-      </div>
-      <div id="local_stt_whisper">
-        <div class="local-host-port">
+    <main>
+      <!-- ============================ General ============================ -->
+      <section class="section active" data-section="general">
+        <div class="card">
           <div class="homey-form-group">
-            <label class="homey-form-label" for="local_stt_host">Host</label>
-            <input type="text" class="homey-form-input" id="local_stt_host" autocomplete="off"
-              placeholder="e.g. 192.168.1.50" />
+            <label class="homey-form-label" for="language_select">Language</label>
+            <select class="homey-form-input" id="language_select">
+              <option value="en">English</option>
+              <option value="nl">Dutch</option>
+              <option value="de">German</option>
+              <option value="fr">French</option>
+              <option value="it">Italian</option>
+              <option value="sv">Swedish</option>
+              <option value="no">Norwegian</option>
+              <option value="es">Spanish</option>
+              <option value="da">Danish</option>
+              <option value="ru">Russian</option>
+              <option value="pl">Polish</option>
+              <option value="ko">South Korean</option>
+            </select>
+            <div class="help-text">The spoken language used by you and the ai</div>
           </div>
-          <div class="homey-form-group">
-            <label class="homey-form-label" for="local_stt_port">Port</label>
-            <input type="number" class="homey-form-input" id="local_stt_port" min="1" max="65535" placeholder="9000" />
-          </div>
-        </div>
-        <div class="help-text local-section-help">A Whisper server, e.g. the <code>onerahmet/openai-whisper-asr-webservice</code>
-          docker image (port 9000). OpenAI-compatible servers (speaches / faster-whisper-server) and whisper.cpp also work —
-          the endpoint style is detected automatically. No authentication — keep it on your trusted LAN.</div>
-      </div>
-      <div id="local_stt_wyoming" style="display: none;">
-        <div class="local-host-port">
-          <div class="homey-form-group">
-            <label class="homey-form-label" for="wyoming_stt_host">Host</label>
-            <input type="text" class="homey-form-input" id="wyoming_stt_host" autocomplete="off"
-              placeholder="e.g. 192.168.1.50" />
-          </div>
-          <div class="homey-form-group">
-            <label class="homey-form-label" for="wyoming_stt_port">Port</label>
-            <input type="number" class="homey-form-input" id="wyoming_stt_port" min="1" max="65535"
-              placeholder="10300" />
-          </div>
-        </div>
-        <div class="help-text local-section-help">A Wyoming-protocol STT server (raw TCP, not HTTP) — e.g. the
-          <code>rhasspy/wyoming-whisper</code> / faster-whisper docker from the Home Assistant ecosystem,
-          which listens on port 10300. The model and language are whatever the server was started with.</div>
-      </div>
-      <div id="local_stt_mistral" style="display: none;">
-        <div class="homey-form-group">
-          <label class="homey-form-label" for="mistral_stt_model">Model</label>
-          <input type="text" class="homey-form-input" id="mistral_stt_model" autocomplete="off"
-            placeholder="voxtral-mini-latest" />
-          <div class="help-text">Mistral's Voxtral transcription API. Empty = <code>voxtral-mini-latest</code>.
-            Your voice recordings are sent to Mistral for transcription.</div>
-        </div>
-      </div>
-      <div id="local_stt_mistral_realtime" style="display: none;">
-        <div class="homey-form-group">
-          <label class="homey-form-label" for="mistral_stt_realtime_model">Model</label>
-          <input type="text" class="homey-form-input" id="mistral_stt_realtime_model" autocomplete="off"
-            placeholder="voxtral-mini-transcribe-realtime-2602" />
-          <div class="help-text">Mistral's streaming transcription websocket (sub-500 ms). Empty =
-            <code>voxtral-mini-transcribe-realtime-2602</code>. Your voice recordings are sent to Mistral for
-            transcription.</div>
-        </div>
-      </div>
-      <div id="local_stt_openai" style="display: none;">
-        <div class="homey-form-group">
-          <label class="homey-form-label" for="openai_stt_url">Base URL</label>
-          <input type="text" class="homey-form-input" id="openai_stt_url" autocomplete="off"
-            placeholder="e.g. https://api.groq.com/openai/v1" />
-        </div>
-        <div class="homey-form-group">
-          <label class="homey-form-label" for="openai_stt_key">API key (optional)</label>
-          <div class="secret-wrap">
-            <input type="password" class="homey-form-input" id="openai_stt_key" autocomplete="off"
-              placeholder="Leave empty for keyless local servers" />
-            <button type="button" class="secret-toggle" data-for="openai_stt_key">Show</button>
-          </div>
-        </div>
-        <div class="homey-form-group">
-          <label class="homey-form-label" for="openai_stt_model">Model</label>
-          <input type="text" class="homey-form-input" id="openai_stt_model" autocomplete="off"
-            placeholder="e.g. whisper-large-v3-turbo or gpt-4o-transcribe" />
-          <div class="help-text">Any server speaking OpenAI's <code>/audio/transcriptions</code> API: OpenAI
-            (https://api.openai.com), Groq, speaches, … A bare host gets <code>/v1</code> appended automatically.</div>
-        </div>
-      </div>
-      <div class="stage-test">
-        <button type="button" class="stage-test-btn" data-stage="stt" id="stt_test_btn">Test</button>
-        <span class="stage-test-result" id="stt_test_result"></span>
-      </div>
 
-      <div class="local-section-title">Language model</div>
-      <div class="homey-form-group">
-        <label class="homey-form-label" for="local_llm_provider">LLM backend</label>
-        <select class="homey-form-input" id="local_llm_provider">
-          <option value="ollama">Ollama (local)</option>
-          <option value="lmstudio">LM Studio (local)</option>
-          <option value="mistral">Mistral (cloud API)</option>
-          <option value="openai">OpenAI-compatible (cloud or custom)</option>
-        </select>
-        <div class="help-text">Which model answers you. Ollama runs on your own machine; Mistral is a cloud API
-          (only the text of the conversation goes to Mistral).</div>
-      </div>
-      <div id="local_llm_ollama">
-        <div class="local-host-port">
           <div class="homey-form-group">
-            <label class="homey-form-label" for="local_llm_host">Host</label>
-            <input type="text" class="homey-form-input" id="local_llm_host" autocomplete="off"
-              placeholder="e.g. 192.168.1.50" />
+            <label class="homey-form-label" for="provider_select">AI provider</label>
+            <select class="homey-form-input" id="provider_select">
+              <option value="openai-realtime">OpenAI Realtime</option>
+              <option value="gemini-realtime">Google Gemini Live</option>
+              <option value="local">Custom pipeline</option>
+            </select>
+            <div class="help-text">Which backend handles speech &amp; language. The Custom pipeline is configured in
+              its own section (pick it in the dropdown above once selected here).</div>
           </div>
-          <div class="homey-form-group">
-            <label class="homey-form-label" for="local_llm_port">Port</label>
-            <input type="number" class="homey-form-input" id="local_llm_port" min="1" max="65535" placeholder="11434" />
-          </div>
-        </div>
-        <div class="homey-form-group">
-          <label class="homey-form-label" for="local_llm_model">Model</label>
-          <input type="text" class="homey-form-input" id="local_llm_model" autocomplete="off"
-            placeholder="Leave empty to use the first installed model" />
-          <div class="help-text">An Ollama model that supports tool calling (e.g. <code>qwen3</code>, <code>llama3.1</code>,
-            <code>gpt-oss</code>). Empty = the first model from <code>ollama list</code>.</div>
-        </div>
-      </div>
-      <div id="local_llm_lmstudio" style="display: none;">
-        <div class="local-host-port">
-          <div class="homey-form-group">
-            <label class="homey-form-label" for="lmstudio_host">Host</label>
-            <input type="text" class="homey-form-input" id="lmstudio_host" autocomplete="off"
-              placeholder="e.g. 192.168.1.50" />
-          </div>
-          <div class="homey-form-group">
-            <label class="homey-form-label" for="lmstudio_port">Port</label>
-            <input type="number" class="homey-form-input" id="lmstudio_port" min="1" max="65535"
-              placeholder="1234" />
-          </div>
-        </div>
-        <div class="homey-form-group">
-          <label class="homey-form-label" for="lmstudio_model">Model</label>
-          <input type="text" class="homey-form-input" id="lmstudio_model" autocomplete="off"
-            placeholder="Leave empty to use the loaded model" />
-          <div class="help-text">The LM Studio desktop app's local server (enable it in LM Studio → Developer,
-            port 1234). Pick a tool-calling model. Empty = the first model LM Studio reports.</div>
-        </div>
-      </div>
-      <div id="local_llm_mistral" style="display: none;">
-        <div class="homey-form-group">
-          <label class="homey-form-label" for="mistral_model">Model</label>
-          <input type="text" class="homey-form-input" id="mistral_model" autocomplete="off"
-            placeholder="mistral-small-latest" />
-          <div class="help-text">Empty = <code>mistral-small-latest</code>. Any tool-calling Mistral model works
-            (e.g. <code>mistral-medium-latest</code>, <code>mistral-large-latest</code>).</div>
-        </div>
-      </div>
-      <div id="local_llm_openai" style="display: none;">
-        <div class="homey-form-group">
-          <label class="homey-form-label" for="openai_llm_url">Base URL</label>
-          <input type="text" class="homey-form-input" id="openai_llm_url" autocomplete="off"
-            placeholder="e.g. https://api.groq.com/openai/v1 or 192.168.1.50:1234" />
-        </div>
-        <div class="homey-form-group">
-          <label class="homey-form-label" for="openai_llm_key">API key (optional)</label>
-          <div class="secret-wrap">
-            <input type="password" class="homey-form-input" id="openai_llm_key" autocomplete="off"
-              placeholder="Leave empty for keyless local servers" />
-            <button type="button" class="secret-toggle" data-for="openai_llm_key">Show</button>
-          </div>
-        </div>
-        <div class="homey-form-group">
-          <label class="homey-form-label" for="openai_llm_model">Model</label>
-          <input type="text" class="homey-form-input" id="openai_llm_model" autocomplete="off"
-            placeholder="e.g. llama-3.3-70b-versatile or gpt-5-mini" />
-          <div class="help-text">Any server speaking OpenAI's <code>/chat/completions</code> API with tool calling:
-            OpenAI, Groq, OpenRouter, DeepSeek, LM Studio, llama.cpp, vLLM, … A bare host gets <code>/v1</code>
-            appended automatically. Model is required.</div>
-        </div>
-      </div>
-      <div class="stage-test">
-        <button type="button" class="stage-test-btn" data-stage="llm" id="llm_test_btn">Test</button>
-        <span class="stage-test-result" id="llm_test_result"></span>
-      </div>
 
-      <div class="local-section-title">Text-to-speech</div>
-      <div class="homey-form-group">
-        <label class="homey-form-label" for="local_tts_provider">TTS backend</label>
-        <select class="homey-form-input" id="local_tts_provider">
-          <option value="piper">Piper — HTTP (local)</option>
-          <option value="wyoming">Wyoming — Piper (local)</option>
-          <option value="mistral">Mistral Voxtral (cloud API)</option>
-          <option value="openai">OpenAI-compatible (cloud or custom)</option>
-        </select>
-      </div>
-      <div id="local_tts_piper">
-        <div class="local-host-port">
+          <!-- Only the selected provider's settings are shown below. -->
+          <div id="openai_realtime_settings">
+            <div class="homey-form-group">
+              <label class="homey-form-label" for="openai_api_key">OpenAI API key</label>
+              <!-- Masked (S6): keys were previously shown in a cleartext textarea. -->
+              <div class="secret-wrap">
+                <input type="password" class="homey-form-input" id="openai_api_key" autocomplete="off"
+                  placeholder="Enter your OpenAI API key here..." />
+                <button type="button" class="secret-toggle" data-for="openai_api_key">Show</button>
+              </div>
+              <div class="help-text">Visit https://platform.openai.com to get one</div>
+            </div>
+            <div class="homey-form-group">
+              <label class="homey-form-label" for="openai_model">Model quality</label>
+              <select class="homey-form-input" id="openai_model">
+                <option value="full">Full (gpt-realtime) — best quality</option>
+                <option value="mini">Mini (gpt-realtime-mini) — cheaper &amp; faster</option>
+              </select>
+              <div class="help-text">Mini costs a fraction of Full per minute; Full understands tricky requests better.
+              </div>
+            </div>
+          </div>
+
+          <div id="gemini_realtime_settings" style="display: none;">
+            <div class="homey-form-group">
+              <label class="homey-form-label" for="gemini_api_key">Google Gemini API key</label>
+              <div class="secret-wrap">
+                <input type="password" class="homey-form-input" id="gemini_api_key" autocomplete="off"
+                  placeholder="Enter your Google Gemini API key here..." />
+                <button type="button" class="secret-toggle" data-for="gemini_api_key">Show</button>
+              </div>
+              <div class="help-text">Visit https://aistudio.google.com/apikey to get one</div>
+            </div>
+          </div>
+
           <div class="homey-form-group">
-            <label class="homey-form-label" for="local_tts_host">Host</label>
-            <input type="text" class="homey-form-input" id="local_tts_host" autocomplete="off"
-              placeholder="e.g. 192.168.1.50" />
+            <label class="homey-form-label" for="voice_select">Voice</label>
+            <select class="homey-form-input" id="voice_select"></select>
+            <div class="help-text">The AI voice used for speech responses (list depends on the selected provider)</div>
           </div>
+
           <div class="homey-form-group">
-            <label class="homey-form-label" for="local_tts_port">Port</label>
-            <input type="number" class="homey-form-input" id="local_tts_port" min="1" max="65535" placeholder="5000" />
+            <label class="homey-form-label" for="ai_instructions">AI Instructions (Optional)</label>
+            <textarea class="homey-form-input" id="ai_instructions" rows="4"
+              placeholder="Enter optional instructions for the AI, such as personality traits, behavior guidelines, or specific responses you'd like..."></textarea>
+            <div class="help-text">Customize the AI's personality and behavior with additional instructions. Examples:
+              "You act like Santa Claus" or "Be super sarcastic like GLaDOS." This text also counts toward the token
+              budget below.</div>
           </div>
         </div>
-        <div class="help-text local-section-help">A Piper HTTP server (port 5000), e.g. <code>artibex/piper-http</code> or
-          <code>python -m piper.http_server</code>. The spoken voice is the model the server was started with.
-          No authentication — keep it on your trusted LAN.</div>
-      </div>
-      <div id="local_tts_wyoming" style="display: none;">
-        <div class="local-host-port">
+      </section>
+
+      <!-- ======================== Custom pipeline ======================== -->
+      <!-- Only reachable when the AI provider is 'Custom pipeline' (the dropdown
+           option is disabled otherwise). Each stage (STT / LLM / TTS) picks its
+           own backend: a LAN service or a cloud API. -->
+      <section class="section" data-section="pipeline">
+        <div class="card" id="local_settings">
+
+          <!-- Shared Mistral credentials — shown when ANY stage below selects Mistral. -->
+          <div id="local_mistral_key" style="display: none;">
+            <div class="local-section-title">Mistral API key</div>
+            <div class="homey-form-group">
+              <div class="secret-wrap">
+                <input type="password" class="homey-form-input" id="mistral_api_key" autocomplete="off"
+                  placeholder="Enter your Mistral API key here..." />
+                <button type="button" class="secret-toggle" data-for="mistral_api_key">Show</button>
+              </div>
+              <div class="help-text">One key for every Mistral-backed stage below. Visit https://console.mistral.ai to
+                get one.</div>
+            </div>
+          </div>
+
+          <div class="local-section-title">Speech-to-text</div>
           <div class="homey-form-group">
-            <label class="homey-form-label" for="wyoming_tts_host">Host</label>
-            <input type="text" class="homey-form-input" id="wyoming_tts_host" autocomplete="off"
-              placeholder="e.g. 192.168.1.50" />
+            <label class="homey-form-label" for="local_stt_provider">STT backend</label>
+            <select class="homey-form-input" id="local_stt_provider">
+              <option value="whisper">Whisper — HTTP (local)</option>
+              <option value="wyoming">Wyoming — faster-whisper (local)</option>
+              <option value="mistral">Mistral Voxtral (cloud API)</option>
+              <option value="mistral-realtime">Mistral Voxtral Realtime (cloud, streaming)</option>
+              <option value="openai">OpenAI-compatible (cloud or custom)</option>
+            </select>
           </div>
+          <div id="local_stt_whisper">
+            <div class="local-host-port">
+              <div class="homey-form-group">
+                <label class="homey-form-label" for="local_stt_host">Host</label>
+                <input type="text" class="homey-form-input" id="local_stt_host" autocomplete="off"
+                  placeholder="e.g. 192.168.1.50" />
+              </div>
+              <div class="homey-form-group">
+                <label class="homey-form-label" for="local_stt_port">Port</label>
+                <input type="number" class="homey-form-input" id="local_stt_port" min="1" max="65535"
+                  placeholder="9000" />
+              </div>
+            </div>
+            <div class="help-text local-section-help">A Whisper server, e.g. the
+              <code>onerahmet/openai-whisper-asr-webservice</code>
+              docker image (port 9000). OpenAI-compatible servers (speaches / faster-whisper-server) and whisper.cpp
+              also work —
+              the endpoint style is detected automatically. No authentication — keep it on your trusted LAN.
+            </div>
+          </div>
+          <div id="local_stt_wyoming" style="display: none;">
+            <div class="local-host-port">
+              <div class="homey-form-group">
+                <label class="homey-form-label" for="wyoming_stt_host">Host</label>
+                <input type="text" class="homey-form-input" id="wyoming_stt_host" autocomplete="off"
+                  placeholder="e.g. 192.168.1.50" />
+              </div>
+              <div class="homey-form-group">
+                <label class="homey-form-label" for="wyoming_stt_port">Port</label>
+                <input type="number" class="homey-form-input" id="wyoming_stt_port" min="1" max="65535"
+                  placeholder="10300" />
+              </div>
+            </div>
+            <div class="help-text local-section-help">A Wyoming-protocol STT server (raw TCP, not HTTP) — e.g. the
+              <code>rhasspy/wyoming-whisper</code> / faster-whisper docker from the Home Assistant ecosystem,
+              which listens on port 10300. The model and language are whatever the server was started with.
+            </div>
+          </div>
+          <div id="local_stt_mistral" style="display: none;">
+            <div class="homey-form-group">
+              <label class="homey-form-label" for="mistral_stt_model">Model</label>
+              <input type="text" class="homey-form-input" id="mistral_stt_model" autocomplete="off"
+                placeholder="voxtral-mini-latest" />
+              <div class="help-text">Mistral's Voxtral transcription API. Empty = <code>voxtral-mini-latest</code>.
+                Your voice recordings are sent to Mistral for transcription.</div>
+            </div>
+          </div>
+          <div id="local_stt_mistral_realtime" style="display: none;">
+            <div class="homey-form-group">
+              <label class="homey-form-label" for="mistral_stt_realtime_model">Model</label>
+              <input type="text" class="homey-form-input" id="mistral_stt_realtime_model" autocomplete="off"
+                placeholder="voxtral-mini-transcribe-realtime-2602" />
+              <div class="help-text">Mistral's streaming transcription websocket (sub-500 ms). Empty =
+                <code>voxtral-mini-transcribe-realtime-2602</code>. Your voice recordings are sent to Mistral for
+                transcription.
+              </div>
+            </div>
+          </div>
+          <div id="local_stt_openai" style="display: none;">
+            <div class="homey-form-group">
+              <label class="homey-form-label" for="openai_stt_url">Base URL</label>
+              <input type="text" class="homey-form-input" id="openai_stt_url" autocomplete="off"
+                placeholder="e.g. https://api.groq.com/openai/v1" />
+            </div>
+            <div class="homey-form-group">
+              <label class="homey-form-label" for="openai_stt_key">API key (optional)</label>
+              <div class="secret-wrap">
+                <input type="password" class="homey-form-input" id="openai_stt_key" autocomplete="off"
+                  placeholder="Leave empty for keyless local servers" />
+                <button type="button" class="secret-toggle" data-for="openai_stt_key">Show</button>
+              </div>
+            </div>
+            <div class="homey-form-group">
+              <label class="homey-form-label" for="openai_stt_model">Model</label>
+              <input type="text" class="homey-form-input" id="openai_stt_model" autocomplete="off"
+                placeholder="e.g. whisper-large-v3-turbo or gpt-4o-transcribe" />
+              <div class="help-text">Any server speaking OpenAI's <code>/audio/transcriptions</code> API: OpenAI
+                (https://api.openai.com), Groq, speaches, … A bare host gets <code>/v1</code> appended automatically.
+              </div>
+            </div>
+          </div>
+          <div class="stage-test">
+            <button type="button" class="stage-test-btn" data-stage="stt" id="stt_test_btn">Test</button>
+            <span class="stage-test-result" id="stt_test_result"></span>
+          </div>
+
+          <div class="local-section-title">Language model</div>
           <div class="homey-form-group">
-            <label class="homey-form-label" for="wyoming_tts_port">Port</label>
-            <input type="number" class="homey-form-input" id="wyoming_tts_port" min="1" max="65535"
-              placeholder="10200" />
+            <label class="homey-form-label" for="local_llm_provider">LLM backend</label>
+            <select class="homey-form-input" id="local_llm_provider">
+              <option value="ollama">Ollama (local)</option>
+              <option value="lmstudio">LM Studio (local)</option>
+              <option value="mistral">Mistral (cloud API)</option>
+              <option value="openai">OpenAI-compatible (cloud or custom)</option>
+            </select>
+            <div class="help-text">Which model answers you. Ollama runs on your own machine; Mistral is a cloud API
+              (only the text of the conversation goes to Mistral).</div>
+          </div>
+          <div id="local_llm_ollama">
+            <div class="local-host-port">
+              <div class="homey-form-group">
+                <label class="homey-form-label" for="local_llm_host">Host</label>
+                <input type="text" class="homey-form-input" id="local_llm_host" autocomplete="off"
+                  placeholder="e.g. 192.168.1.50" />
+              </div>
+              <div class="homey-form-group">
+                <label class="homey-form-label" for="local_llm_port">Port</label>
+                <input type="number" class="homey-form-input" id="local_llm_port" min="1" max="65535"
+                  placeholder="11434" />
+              </div>
+            </div>
+            <div class="homey-form-group">
+              <label class="homey-form-label" for="local_llm_model">Model</label>
+              <input type="text" class="homey-form-input" id="local_llm_model" autocomplete="off"
+                placeholder="Leave empty to use the first installed model" />
+              <div class="help-text">An Ollama model that supports tool calling (e.g. <code>qwen3</code>,
+                <code>llama3.1</code>,
+                <code>gpt-oss</code>). Empty = the first model from <code>ollama list</code>.
+              </div>
+            </div>
+            <div class="homey-form-group">
+              <label class="homey-form-label" for="local_llm_num_ctx">Context window (num_ctx)</label>
+              <input type="number" class="homey-form-input" id="local_llm_num_ctx" min="2048" step="1024"
+                placeholder="8192" />
+              <div class="help-text">Tokens of context requested from Ollama per reply. Ollama's own default (4096) is
+                too
+                small for the assistant's instructions and tools, which makes the model silently forget its rules.
+                Empty =
+                8192. The token budget bar below measures against this.</div>
+            </div>
+          </div>
+          <div id="local_llm_lmstudio" style="display: none;">
+            <div class="local-host-port">
+              <div class="homey-form-group">
+                <label class="homey-form-label" for="lmstudio_host">Host</label>
+                <input type="text" class="homey-form-input" id="lmstudio_host" autocomplete="off"
+                  placeholder="e.g. 192.168.1.50" />
+              </div>
+              <div class="homey-form-group">
+                <label class="homey-form-label" for="lmstudio_port">Port</label>
+                <input type="number" class="homey-form-input" id="lmstudio_port" min="1" max="65535"
+                  placeholder="1234" />
+              </div>
+            </div>
+            <div class="homey-form-group">
+              <label class="homey-form-label" for="lmstudio_model">Model</label>
+              <input type="text" class="homey-form-input" id="lmstudio_model" autocomplete="off"
+                placeholder="Leave empty to use the loaded model" />
+              <div class="help-text">The LM Studio desktop app's local server (enable it in LM Studio → Developer,
+                port 1234). Pick a tool-calling model. Empty = the first model LM Studio reports.</div>
+            </div>
+          </div>
+          <div id="local_llm_mistral" style="display: none;">
+            <div class="homey-form-group">
+              <label class="homey-form-label" for="mistral_model">Model</label>
+              <input type="text" class="homey-form-input" id="mistral_model" autocomplete="off"
+                placeholder="mistral-small-latest" />
+              <div class="help-text">Empty = <code>mistral-small-latest</code>. Any tool-calling Mistral model works
+                (e.g. <code>mistral-medium-latest</code>, <code>mistral-large-latest</code>).</div>
+            </div>
+          </div>
+          <div id="local_llm_openai" style="display: none;">
+            <div class="homey-form-group">
+              <label class="homey-form-label" for="openai_llm_url">Base URL</label>
+              <input type="text" class="homey-form-input" id="openai_llm_url" autocomplete="off"
+                placeholder="e.g. https://api.groq.com/openai/v1 or 192.168.1.50:1234" />
+            </div>
+            <div class="homey-form-group">
+              <label class="homey-form-label" for="openai_llm_key">API key (optional)</label>
+              <div class="secret-wrap">
+                <input type="password" class="homey-form-input" id="openai_llm_key" autocomplete="off"
+                  placeholder="Leave empty for keyless local servers" />
+                <button type="button" class="secret-toggle" data-for="openai_llm_key">Show</button>
+              </div>
+            </div>
+            <div class="homey-form-group">
+              <label class="homey-form-label" for="openai_llm_model">Model</label>
+              <input type="text" class="homey-form-input" id="openai_llm_model" autocomplete="off"
+                placeholder="e.g. llama-3.3-70b-versatile or gpt-5-mini" />
+              <div class="help-text">Any server speaking OpenAI's <code>/chat/completions</code> API with tool calling:
+                OpenAI, Groq, OpenRouter, DeepSeek, LM Studio, llama.cpp, vLLM, … A bare host gets <code>/v1</code>
+                appended automatically. Model is required.</div>
+            </div>
+          </div>
+          <div class="stage-test">
+            <button type="button" class="stage-test-btn" data-stage="llm" id="llm_test_btn">Test</button>
+            <span class="stage-test-result" id="llm_test_result"></span>
+          </div>
+
+          <div class="local-section-title">Text-to-speech</div>
+          <div class="homey-form-group">
+            <label class="homey-form-label" for="local_tts_provider">TTS backend</label>
+            <select class="homey-form-input" id="local_tts_provider">
+              <option value="piper">Piper — HTTP (local)</option>
+              <option value="wyoming">Wyoming — Piper (local)</option>
+              <option value="mistral">Mistral Voxtral (cloud API)</option>
+              <option value="openai">OpenAI-compatible (cloud or custom)</option>
+            </select>
+          </div>
+          <div id="local_tts_piper">
+            <div class="local-host-port">
+              <div class="homey-form-group">
+                <label class="homey-form-label" for="local_tts_host">Host</label>
+                <input type="text" class="homey-form-input" id="local_tts_host" autocomplete="off"
+                  placeholder="e.g. 192.168.1.50" />
+              </div>
+              <div class="homey-form-group">
+                <label class="homey-form-label" for="local_tts_port">Port</label>
+                <input type="number" class="homey-form-input" id="local_tts_port" min="1" max="65535"
+                  placeholder="5000" />
+              </div>
+            </div>
+            <div class="help-text local-section-help">A Piper HTTP server (port 5000), e.g.
+              <code>artibex/piper-http</code> or
+              <code>python -m piper.http_server</code>. The spoken voice is the model the server was started with.
+              No authentication — keep it on your trusted LAN.
+            </div>
+          </div>
+          <div id="local_tts_wyoming" style="display: none;">
+            <div class="local-host-port">
+              <div class="homey-form-group">
+                <label class="homey-form-label" for="wyoming_tts_host">Host</label>
+                <input type="text" class="homey-form-input" id="wyoming_tts_host" autocomplete="off"
+                  placeholder="e.g. 192.168.1.50" />
+              </div>
+              <div class="homey-form-group">
+                <label class="homey-form-label" for="wyoming_tts_port">Port</label>
+                <input type="number" class="homey-form-input" id="wyoming_tts_port" min="1" max="65535"
+                  placeholder="10200" />
+              </div>
+            </div>
+            <div class="help-text local-section-help">A Wyoming-protocol TTS server (raw TCP, not HTTP) — e.g. the
+              <code>rhasspy/wyoming-piper</code> docker from the Home Assistant ecosystem, which listens on
+              port 10200. The spoken voice is the model the server was started with.
+            </div>
+          </div>
+          <div id="local_tts_mistral" style="display: none;">
+            <div class="homey-form-group">
+              <label class="homey-form-label" for="mistral_tts_model">Model</label>
+              <input type="text" class="homey-form-input" id="mistral_tts_model" autocomplete="off"
+                placeholder="voxtral-mini-tts-2603" />
+              <div class="help-text">Mistral's Voxtral TTS. Empty = <code>voxtral-mini-tts-2603</code>; set an explicit
+                id to pin a different one. The <b>Voice</b> dropdown in General lists Mistral's voice library —
+                save the API key first, then it fills in on Save.</div>
+            </div>
+          </div>
+          <div id="local_tts_openai" style="display: none;">
+            <div class="homey-form-group">
+              <label class="homey-form-label" for="openai_tts_url">Base URL</label>
+              <input type="text" class="homey-form-input" id="openai_tts_url" autocomplete="off"
+                placeholder="e.g. https://api.openai.com/v1 or 192.168.1.50:8880" />
+            </div>
+            <div class="homey-form-group">
+              <label class="homey-form-label" for="openai_tts_key">API key (optional)</label>
+              <div class="secret-wrap">
+                <input type="password" class="homey-form-input" id="openai_tts_key" autocomplete="off"
+                  placeholder="Leave empty for keyless local servers" />
+                <button type="button" class="secret-toggle" data-for="openai_tts_key">Show</button>
+              </div>
+            </div>
+            <div class="homey-form-group">
+              <label class="homey-form-label" for="openai_tts_model">Model</label>
+              <input type="text" class="homey-form-input" id="openai_tts_model" autocomplete="off"
+                placeholder="e.g. gpt-4o-mini-tts or kokoro" />
+            </div>
+            <div class="homey-form-group">
+              <label class="homey-form-label" for="openai_tts_voice">Voice override (optional)</label>
+              <input type="text" class="homey-form-input" id="openai_tts_voice" autocomplete="off"
+                placeholder="e.g. af_heart for Kokoro — empty uses the Voice dropdown in General" />
+              <div class="help-text">Any server speaking OpenAI's <code>/audio/speech</code> API: OpenAI itself,
+                kokoro-fastapi, … For OpenAI pick a voice in the <b>Voice</b> dropdown in General; for custom servers
+                whose voices aren't OpenAI's, type the voice name here (it wins when set).</div>
+            </div>
+          </div>
+          <div class="stage-test">
+            <button type="button" class="stage-test-btn" data-stage="tts" id="tts_test_btn">Test</button>
+            <span class="stage-test-result" id="tts_test_result"></span>
           </div>
         </div>
-        <div class="help-text local-section-help">A Wyoming-protocol TTS server (raw TCP, not HTTP) — e.g. the
-          <code>rhasspy/wyoming-piper</code> docker from the Home Assistant ecosystem, which listens on
-          port 10200. The spoken voice is the model the server was started with.</div>
-      </div>
-      <div id="local_tts_mistral" style="display: none;">
-        <div class="homey-form-group">
-          <label class="homey-form-label" for="mistral_tts_model">Model</label>
-          <input type="text" class="homey-form-input" id="mistral_tts_model" autocomplete="off"
-            placeholder="voxtral-mini-tts-2603" />
-          <div class="help-text">Mistral's Voxtral TTS. Empty = <code>voxtral-mini-tts-2603</code>; set an explicit
-            id to pin a different one. The <b>Voice</b> dropdown above lists Mistral's voice library —
-            save the API key first, then it fills in on Save.</div>
+      </section>
+
+      <!-- ======================= Smart home control ======================= -->
+      <section class="section" data-section="smart">
+        <div class="card">
+          <div class="feature-head">
+            <div>
+              <div class="feature-title">Smart home control</div>
+              <div class="feature-sub">Lights, sockets, thermostats, locks — per zone</div>
+            </div>
+            <span class="always-chip">Always on</span>
+          </div>
+          <div class="costline">
+            <span class="lbl">Cost on every request</span>
+            <span class="val"><span data-cost-val="smart">—</span> <span class="split" data-cost-split="smart"></span></span>
+          </div>
+          <div class="note">The core of the assistant: zones, device types, reading states and setting on/off,
+            brightness, temperature and locks. Always enabled — this is the base cost every configuration pays. It
+            includes the assistant's behavior rules, the current time, and the "what can you do?" helper.</div>
         </div>
-      </div>
-      <div id="local_tts_openai" style="display: none;">
-        <div class="homey-form-group">
-          <label class="homey-form-label" for="openai_tts_url">Base URL</label>
-          <input type="text" class="homey-form-input" id="openai_tts_url" autocomplete="off"
-            placeholder="e.g. https://api.openai.com/v1 or 192.168.1.50:8880" />
-        </div>
-        <div class="homey-form-group">
-          <label class="homey-form-label" for="openai_tts_key">API key (optional)</label>
-          <div class="secret-wrap">
-            <input type="password" class="homey-form-input" id="openai_tts_key" autocomplete="off"
-              placeholder="Leave empty for keyless local servers" />
-            <button type="button" class="secret-toggle" data-for="openai_tts_key">Show</button>
+      </section>
+
+      <!-- ============================ Weather ============================ -->
+      <section class="section" data-section="weather">
+        <div class="card">
+          <div class="feature-head">
+            <div>
+              <div class="feature-title">Weather</div>
+              <div class="feature-sub">Current, forecast, rain, outside light</div>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="weather_enabled" aria-label="Enable weather" />
+              <span class="knob"></span>
+            </label>
+          </div>
+          <div class="costline">
+            <span class="lbl">Cost on every request</span>
+            <span class="val"><span data-cost-val="weather">—</span> <span class="split" data-cost-split="weather"></span></span>
+          </div>
+          <div class="feature-body" data-feature-body="weather">
+            <div class="note">Lets the assistant answer "what's the weather?", "will it rain?", "how bright is it
+              outside?" for your Homey's location. No API key needed.</div>
           </div>
         </div>
-        <div class="homey-form-group">
-          <label class="homey-form-label" for="openai_tts_model">Model</label>
-          <input type="text" class="homey-form-input" id="openai_tts_model" autocomplete="off"
-            placeholder="e.g. gpt-4o-mini-tts or kokoro" />
+      </section>
+
+      <!-- ========================= Timers & alarms ========================= -->
+      <section class="section" data-section="timers">
+        <div class="card">
+          <div class="feature-head">
+            <div>
+              <div class="feature-title">Timers &amp; alarms</div>
+              <div class="feature-sub">On devices with timer support</div>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="timers_enabled" aria-label="Enable timers" />
+              <span class="knob"></span>
+            </label>
+          </div>
+          <div class="costline">
+            <span class="lbl">Cost on every request</span>
+            <span class="val"><span data-cost-val="timers">—</span> <span class="split" data-cost-split="timers"></span></span>
+          </div>
+          <div class="feature-body" data-feature-body="timers">
+            <div class="note">Countdown timers and alarms with the LED-ring countdown and finish chime. Only devices
+              whose firmware supports timers get these tools — the cost applies on those devices.</div>
+          </div>
         </div>
-        <div class="homey-form-group">
-          <label class="homey-form-label" for="openai_tts_voice">Voice override (optional)</label>
-          <input type="text" class="homey-form-input" id="openai_tts_voice" autocomplete="off"
-            placeholder="e.g. af_heart for Kokoro — empty uses the Voice dropdown above" />
-          <div class="help-text">Any server speaking OpenAI's <code>/audio/speech</code> API: OpenAI itself,
-            kokoro-fastapi, … For OpenAI pick a voice in the <b>Voice</b> dropdown above; for custom servers
-            whose voices aren't OpenAI's, type the voice name here (it wins when set).</div>
+      </section>
+
+      <!-- ========================== Shopping list ========================== -->
+      <section class="section" data-section="shopping">
+        <div class="card">
+          <div class="feature-head">
+            <div>
+              <div class="feature-title">Shopping list</div>
+              <div class="feature-sub">Bring! — read, add, update, remove</div>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="bring_enabled" aria-label="Enable shopping list" />
+              <span class="knob"></span>
+            </label>
+          </div>
+          <div class="costline">
+            <span class="lbl">Cost on every request</span>
+            <span class="val"><span data-cost-val="shopping">—</span> <span class="split" data-cost-split="shopping"></span></span>
+          </div>
+          <div class="feature-body" data-feature-body="shopping">
+            <div class="note">Enter your Bring! account e-mail and password below. Both are required for the feature to
+              work. Accounts created with Sign in with Apple/Google/Facebook have no password — set one in the Bring!
+              app first.</div>
+            <div id="bring_settings">
+              <div class="homey-form-group">
+                <label class="homey-form-label" for="bring_email">Bring! account e-mail</label>
+                <input type="email" class="homey-form-input" id="bring_email" autocomplete="off"
+                  placeholder="you@example.com" />
+              </div>
+              <div class="homey-form-group">
+                <label class="homey-form-label" for="bring_password">Bring! account password</label>
+                <div class="secret-wrap">
+                  <input type="password" class="homey-form-input" id="bring_password" autocomplete="off"
+                    placeholder="Enter your Bring! password here..." />
+                  <button type="button" class="secret-toggle" data-for="bring_password">Show</button>
+                </div>
+              </div>
+              <div class="homey-form-group">
+                <label class="homey-form-label" for="bring_list_name">List name (optional)</label>
+                <input type="text" class="homey-form-input" id="bring_list_name" autocomplete="off"
+                  placeholder="Leave empty for your default list" />
+                <div class="help-text">The name of the Bring! list to use. Leave empty to use your account's default
+                  list.</div>
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
-      <div class="stage-test">
-        <button type="button" class="stage-test-btn" data-stage="tts" id="tts_test_btn">Test</button>
-        <span class="stage-test-result" id="tts_test_result"></span>
-      </div>
-    </div>
+      </section>
 
-    <div class="homey-form-group">
-      <label class="homey-form-label" for="voice_select">Voice</label>
-      <select class="homey-form-input" id="voice_select"></select>
-      <div class="help-text">The AI voice used for speech responses (list depends on the selected provider)</div>
-    </div>
-
-    <div class="homey-form-group">
-      <label class="homey-form-label" for="ai_instructions">AI Instructions (Optional)</label>
-      <textarea class="homey-form-input" id="ai_instructions" rows="4" 
-        placeholder="Enter optional instructions for the AI, such as personality traits, behavior guidelines, or specific responses you'd like..."></textarea>
-      <div class="help-text">Customize the AI's personality and behavior with additional instructions. Examples: "You act like Santa Claus" or "Be super sarcastic like GLaDOS."</div>
-    </div>
-
-    <div class="homey-form-group">
-      <label class="homey-form-label" for="web_search_provider">Web search</label>
-      <select class="homey-form-input" id="web_search_provider">
-        <option value="openai">OpenAI web search (uses your OpenAI key)</option>
-        <option value="brave">Brave Search API</option>
-        <option value="disabled">Disabled</option>
-      </select>
-      <div class="help-text">Lets the assistant answer questions about current events, opening hours, departures, etc.
-        OpenAI searches and summarizes with your OpenAI API key; Brave uses its own free-tier key.</div>
-    </div>
-    <div class="homey-form-group" id="brave_key_group" style="display: none;">
-      <label class="homey-form-label" for="brave_api_key">Brave Search API key</label>
-      <div class="secret-wrap">
-        <input type="password" class="homey-form-input" id="brave_api_key" autocomplete="off"
-          placeholder="Enter your Brave Search API key here..." />
-        <button type="button" class="secret-toggle" data-for="brave_api_key">Show</button>
-      </div>
-      <div class="help-text">Visit https://api.search.brave.com to get one (free tier available).</div>
-    </div>
-  </fieldset>
-
-  <fieldset class="homey-form-fieldset">
-    <div class="homey-form-group">
-      <label class="homey-form-label" for="bring_enabled">Bring! shopping list</label>
-      <label style="display:flex; align-items:center; gap:8px; font-weight:400;">
-        <input type="checkbox" id="bring_enabled" style="width:auto;" />
-        Let the assistant read and edit your Bring! shopping list
-      </label>
-      <div class="help-text">Enter your Bring! account e-mail and password below. Both are required for the
-        feature to work. Accounts created with Sign in with Apple/Google/Facebook have no password —
-        set one in the Bring! app first.</div>
-    </div>
-    <div id="bring_settings" style="display: none;">
-      <div class="homey-form-group">
-        <label class="homey-form-label" for="bring_email">Bring! account e-mail</label>
-        <input type="email" class="homey-form-input" id="bring_email" autocomplete="off"
-          placeholder="you@example.com" />
-      </div>
-      <div class="homey-form-group">
-        <label class="homey-form-label" for="bring_password">Bring! account password</label>
-        <div class="secret-wrap">
-          <input type="password" class="homey-form-input" id="bring_password" autocomplete="off"
-            placeholder="Enter your Bring! password here..." />
-          <button type="button" class="secret-toggle" data-for="bring_password">Show</button>
+      <!-- ============================= Music ============================= -->
+      <section class="section" data-section="music">
+        <div class="card">
+          <div class="feature-head">
+            <div>
+              <div class="feature-title">Music</div>
+              <div class="feature-sub">Music Assistant — search, play, control</div>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="music_assistant_enabled" aria-label="Enable music" />
+              <span class="knob"></span>
+            </label>
+          </div>
+          <div class="costline">
+            <span class="lbl">Cost on every request</span>
+            <span class="val"><span data-cost-val="music">—</span> <span class="split" data-cost-split="music"></span></span>
+          </div>
+          <div class="feature-body" data-feature-body="music">
+            <div class="note">Requires a Music Assistant server (2.7 or newer) on your network. Add your speakers as
+              Sendspin players in Music Assistant — the music streams from the server straight to the speakers; this
+              app only sends the voice commands (find/play, pause, next…).</div>
+            <div id="music_assistant_settings">
+              <div class="homey-form-group">
+                <label class="homey-form-label" for="music_assistant_host">Server address</label>
+                <input type="text" class="homey-form-input" id="music_assistant_host" autocomplete="off"
+                  placeholder="e.g. 192.168.1.50" />
+              </div>
+              <div class="homey-form-group">
+                <label class="homey-form-label" for="music_assistant_port">Server port</label>
+                <input type="number" class="homey-form-input" id="music_assistant_port" autocomplete="off"
+                  placeholder="8095" />
+                <div class="help-text">The Music Assistant web interface port. Leave at 8095 unless you changed it.
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
-      <div class="homey-form-group">
-        <label class="homey-form-label" for="bring_list_name">List name (optional)</label>
-        <input type="text" class="homey-form-input" id="bring_list_name" autocomplete="off"
-          placeholder="Leave empty for your default list" />
-        <div class="help-text">The name of the Bring! list to use. Leave empty to use your account's default list.</div>
-      </div>
-    </div>
-  </fieldset>
+      </section>
 
-  <fieldset class="homey-form-fieldset">
-    <div class="homey-form-group">
-      <label class="homey-form-label" for="music_assistant_enabled">Music Assistant</label>
-      <label style="display:flex; align-items:center; gap:8px; font-weight:400;">
-        <input type="checkbox" id="music_assistant_enabled" style="width:auto;" />
-        Let the assistant find and play music via a Music Assistant server
-      </label>
-      <div class="help-text">Requires a Music Assistant server (2.7 or newer) on your network. Add your speakers
-        as Sendspin players in Music Assistant — the music streams from the server straight to the speakers;
-        this app only sends the voice commands (find/play, pause, next…).</div>
-    </div>
-    <div id="music_assistant_settings" style="display: none;">
-      <div class="homey-form-group">
-        <label class="homey-form-label" for="music_assistant_host">Server address</label>
-        <input type="text" class="homey-form-input" id="music_assistant_host" autocomplete="off"
-          placeholder="e.g. 192.168.1.50" />
-      </div>
-      <div class="homey-form-group">
-        <label class="homey-form-label" for="music_assistant_port">Server port</label>
-        <input type="number" class="homey-form-input" id="music_assistant_port" autocomplete="off"
-          placeholder="8095" />
-        <div class="help-text">The Music Assistant web interface port. Leave at 8095 unless you changed it.</div>
-      </div>
-    </div>
-  </fieldset>
+      <!-- =========================== Web search =========================== -->
+      <section class="section" data-section="websearch">
+        <div class="card">
+          <div class="feature-head">
+            <div>
+              <div class="feature-title">Web search</div>
+              <div class="feature-sub">News, opening hours, timetables</div>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="web_search_enabled" aria-label="Enable web search" />
+              <span class="knob"></span>
+            </label>
+          </div>
+          <div class="costline">
+            <span class="lbl">Cost on every request</span>
+            <span class="val"><span data-cost-val="websearch">—</span> <span class="split" data-cost-split="websearch"></span></span>
+          </div>
+          <div class="feature-body" data-feature-body="websearch">
+            <div class="homey-form-group">
+              <label class="homey-form-label" for="web_search_provider">Search backend</label>
+              <select class="homey-form-input" id="web_search_provider">
+                <option value="openai">OpenAI web search (uses your OpenAI key)</option>
+                <option value="brave">Brave Search API</option>
+              </select>
+              <div class="help-text">Lets the assistant answer questions about current events, opening hours,
+                departures, etc.
+                OpenAI searches and summarizes with your OpenAI API key; Brave uses its own free-tier key.</div>
+            </div>
+            <div class="homey-form-group" id="brave_key_group" style="display: none;">
+              <label class="homey-form-label" for="brave_api_key">Brave Search API key</label>
+              <div class="secret-wrap">
+                <input type="password" class="homey-form-input" id="brave_api_key" autocomplete="off"
+                  placeholder="Enter your Brave Search API key here..." />
+                <button type="button" class="secret-toggle" data-for="brave_api_key">Show</button>
+              </div>
+              <div class="help-text">Visit https://api.search.brave.com to get one (free tier available).</div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
 
-  <button id="save" class="homey-button-primary-full">Save changes</button>
+    <!-- Sticky footer: token budget meter (tap for the per-feature breakdown)
+         and the global Save. Costs come live from GET /feature-costs. -->
+    <div class="footer">
+      <div class="breakdown" id="breakdown"></div>
+      <button type="button" class="meter-btn" id="meter_btn" aria-expanded="false" aria-controls="breakdown">
+        <div class="meter-top">
+          <span class="meter-total" id="meter_total">—</span>
+          <span class="meter-state none" id="meter_state">…</span>
+        </div>
+        <div class="meter-bar">
+          <div class="meter-fill" id="meter_fill"></div>
+        </div>
+        <div class="meter-sub">
+          <span id="meter_budget">Token cost of the assistant's instructions and tools</span>
+          <span class="chev" id="meter_chev">Breakdown ▴</span>
+        </div>
+      </button>
+      <button id="save" class="homey-button-primary-full">Save changes</button>
+    </div>
+  </div>
 
   <script type="text/javascript">
     // a method named 'onHomeyReady' must be present in your code
     function onHomeyReady(Homey) {
-
 
       var apiKeyElement = document.getElementById("openai_api_key");
       var geminiApiKeyElement = document.getElementById("gemini_api_key");
@@ -618,14 +1136,15 @@
       var voiceSelectElement = document.getElementById("voice_select");
       var aiInstructionsElement = document.getElementById("ai_instructions");
       var saveElement = document.getElementById("save");
-      var localSettingsElement = document.getElementById("local_settings");
+      var sectionSelectElement = document.getElementById("section_select");
+      var pipelineOptionElement = document.getElementById("pipeline_option");
 
       // Local pipeline settings: inputs/selects that load and save 1:1 with a
       // global setting key of the same id.
       var localSettingIds = [
         "local_stt_provider", "local_stt_host", "local_stt_port", "mistral_stt_model", "mistral_stt_realtime_model",
         "wyoming_stt_host", "wyoming_stt_port",
-        "local_llm_provider", "local_llm_host", "local_llm_port", "local_llm_model", "mistral_model",
+        "local_llm_provider", "local_llm_host", "local_llm_port", "local_llm_model", "local_llm_num_ctx", "mistral_model",
         "lmstudio_host", "lmstudio_port", "lmstudio_model",
         "local_tts_provider", "local_tts_host", "local_tts_port", "mistral_tts_model",
         "wyoming_tts_host", "wyoming_tts_port",
@@ -635,15 +1154,206 @@
         "openai_tts_url", "openai_tts_key", "openai_tts_model", "openai_tts_voice"
       ];
 
-      // Per-stage backend selection: each stage shows either its LAN boxes or
-      // its Mistral boxes, and the shared Mistral key appears when any stage
-      // picked Mistral.
+      /* ---------------- section navigation (dropdown) ---------------- */
+
+      function showSection(id) {
+        var sections = document.querySelectorAll(".section");
+        for (var i = 0; i < sections.length; i++) {
+          sections[i].classList.toggle("active", sections[i].getAttribute("data-section") === id);
+        }
+        sectionSelectElement.value = id;
+        window.scrollTo(0, 0);
+      }
+      sectionSelectElement.addEventListener("change", function () {
+        showSection(sectionSelectElement.value);
+      });
+
+      /* -------- features: toggles, costs and the budget meter --------
+         Each optional feature has a checkbox (the section switch), a cost line
+         and a row in the footer breakdown. Costs come live from the app
+         (GET /feature-costs — real instruction text + real tool JSON). */
+
+      var FEATURES = [
+        { id: "smart", name: "Smart home control", always: true },
+        { id: "weather", name: "Weather", checkbox: "weather_enabled" },
+        { id: "timers", name: "Timers & alarms", checkbox: "timers_enabled" },
+        { id: "shopping", name: "Shopping list", checkbox: "bring_enabled" },
+        { id: "music", name: "Music", checkbox: "music_assistant_enabled" },
+        { id: "websearch", name: "Web search", checkbox: "web_search_enabled" }
+      ];
+      var costReport = null; // last /feature-costs response
+
+      function featureChecked(f) {
+        if (f.always) return true;
+        return document.getElementById(f.checkbox).checked;
+      }
+
+      function costOf(id) {
+        if (!costReport) return null;
+        for (var i = 0; i < costReport.features.length; i++) {
+          if (costReport.features[i].id === id) return costReport.features[i];
+        }
+        return null;
+      }
+
+      function fmt(n) {
+        return "~" + n.toLocaleString("en-US");
+      }
+
+      // The footer breakdown: one row per feature with its cost and a switch
+      // mirroring the section's checkbox.
+      var breakdownElement = document.getElementById("breakdown");
+      function buildBreakdown() {
+        breakdownElement.innerHTML = "";
+        FEATURES.forEach(function (f) {
+          var row = document.createElement("div");
+          row.className = "bd-row";
+          var name = document.createElement("span");
+          name.className = "name";
+          name.textContent = f.name;
+          row.appendChild(name);
+          var cost = document.createElement("span");
+          cost.className = "cost";
+          cost.setAttribute("data-bd-cost", f.id);
+          cost.textContent = "—";
+          row.appendChild(cost);
+          if (f.always) {
+            var chip = document.createElement("span");
+            chip.className = "bd-always";
+            chip.textContent = "on";
+            row.appendChild(chip);
+          } else {
+            var sw = document.createElement("label");
+            sw.className = "switch";
+            var input = document.createElement("input");
+            input.type = "checkbox";
+            input.setAttribute("data-mirrors", f.checkbox);
+            input.setAttribute("aria-label", "Enable " + f.name);
+            var knob = document.createElement("span");
+            knob.className = "knob";
+            sw.appendChild(input);
+            sw.appendChild(knob);
+            row.appendChild(sw);
+            input.addEventListener("change", function () {
+              var real = document.getElementById(f.checkbox);
+              real.checked = input.checked;
+              real.dispatchEvent(new Event("change"));
+            });
+          }
+          breakdownElement.appendChild(row);
+        });
+      }
+      buildBreakdown();
+
+      var meterBtn = document.getElementById("meter_btn");
+      var meterChev = document.getElementById("meter_chev");
+      meterBtn.addEventListener("click", function () {
+        var open = breakdownElement.classList.toggle("open");
+        meterBtn.setAttribute("aria-expanded", open ? "true" : "false");
+        meterChev.textContent = open ? "Hide ▾" : "Breakdown ▴";
+      });
+
+      var meterTotal = document.getElementById("meter_total");
+      var meterState = document.getElementById("meter_state");
+      var meterFill = document.getElementById("meter_fill");
+      var meterBudget = document.getElementById("meter_budget");
+
+      // Recompute the cost lines, breakdown and budget meter from the current
+      // form state. The verdict (green/amber/red vs num_ctx) only applies when
+      // the Custom pipeline runs on Ollama — other engines get the plain sum.
+      function refreshBudget() {
+        FEATURES.forEach(function (f) {
+          var c = costOf(f.id);
+          var val = document.querySelector('[data-cost-val="' + f.id + '"]');
+          var split = document.querySelector('[data-cost-split="' + f.id + '"]');
+          var bd = document.querySelector('[data-bd-cost="' + f.id + '"]');
+          if (val) val.textContent = c ? fmt(c.total) + " tokens" : "—";
+          if (split) split.textContent = !c ? "" : (c.instructions
+            ? "(" + fmt(c.instructions) + " instructions + " + fmt(c.tools) + " tools)"
+            : "(tools only)");
+          if (bd) bd.textContent = c ? fmt(c.total) : "—";
+          // Grey the config while the feature is off.
+          var body = document.querySelector('[data-feature-body="' + f.id + '"]');
+          if (body && !f.always) body.classList.toggle("off", !featureChecked(f));
+          // Keep the breakdown switches mirroring the section checkboxes.
+          if (!f.always) {
+            var mirror = document.querySelector('[data-mirrors="' + f.checkbox + '"]');
+            if (mirror) mirror.checked = featureChecked(f);
+          }
+        });
+
+        if (!costReport) {
+          meterTotal.textContent = "—";
+          meterState.className = "meter-state none";
+          meterState.textContent = "…";
+          return;
+        }
+
+        var total = 0;
+        FEATURES.forEach(function (f) {
+          if (featureChecked(f)) {
+            var c = costOf(f.id);
+            if (c) total += c.total;
+          }
+        });
+        // The user's extra AI instructions ride in the prompt too — price the
+        // live textarea so the meter reacts while typing.
+        total += Math.round(aiInstructionsElement.value.length / (costReport.charsPerToken || 3.8));
+
+        meterTotal.textContent = fmt(total) + " tokens";
+
+        var isOllama = providerSelectElement.value === "local" &&
+          document.getElementById("local_llm_provider").value === "ollama";
+        if (isOllama) {
+          var numCtx = parseInt(document.getElementById("local_llm_num_ctx").value, 10) || 8192;
+          var pct = total / numCtx;
+          meterFill.style.width = Math.min(100, pct * 100) + "%";
+          var cls, txt;
+          if (pct < 0.5) { cls = "ok"; txt = "Fits — room to talk"; }
+          else if (pct < 0.75) { cls = "warn"; txt = "Tight fit"; }
+          else { cls = "crit"; txt = "Over budget"; }
+          meterState.className = "meter-state " + cls;
+          meterState.textContent = txt;
+          meterFill.style.background = cls === "ok" ? "#1e7a4c" : cls === "warn" ? "#9a6b00" : "#b3372e";
+          meterBudget.textContent = "of " + numCtx.toLocaleString("en-US") + " token window (num_ctx) · " +
+            Math.round(pct * 100) + "%" + (pct >= 0.75 ? " — the model will start forgetting its rules" : "");
+        } else {
+          meterFill.style.width = "100%";
+          meterFill.style.background = "#e4eae6";
+          meterState.className = "meter-state none";
+          meterState.textContent = "No context limit";
+          meterBudget.textContent = "Sent on every request — with cloud engines this is spend, not a limit";
+        }
+      }
+
+      // Fetch the per-feature costs for the currently selected language. The
+      // language NAME rides along because the prompt embeds it.
+      function refreshCosts() {
+        var code = languageSelectElement.value;
+        var name = languageSelectElement.options[languageSelectElement.selectedIndex].text;
+        Homey.api("GET", "/feature-costs?language=" + encodeURIComponent(code) +
+          "&name=" + encodeURIComponent(name), null, function (err, report) {
+            if (!err && report && report.features) costReport = report;
+            refreshBudget();
+          });
+      }
+
+      languageSelectElement.addEventListener("change", refreshCosts);
+      aiInstructionsElement.addEventListener("input", refreshBudget);
+      document.getElementById("local_llm_num_ctx").addEventListener("input", refreshBudget);
+      document.getElementById("local_llm_provider").addEventListener("change", refreshBudget);
+      FEATURES.forEach(function (f) {
+        if (!f.always) document.getElementById(f.checkbox).addEventListener("change", refreshBudget);
+      });
+
+      /* ------------- per-stage backend visibility (pipeline) ------------- */
+
       var sttProviderSelectElement = document.getElementById("local_stt_provider");
       var llmProviderSelectElement = document.getElementById("local_llm_provider");
       var ttsProviderSelectElement = document.getElementById("local_tts_provider");
 
       function refreshStageVisibility() {
-        // Each stage shows exactly one of its three backend blocks
+        // Each stage shows exactly one of its backend blocks
         // (<lan default> / mistral / openai) based on its dropdown.
         var stages = [
           { select: sttProviderSelectElement, blocks: { whisper: "local_stt_whisper", wyoming: "local_stt_wyoming", mistral: "local_stt_mistral", "mistral-realtime": "local_stt_mistral_realtime", openai: "local_stt_openai" }, def: "whisper" },
@@ -679,24 +1389,32 @@
           if (id === "local_stt_provider" || id === "local_llm_provider" || id === "local_tts_provider") {
             refreshStageVisibility();
           }
+          if (id === "local_llm_num_ctx" || id === "local_llm_provider") {
+            refreshBudget();
+          }
         });
       });
 
-      // Only the selected provider's settings are shown: OpenAI Realtime and
-      // Gemini Live each show just their API key; the local provider hides
-      // both keys and shows the three-stage pipeline section instead.
+      // Only the selected provider's settings are shown in General, and the
+      // Custom pipeline section is only reachable while that provider is
+      // selected (its dropdown option is disabled otherwise).
       function refreshLocalVisibility() {
         var provider = providerSelectElement.value;
         document.getElementById("openai_realtime_settings").style.display =
           provider === "openai-realtime" ? "" : "none";
         document.getElementById("gemini_realtime_settings").style.display =
           provider === "gemini-realtime" ? "" : "none";
-        localSettingsElement.style.display = provider === "local" ? "" : "none";
+        pipelineOptionElement.disabled = provider !== "local";
+        if (provider !== "local" && sectionSelectElement.value === "pipeline") {
+          showSection("general");
+        }
       }
 
-      // Per-stage "Test" buttons: POST the CURRENT (unsaved) form values to the
-      // app, which runs one real mini-request against the backend from the
-      // Homey box (the webview itself can't reach LAN services).
+      /* -------------------- stage "Test" buttons -------------------- */
+
+      // POST the CURRENT (unsaved) form values to the app, which runs one real
+      // mini-request against the backend from the Homey box (the settings
+      // webview itself can't reach LAN services).
       function collectStageTest(stage) {
         var v = function (id) { return document.getElementById(id).value.trim(); };
         if (stage === "stt") {
@@ -757,6 +1475,8 @@
         });
       });
 
+      /* --------------------------- load values --------------------------- */
+
       Homey.get("openai_api_key", function (err, apiKey) {
         if (err) return Homey.alert(err);
         if (apiKey) apiKeyElement.value = apiKey;
@@ -772,7 +1492,22 @@
         document.getElementById("openai_model").value = model || "full";
       });
 
-      // Web search: backend dropdown + the Brave key (shown only for Brave).
+      // Feature gates (default on): weather + timers are plain booleans; web
+      // search folds its toggle into web_search_provider ('disabled' = off,
+      // otherwise the value is the backend).
+      function loadBoolSetting(id, fallback) {
+        Homey.get(id, function (err, value) {
+          if (err) return Homey.alert(err);
+          var el = document.getElementById(id);
+          if (value === null || value === undefined) el.checked = fallback;
+          else el.checked = value === true || value === "true";
+          refreshBudget();
+        });
+      }
+      loadBoolSetting("weather_enabled", true);
+      loadBoolSetting("timers_enabled", true);
+
+      var webSearchEnabledElement = document.getElementById("web_search_enabled");
       var webSearchSelectElement = document.getElementById("web_search_provider");
       function refreshWebSearchVisibility() {
         document.getElementById("brave_key_group").style.display =
@@ -781,25 +1516,22 @@
       webSearchSelectElement.addEventListener("change", refreshWebSearchVisibility);
       Homey.get("web_search_provider", function (err, backend) {
         if (err) return Homey.alert(err);
-        webSearchSelectElement.value = backend || "openai";
+        webSearchEnabledElement.checked = backend !== "disabled";
+        if (backend && backend !== "disabled") webSearchSelectElement.value = backend;
         refreshWebSearchVisibility();
+        refreshBudget();
       });
       Homey.get("brave_api_key", function (err, key) {
         if (err) return Homey.alert(err);
         if (key) document.getElementById("brave_api_key").value = key;
       });
 
-      // Bring! shopping list: the enable checkbox toggles the credential fields.
+      // Bring! shopping list credentials.
       var bringEnabledElement = document.getElementById("bring_enabled");
-      function refreshBringVisibility() {
-        document.getElementById("bring_settings").style.display =
-          bringEnabledElement.checked ? "" : "none";
-      }
-      bringEnabledElement.addEventListener("change", refreshBringVisibility);
       Homey.get("bring_enabled", function (err, enabled) {
         if (err) return Homey.alert(err);
         bringEnabledElement.checked = enabled === true || enabled === "true";
-        refreshBringVisibility();
+        refreshBudget();
       });
       Homey.get("bring_email", function (err, value) {
         if (err) return Homey.alert(err);
@@ -814,17 +1546,12 @@
         if (value) document.getElementById("bring_list_name").value = value;
       });
 
-      // Music Assistant: the enable checkbox toggles the server-address fields.
+      // Music Assistant server address.
       var musicAssistantEnabledElement = document.getElementById("music_assistant_enabled");
-      function refreshMusicAssistantVisibility() {
-        document.getElementById("music_assistant_settings").style.display =
-          musicAssistantEnabledElement.checked ? "" : "none";
-      }
-      musicAssistantEnabledElement.addEventListener("change", refreshMusicAssistantVisibility);
       Homey.get("music_assistant_enabled", function (err, enabled) {
         if (err) return Homey.alert(err);
         musicAssistantEnabledElement.checked = enabled === true || enabled === "true";
-        refreshMusicAssistantVisibility();
+        refreshBudget();
       });
       Homey.get("music_assistant_host", function (err, value) {
         if (err) return Homey.alert(err);
@@ -876,6 +1603,7 @@
         if (err) return Homey.alert(err);
         providerSelectElement.value = provider || "openai-realtime";
         refreshLocalVisibility();
+        refreshBudget();
 
         // Load the saved voice, then populate the list for the active provider.
         Homey.get("selected_voice", function (err, voice) {
@@ -889,6 +1617,7 @@
       providerSelectElement.addEventListener("change", function () {
         refreshVoices(providerSelectElement.value, voiceSelectElement.value, ttsProviderSelectElement.value);
         refreshLocalVisibility();
+        refreshBudget();
       });
 
       Homey.get("selected_language_code", function (err, language) {
@@ -896,6 +1625,7 @@
         if (language) {
           languageSelectElement.value = language;
         }
+        refreshCosts();
       });
 
       Homey.get("ai_instructions", function (err, instructions) {
@@ -903,7 +1633,10 @@
         if (instructions) {
           aiInstructionsElement.value = instructions;
         }
+        refreshBudget();
       });
+
+      /* ----------------------------- save ----------------------------- */
 
       saveElement.addEventListener("click", function (e) {
         Homey.set("openai_api_key", apiKeyElement.value.trim(), function (err) {
@@ -920,11 +1653,21 @@
           if (err) return Homey.alert(err);
         });
 
-        // Save the web-search backend + Brave key
-        Homey.set("web_search_provider", webSearchSelectElement.value, function (err) {
+        // Save the web-search gate + backend + Brave key. Off is stored as
+        // provider 'disabled' so the tool is not registered at all.
+        Homey.set("web_search_provider",
+          webSearchEnabledElement.checked ? webSearchSelectElement.value : "disabled", function (err) {
+            if (err) return Homey.alert(err);
+          });
+        Homey.set("brave_api_key", document.getElementById("brave_api_key").value.trim(), function (err) {
           if (err) return Homey.alert(err);
         });
-        Homey.set("brave_api_key", document.getElementById("brave_api_key").value.trim(), function (err) {
+
+        // Save the weather + timers feature gates
+        Homey.set("weather_enabled", document.getElementById("weather_enabled").checked, function (err) {
+          if (err) return Homey.alert(err);
+        });
+        Homey.set("timers_enabled", document.getElementById("timers_enabled").checked, function (err) {
           if (err) return Homey.alert(err);
         });
 
@@ -953,12 +1696,12 @@
           if (err) return Homey.alert(err);
         });
 
-        // Save selected voice provider
+        // Save selected AI provider
         Homey.set("voice_provider", providerSelectElement.value, function (err) {
           if (err) return Homey.alert(err);
         });
 
-        // Save the local pipeline endpoints (harmless when another provider is active)
+        // Save the pipeline endpoints (harmless when another provider is active)
         localSettingIds.forEach(function (id) {
           Homey.set(id, document.getElementById(id).value.trim(), function (err) {
             if (err) return Homey.alert(err);
@@ -969,9 +1712,6 @@
         var selectedValue = languageSelectElement.value;
         var selectedText = languageSelectElement.options[languageSelectElement.selectedIndex].text;
 
-        console.log("Selected language value:", selectedValue);
-        console.log("Selected language text:", selectedText);
-
         Homey.set("selected_language_name", selectedText, function (err) {
           if (err) return Homey.alert(err);
         });
@@ -979,7 +1719,6 @@
         Homey.set("selected_language_code", selectedValue, function (err) {
           if (err) return Homey.alert(err);
         });
-
 
         // Save selected voice
         Homey.set("selected_voice", voiceSelectElement.value, function (err) {
@@ -997,7 +1736,6 @@
           refreshVoices(providerSelectElement.value, voiceSelectElement.value, ttsProviderSelectElement.value);
         }, 500);
       });
-
 
       // Tell Homey we're ready to be displayed
       Homey.ready();
