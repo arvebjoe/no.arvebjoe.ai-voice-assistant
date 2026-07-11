@@ -66,6 +66,13 @@ class Logger {
     private static homey: Homey | null = null;
     private static homeyLog: any;
 
+    // Sentry throttle: repeats of the same error (same logger + name + code)
+    // within the cooldown are not reported again. Keyed on error.code when
+    // present so e.g. EHOSTUNREACH groups regardless of the IP:port in the
+    // message. Shared across all Logger instances.
+    private static readonly REPORT_COOLDOWN_MS = 60 * 60 * 1000;
+    private static lastReportedAt = new Map<string, number>();
+
     constructor(from: string, disabled: boolean = false) {
         this.from = from.toUpperCase();
         this.disabled = disabled;
@@ -160,14 +167,39 @@ class Logger {
 
     /**
      * Report an error to Sentry if homey-log is available
-     * This provides a centralized way to report errors throughout your app
+     * This provides a centralized way to report errors throughout your app.
+     * Repeats of the same error within REPORT_COOLDOWN_MS are dropped, so a
+     * tight failure loop (e.g. reconnecting to an offline satellite every 10s)
+     * costs one Sentry event per hour instead of thousands per day.
      */
     reportError(error: Error, context?: string) {
         const homeyLog = Logger.homeyLog;
-        if (homeyLog && homeyLog.captureException) {            
-            (error as any).context = context;
-            homeyLog.captureException(error).catch((_: Error) => { });
+        if (!homeyLog || !homeyLog.captureException) {
+            return;
         }
+
+        const code = (error as any).code;
+        const fingerprint = code
+            ? `${this.from}|${error.name}|${code}`
+            : `${this.from}|${error.name}|${context ?? ''}|${error.message}`;
+        const now = Date.now();
+        const lastAt = Logger.lastReportedAt.get(fingerprint);
+        if (lastAt !== undefined && now - lastAt < Logger.REPORT_COOLDOWN_MS) {
+            return;
+        }
+
+        // Drop expired fingerprints so the map can't grow unboundedly.
+        if (Logger.lastReportedAt.size >= 200) {
+            for (const [key, at] of Logger.lastReportedAt) {
+                if (now - at >= Logger.REPORT_COOLDOWN_MS) {
+                    Logger.lastReportedAt.delete(key);
+                }
+            }
+        }
+        Logger.lastReportedAt.set(fingerprint, now);
+
+        (error as any).context = context;
+        homeyLog.captureException(error).catch((_: Error) => { });
     }
 
     /**
