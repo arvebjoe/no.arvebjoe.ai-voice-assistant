@@ -124,11 +124,11 @@ enough for "General / Custom pipeline / Features" plus one more section
 already scrolls or truncates, while a native `<select>` costs one row,
 gets the platform's own picker UI on mobile, and scales to any number of
 sections. It also unlocks a nicer structure: **each feature is its own
-option in the list** (no separate "Features" section needed), and the
-option labels carry live on/off state — e.g. `Music — on`. Keep the labels
-short: token costs in the option text word-wrap badly in the native picker
-(tried and rejected); costs live in the feature sections and the footer
-breakdown instead.
+option in the list** (no separate "Features" section needed). Option
+labels are the plain feature names only — both token costs and on/off
+state in the option text were tried and rejected (costs word-wrap badly
+in the native picker, and the state suffix adds noise); state and costs
+live in the feature sections and the footer breakdown instead.
 
 The Homey settings webview is plain HTML/CSS/JS, so this is hand-rolled
 with the same visibility-toggle mechanism the page already uses for
@@ -139,8 +139,8 @@ provider/backend switching (`refreshLocalVisibility`,
 
 | Group | Option | Contents |
 |---|---|---|
-| Setup | **General** | Language, voice provider, provider API keys + model quality, voice, additional AI instructions |
-| Setup | **Custom pipeline** | The three-stage STT/LLM/TTS configuration with backends, test buttons, `num_ctx`. The `local` provider is presented as **"Custom"** in the UI; this dropdown option is **disabled** unless the selected provider is Custom |
+| Setup | **General** | Language, **AI provider** (renamed from "Voice provider"), provider API keys + model quality, voice, additional AI instructions |
+| Setup | **Custom pipeline** | The three-stage STT/LLM/TTS configuration with backends, test buttons, `num_ctx`. The `local` provider is presented as **"Custom pipeline"** in the UI; this dropdown option is **disabled** unless that provider is selected |
 | Features | **Smart home control** | Always on; shows the base cost |
 | Features | **Weather** | Toggle + OpenWeather key |
 | Features | **Timers & alarms** | Toggle (device-dependent note) |
