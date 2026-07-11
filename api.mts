@@ -1,5 +1,6 @@
 import { getVoicesForProvider, DEFAULT_VOICE_PROVIDER } from './src/llm/voice-provider-factory.mjs';
 import { testLocalStage, StageTestRequest, StageTestResult } from './src/llm/providers/local/stage-tester.mjs';
+import { computeFeatureCosts, FeatureCostReport } from './src/settings/feature-costs.mjs';
 
 /**
  * App Web API — called from the settings page via `Homey.api(...)`.
@@ -29,5 +30,25 @@ export default {
      */
     async testLocalStage({ body }: { body: StageTestRequest }): Promise<StageTestResult> {
         return testLocalStage(body);
+    },
+
+    /**
+     * GET /feature-costs?language=<code>&name=<language name> — per-feature
+     * LLM context costs (approximate tokens) computed live from the real
+     * instruction modules and tool definitions, for the settings page's
+     * budget panel. See docs/cost-of-growth.md.
+     */
+    async getFeatureCosts({ homey, query }: { homey: any; query: Record<string, string> }): Promise<FeatureCostReport> {
+        const app = homey.app as any;
+        return computeFeatureCosts(
+            {
+                homey,
+                deviceManager: app.deviceManager,
+                geoHelper: app.geoHelper,
+                weatherHelper: app.weatherHelper,
+            },
+            query?.language || 'en',
+            query?.name || 'English',
+        );
     },
 };

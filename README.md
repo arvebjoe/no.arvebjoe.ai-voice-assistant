@@ -225,29 +225,45 @@ Notes:
 
 <img src="./.resources/settings.jpg" height="500" alt="Settings" />
 
-* **Voice provider** — **OpenAI Realtime**, **Google Gemini Live**, or **Local**.
+The settings page is organized by a **section dropdown** at the top: **General**, **Custom
+pipeline** (only selectable while the Custom pipeline provider is active), and one section per
+feature. A **token budget bar** stays visible at the bottom: every feature you enable adds
+instructions and tools to every request the AI makes, and the bar shows the total — tap it for a
+per-feature breakdown where you can flip features on and off directly. When the Custom pipeline
+runs on Ollama, the bar also shows whether everything fits in the configured context window
+(green/amber/red — red means the model will start "forgetting" its rules).
+
+**General**
+
+* **Language** — the language you'll speak with the assistant.
+* **AI provider** — **OpenAI Realtime**, **Google Gemini Live**, or **Custom pipeline**.
 * **API key** — for the selected cloud provider (OpenAI or Gemini).
 * **Model quality** *(OpenAI only)* — **Full** for the best understanding, **Mini** for a much
   cheaper, slightly faster model.
-* **Language** — the language you'll speak with the assistant.
 * **Voice** — the voice the assistant speaks with. The list adapts to the selected provider
-  (and, for the local engine, to the selected TTS backend).
+  (and, for the Custom pipeline, to the selected TTS backend).
 * **Optional AI instructions** — personality or behaviour tweaks. Be careful: this **will**
-  affect the AI. Write it in English.
-* **Web search** — **OpenAI web search** (uses your OpenAI key), **Brave Search API** (its own
-  free-tier key), or **Disabled**.
-* **Bring! shopping list** *(opt-in)* — tick the box and enter your Bring! account e-mail and
-  password to let the assistant read and edit your shopping list. Optionally name a specific list
-  (defaults to your account's default list). While it's off, the shopping-list tools and prompt
-  aren't loaded at all. Note: the account must have an e-mail + password login — accounts created
-  with "Sign in with Apple/Google/Facebook" have no password and can't be used until you set one
-  in the Bring! app.
-* **Music Assistant** *(opt-in)* — tick the box and enter your Music Assistant server's address
-  (default port 8095) to enable the music tools
-  (see [Playing music](#playing-music-music-assistant)). While it's off, the music tools and
-  prompt aren't loaded at all.
-* **Local pipeline settings** *(Local provider only)* — per-stage backend choice plus host/port
-  or URL/key/model for each, with Test buttons.
+  affect the AI (and counts toward the token budget). Write it in English.
+
+**Features** — each has an on/off switch and shows its token cost. Disabled features aren't
+loaded at all: no tools, no prompt text, no cost.
+
+* **Smart home control** — always on; this is the base cost.
+* **Weather** — current weather, forecast, rain and outside-light questions (on by default).
+* **Timers & alarms** — countdown timers/alarms on devices whose firmware supports them
+  (on by default).
+* **Shopping list** *(opt-in)* — enter your Bring! account e-mail and password to let the
+  assistant read and edit your shopping list. Optionally name a specific list (defaults to your
+  account's default list). Note: the account must have an e-mail + password login — accounts
+  created with "Sign in with Apple/Google/Facebook" have no password and can't be used until you
+  set one in the Bring! app.
+* **Music** *(opt-in)* — enter your Music Assistant server's address (default port 8095) to
+  enable the music tools (see [Playing music](#playing-music-music-assistant)).
+* **Web search** — **OpenAI web search** (uses your OpenAI key) or **Brave Search API** (its own
+  free-tier key); switch the feature off to remove the tool entirely.
+
+**Custom pipeline** *(Custom provider only)* — per-stage backend choice plus host/port or
+URL/key/model for each, with Test buttons, and the Ollama context-window size (num_ctx).
 
 Settings changes apply on the fly — no app restart needed.
 

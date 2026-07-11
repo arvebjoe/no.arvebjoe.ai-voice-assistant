@@ -60,6 +60,35 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
         'search_music', 'play_music', 'music_control', 'get_music_state',
     ];
 
+    // Weather / web search / timers are gated the same way (docs/cost-of-growth.md
+    // rule 1: every optional feature has an on/off gate so disabled features cost
+    // no context). All three default ON to preserve pre-gate behavior.
+    private weatherActive = false;
+    private webSearchActive = false;
+    private timerToolsActive = false;
+    private static readonly WEATHER_TOOL_NAMES = [
+        'get_current_weather', 'get_weather_forecast', 'will_it_rain', 'get_weather_summary', 'get_outside_illumination',
+    ];
+    private static readonly TIMER_TOOL_NAMES = ['set_timer', 'cancel_timer', 'get_timer'];
+    private static readonly WEB_SEARCH_TOOL_NAMES = ['web_search'];
+
+    /** Tool names per optional feature — the settings cost endpoint groups by this. */
+    static readonly FEATURE_TOOLS: Record<string, readonly string[]> = {
+        weather: ToolManager.WEATHER_TOOL_NAMES,
+        timers: ToolManager.TIMER_TOOL_NAMES,
+        websearch: ToolManager.WEB_SEARCH_TOOL_NAMES,
+        shopping: ToolManager.SHOPPING_TOOL_NAMES,
+        music: ToolManager.MUSIC_TOOL_NAMES,
+    };
+
+    /** Read a boolean-ish global setting ('true'/'false' strings included). */
+    private static boolSetting(key: string, fallback: boolean): boolean {
+        const v = settingsManager.getGlobal<any>(key, fallback);
+        if (v === true || v === 'true') return true;
+        if (v === false || v === 'false') return false;
+        return fallback;
+    }
+
     constructor(homey: any, standardZone: string, deviceManager: DeviceManager, geoHelper: GeoHelper, weatherHelper: WeatherHelper, timerManager?: TimerManager) {
         super();
         this.homey = homey;
@@ -214,12 +243,97 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
     private registerDefaultTools(): void {
         this.registerSystemTools();
         this.registerDeviceManagementTools();
-        this.registerWeatherTools();
-        if (this.timerManager) {
-            this.registerTimerTools();
-        }
+        this.refreshWeatherTools();
+        this.refreshWebSearchTools();
+        this.refreshTimerTools();
         this.refreshShoppingListTools();
         this.refreshMusicTools();
+    }
+
+    /** Whether the weather tools are currently registered. */
+    isWeatherActive(): boolean {
+        return this.weatherActive;
+    }
+
+    /** Whether the web_search tool is currently registered. */
+    isWebSearchActive(): boolean {
+        return this.webSearchActive;
+    }
+
+    /** Whether the timer tools are currently registered (device support is separate). */
+    areTimerToolsActive(): boolean {
+        return this.timerToolsActive;
+    }
+
+    /**
+     * Reconcile the weather tools with the `weather_enabled` setting (default
+     * on). Same contract as the Bring!/Music refreshes: returns the new active
+     * state so the device can restart the provider when it flips.
+     */
+    refreshWeatherTools(): boolean {
+        const active = ToolManager.boolSetting('weather_enabled', true);
+        if (active === this.weatherActive) return active;
+        if (active) {
+            this.registerWeatherTools();
+        } else {
+            for (const name of ToolManager.WEATHER_TOOL_NAMES) this.unregisterTool(name);
+        }
+        this.weatherActive = active;
+        this.logger.info(`Weather tools ${active ? 'registered' : 'removed'}`);
+        return active;
+    }
+
+    /**
+     * Reconcile the web_search tool with the `web_search_provider` setting:
+     * registered unless the backend is 'disabled'. Before this gate the tool
+     * was always sent to the model and only its handler refused when disabled
+     * — now a disabled web search costs no context at all.
+     */
+    refreshWebSearchTools(): boolean {
+        const backend = settingsManager.getGlobal<string>('web_search_provider', 'openai');
+        const active = backend !== 'disabled';
+        if (active === this.webSearchActive) return active;
+        if (active) {
+            this.registerWebSearchTool();
+        } else {
+            for (const name of ToolManager.WEB_SEARCH_TOOL_NAMES) this.unregisterTool(name);
+        }
+        this.webSearchActive = active;
+        this.logger.info(`Web search tool ${active ? 'registered' : 'removed'}`);
+        return active;
+    }
+
+    /**
+     * Reconcile the timer tools with the `timers_enabled` setting (default on).
+     * Device firmware support is a separate axis: the instructions block is
+     * gated on `esp.supportsTimers` AND this, in the device.
+     */
+    refreshTimerTools(): boolean {
+        const active = !!this.timerManager && ToolManager.boolSetting('timers_enabled', true);
+        if (active === this.timerToolsActive) return active;
+        if (active) {
+            this.registerTimerTools();
+        } else {
+            for (const name of ToolManager.TIMER_TOOL_NAMES) this.unregisterTool(name);
+        }
+        this.timerToolsActive = active;
+        this.logger.info(`Timer tools ${active ? 'registered' : 'removed'}`);
+        return active;
+    }
+
+    /**
+     * Cost measurement ONLY (settings page budget panel): register every
+     * optional feature's tools regardless of settings, credentials or device
+     * support, so their definitions can be sized. Never call this on a
+     * ToolManager that serves a live session — handlers of force-registered
+     * tools may lack their backing services.
+     */
+    registerAllToolsForMeasurement(): void {
+        this.registerWeatherTools();
+        this.registerWebSearchTool();
+        this.registerTimerTools();
+        this.registerShoppingListTools();
+        this.registerMusicTools();
     }
 
     /** Whether the Bring! shopping-list tools are currently registered. */
@@ -362,6 +476,10 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
             }
         });
 
+        this.registerAssistantCapabilitiesTool();
+    }
+
+    private registerWebSearchTool(): void {
         this.registerTool({
             type: "function",
             name: "web_search",
@@ -411,7 +529,9 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
                 }
             }
         });
+    }
 
+    private registerAssistantCapabilitiesTool(): void {
         this.registerTool({
             type: "function",
             name: "get_assistant_capabilities",
@@ -432,10 +552,11 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
                     ok: true,
                     data: {
                         summary: "This voice assistant can: control smart home devices (lights, sockets, thermostats, locks — on/off, dim level, target temperature) in any room/zone; " +
-                            "look up devices and read sensor values (temperature, humidity, motion, etc.); report the current weather and the forecast for the home's location; " +
+                            "look up devices and read sensor values (temperature, humidity, motion, etc.); " +
+                            (this.weatherActive ? "report the current weather and the forecast for the home's location; " : "") +
                             "tell the current local time and date; " +
-                            "search the web for current information (news, opening hours, departures — when configured in the app settings); " +
-                            (this.timerManager ? "set, check and cancel a countdown timer or alarm on the voice device; " : "") +
+                            (this.webSearchActive ? "search the web for current information (news, opening hours, departures); " : "") +
+                            (this.timerToolsActive ? "set, check and cancel a countdown timer or alarm on the voice device; " : "") +
                             (this.shoppingListActive ? "read the Bring! shopping list and add, change or remove items on it; " : "") +
                             (this.musicActive ? "find and play music (artists, albums, tracks, playlists, radio) on the speakers via Music Assistant, and pause, skip or shuffle playback; " : "") +
                             "and answer general questions conversationally.",

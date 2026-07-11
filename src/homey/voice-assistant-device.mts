@@ -506,8 +506,11 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     // for capable devices. Fires again on reconnect — updateTimerSupport is a
     // no-op when the value is unchanged.
     this.esp.on('capabilities', () => {
-      this.providerOptions.supportsTimers = this.esp.supportsTimers;
-      this.provider.updateTimerSupport(this.esp.supportsTimers);
+      // Two gates: the device firmware must support timers AND the feature must
+      // be enabled in the app settings (timer tools are setting-gated too).
+      const timersSupported = this.esp.supportsTimers && this.toolManager.areTimerToolsActive();
+      this.providerOptions.supportsTimers = timersSupported;
+      this.provider.updateTimerSupport(timersSupported);
       // Re-arm the LED ring for any timer still counting down on our side. This
       // must happen here, not on 'Healthy': 'Healthy' fires right after TCP
       // connect, before the device has subscribed to the voice assistant, so a
@@ -898,6 +901,30 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
         this.logger.info(`Music ${musicActive ? 'enabled' : 'disabled'}, updating agent.`);
         this.providerOptions.supportsMusic = musicActive;
         await this.provider.updateMusicSupport(musicActive);
+        needRestart = true;
+      }
+
+      // Weather / web search gates: tools only, no instruction block, so a
+      // restart (which re-sends the tool list at session config) is enough.
+      const weatherActive = this.toolManager.isWeatherActive();
+      if (this.toolManager.refreshWeatherTools() !== weatherActive) {
+        this.logger.info(`Weather ${!weatherActive ? 'enabled' : 'disabled'}, updating agent.`);
+        needRestart = true;
+      }
+      const webSearchActive = this.toolManager.isWebSearchActive();
+      if (this.toolManager.refreshWebSearchTools() !== webSearchActive) {
+        this.logger.info(`Web search ${!webSearchActive ? 'enabled' : 'disabled'}, updating agent.`);
+        needRestart = true;
+      }
+
+      // Timers gate: tools follow the setting; the instruction block needs the
+      // device's firmware support too (same AND as the 'capabilities' handler).
+      const timerToolsActive = this.toolManager.refreshTimerTools();
+      const timersSupported = this.esp.supportsTimers && timerToolsActive;
+      if (timersSupported !== this.providerOptions.supportsTimers) {
+        this.logger.info(`Timers ${timersSupported ? 'enabled' : 'disabled'}, updating agent.`);
+        this.providerOptions.supportsTimers = timersSupported;
+        this.provider.updateTimerSupport(timersSupported);
         needRestart = true;
       }
 

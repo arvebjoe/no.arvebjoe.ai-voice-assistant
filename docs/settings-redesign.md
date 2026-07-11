@@ -188,18 +188,45 @@ from a verdict to a neutral per-turn-spend readout.
 - Keep ids stable. Tests don't touch the settings page, but the id ↔
   setting-key convention is the page's backbone.
 
-## Suggested sequencing
+## Implementation status (2026-07)
 
-Each step independently shippable and testable:
+Steps 2–5 below **shipped** in one pass:
+
+- **Gates**: `weather_enabled` and `timers_enabled` (new, default on) and
+  web search (`web_search_provider` = `'disabled'` now unregisters the tool
+  instead of refusing in the handler). Each has a `refresh*Tools()`
+  reconciler in `ToolManager` mirroring the Bring!/Music pattern; the device
+  restarts the provider when a gate flips. The timers instruction block is
+  gated on `esp.supportsTimers` AND the setting.
+- **Cost endpoint**: `GET /feature-costs` → `src/settings/feature-costs.mts`
+  computes per-feature tokens live from the real instruction modules
+  (selected language, per-language chars/token) and a measurement
+  ToolManager (`registerAllToolsForMeasurement()` + `FEATURE_TOOLS`
+  grouping). The page prices the live extra-instructions textarea
+  client-side using the returned `charsPerToken`.
+- **Settings page**: dropdown sections, feature sections with switches +
+  cost lines (config greyed while off), sticky footer with meter,
+  tap-to-expand breakdown with mirror toggles, single global Save. Verdict
+  only when provider = Custom pipeline AND LLM backend = Ollama, against the
+  live `local_llm_num_ctx` field.
+
+**Deferred: step 1, the feature registry.** The gates are still hand-wired
+per feature (five `refresh*` methods, per-feature blocks in the device's
+settings handler, `FEATURE_TOOLS` map, page's `FEATURES` array). Fine at
+six features; worth doing when the next feature lands.
+
+## Original suggested sequencing
 
 1. **Feature registry** — consolidate the existing gates (shopping, music,
-   timers) behind one declarative list; no behavior change.
+   timers) behind one declarative list; no behavior change. *(deferred)*
 2. **Cost endpoint** — compute per-feature token costs live for the selected
-   language; unit-testable against the registry.
+   language; unit-testable against the registry. *(shipped)*
 3. **Dropdown layout** — structural HTML/CSS reshuffle of the existing page
    into sections behind the dropdown, sticky footer with global Save.
+   *(shipped)*
 4. **Feature sections + budget bar** — toggles + costs + sum bar and
    breakdown sheet wired to the endpoint; move Bring!/Music/web-search
-   config under their toggles.
+   config under their toggles. *(shipped)*
 5. **Promote weather + web search** to toggleable features (new gates,
    default: weather on, web search follows its current provider setting).
+   *(shipped)*
