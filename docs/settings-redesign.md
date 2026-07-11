@@ -116,44 +116,73 @@ Tool-selection accuracy on small models still degrades with tool count even
 when everything fits; no meter can show that. But fewer enabled features
 helps both, so the UI pushes users in the right direction regardless.
 
-## Part 2 — Tabbed layout
+## Part 2 — Section navigation (dropdown, not tabs)
 
-The Homey settings webview is plain HTML/CSS/JS, so tabs are entirely
-doable — hand-rolled with a few CSS classes and a visibility toggle, the
-same mechanism the page already uses for provider/backend switching
-(`refreshLocalVisibility`, `refreshStageVisibility`). Homey's design system
-ships no tab component, so keep it simple: a compact segmented control /
-tab strip that works at the webview's narrow mobile width.
+**Decision: a dropdown section switcher instead of a tab strip.** Vertical
+space on a phone is scarce and the webview is narrow; a tab strip wide
+enough for "General / Local pipeline / Features" plus one more section
+already scrolls or truncates, while a native `<select>` costs one row,
+gets the platform's own picker UI on mobile, and scales to any number of
+sections. It also unlocks a nicer structure: **each feature is its own
+option in the list** (no separate "Features" section needed), and the
+option labels can carry live state — e.g. `Music — on, ~1,080 tok` — so
+the dropdown itself is a cost overview.
 
-### Proposed tabs
+The Homey settings webview is plain HTML/CSS/JS, so this is hand-rolled
+with the same visibility-toggle mechanism the page already uses for
+provider/backend switching (`refreshLocalVisibility`,
+`refreshStageVisibility`).
 
-| Tab | Contents |
-|---|---|
-| **General** | Language, voice provider, provider API keys + model quality, voice, additional AI instructions |
-| **Local pipeline** | The three-stage STT/LLM/TTS configuration with backends, test buttons, `num_ctx`. Only visible when the provider is `local` (dynamic tab visibility — the page already hides this section per provider) |
-| **Features** | The cost panel from Part 1, with each feature's config nested under its toggle (Bring! credentials, Music Assistant server, web-search backend + Brave key, weather) |
+### Proposed sections (dropdown options)
 
-Three tabs is enough; resist a fourth until something genuinely doesn't fit
-(diagnostics/advanced later, maybe).
+| Group | Option | Contents |
+|---|---|---|
+| Setup | **General** | Language, voice provider, provider API keys + model quality, voice, additional AI instructions |
+| Setup | **Local pipeline** | The three-stage STT/LLM/TTS configuration with backends, test buttons, `num_ctx` (shown/annotated per selected provider) |
+| Features | **Smart home control** | Always on; shows the base cost |
+| Features | **Weather** | Toggle + OpenWeather key |
+| Features | **Timers & alarms** | Toggle (device-dependent note) |
+| Features | **Shopping list** | Toggle + Bring! credentials |
+| Features | **Music** | Toggle + Music Assistant server |
+| Features | **Web search** | Toggle + backend + Brave key |
 
-### Save button and the sum bar
+Each feature section: toggle at the top, a "cost on every request" line
+(instructions + tools, per selected language), then that feature's config,
+greyed out while the feature is off. Future features append one option.
 
-Keep the **single global Save** (per-tab saving invites half-saved states and
-the current code saves all keys in one pass anyway). Make the footer sticky
-and put the **token sum bar next to the Save button** — that satisfies
-"always visible" from Part 1 naturally: whichever tab you're on, the budget
-and the save action stay on screen. Switching tabs does not prompt or save;
-unsaved edits simply persist in the DOM until Save.
+### Sticky footer: budget bar + save
+
+Keep the **single global Save** (per-section saving invites half-saved
+states and the current code saves all keys in one pass anyway). The footer
+is sticky: **budget meter above the Save button**, visible on every
+section. The meter shows the enabled total, the `num_ctx` budget and the
+green/amber/red verdict (local pipeline only; cloud engines get the sum
+with a "no context limit" note). Tapping the meter expands a **breakdown
+sheet** — every feature with its cost and an inline toggle — so features
+can be flipped from anywhere without hunting through the dropdown.
+Switching sections does not prompt or save; unsaved edits persist in the
+DOM until Save.
+
+### Mockup
+
+An interactive, phone-testable mockup of this design (dropdown nav,
+per-feature costs with real measured numbers, live budget bar with all
+three states, breakdown sheet, light/dark) was built as a Claude artifact —
+`settings-mockup.html`, published 2026-07. It also demonstrates two
+nuances: language multipliers apply only to the instruction share (tool
+JSON stays English), and switching to a cloud provider changes the meter
+from a verdict to a neutral per-turn-spend readout.
 
 ### Migration notes
 
 - The page's JS already keys load/save off flat id lists
   (`localSettingIds`, explicit `Homey.set` calls) — moving DOM nodes into
-  tab containers doesn't disturb that, so the tab refactor is almost purely
-  structural HTML/CSS.
+  section containers doesn't disturb that, so the reshuffle is almost
+  purely structural HTML/CSS.
 - The existing conditional blocks (provider sections, per-stage backend
   blocks, `bring_settings`, `music_assistant_settings`) move as-is into
-  their tabs; their show/hide logic is orthogonal to tab visibility.
+  their sections; their show/hide logic is orthogonal to section
+  visibility.
 - Keep ids stable. Tests don't touch the settings page, but the id ↔
   setting-key convention is the page's backbone.
 
@@ -165,9 +194,10 @@ Each step independently shippable and testable:
    timers) behind one declarative list; no behavior change.
 2. **Cost endpoint** — compute per-feature token costs live for the selected
    language; unit-testable against the registry.
-3. **Tab layout** — structural HTML/CSS reshuffle of the existing page,
-   sticky footer with global Save.
-4. **Features tab** — toggles + costs + sum bar wired to the endpoint;
-   move Bring!/Music/web-search config under their rows.
+3. **Dropdown layout** — structural HTML/CSS reshuffle of the existing page
+   into sections behind the dropdown, sticky footer with global Save.
+4. **Feature sections + budget bar** — toggles + costs + sum bar and
+   breakdown sheet wired to the endpoint; move Bring!/Music/web-search
+   config under their toggles.
 5. **Promote weather + web search** to toggleable features (new gates,
    default: weather on, web search follows its current provider setting).
