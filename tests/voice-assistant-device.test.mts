@@ -21,6 +21,39 @@ describe('VoiceAssistantDevice (harness)', () => {
         __resetProviderRegistry();
     });
 
+    describe('H2 — concurrent text Flow requests are serialized', () => {
+        it('two concurrent askAgentOutputToText calls each get their own answer', async () => {
+            const h = await createHarness();
+            // Answer every text request asynchronously with an answer derived
+            // from the question. Unserialized, both once('text.done') listeners
+            // would consume the FIRST emit and both callers would get answer:one.
+            h.provider.onTextRequest = (q) => {
+                setTimeout(() => h.provider.emit('text.done', { text: `answer:${q}` }), 10);
+            };
+
+            const [a, b] = await Promise.all([
+                h.device.askAgentOutputToText('one'),
+                h.device.askAgentOutputToText('two'),
+            ]);
+
+            expect(a).toBe('answer:one');
+            expect(b).toBe('answer:two');
+        });
+
+        it('a failing request does not wedge the queue for the next one', async () => {
+            const h = await createHarness();
+            // First request: the provider throws on send. Second: answered normally.
+            let call = 0;
+            h.provider.sendTextForTextResponse = async (q: string) => {
+                if (++call === 1) throw new Error('send failed');
+                setTimeout(() => h.provider.emit('text.done', { text: `answer:${q}` }), 10);
+            };
+
+            await expect(h.device.askAgentOutputToText('one')).rejects.toThrow('send failed');
+            await expect(h.device.askAgentOutputToText('two')).resolves.toBe('answer:two');
+        });
+    });
+
     describe('C1 — wake-death recovery', () => {
         it('resets turn state when the ESP connection drops mid-turn', async () => {
             const h = await createHarness();

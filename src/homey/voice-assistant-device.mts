@@ -50,6 +50,8 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
   private settingsUnsubscribe?: () => void;
   // Serializes handleSettingsChange runs (see the onGlobals subscription).
   private settingsChangeQueue: Promise<void> = Promise.resolve();
+  // Serializes askAgentOutputToText requests (see that method).
+  private textRequestQueue: Promise<void> = Promise.resolve();
   private providerOptions!: VoiceProviderOptions;
   private currentZone: string = '';
   private macAddress: string = '';
@@ -1054,6 +1056,18 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
 
   async askAgentOutputToText(question: string): Promise<string> {
+    // The answer arrives on the shared 'text.done' broadcast event with no
+    // request id, so two in-flight requests would BOTH consume the first answer
+    // (both once-listeners fire on the same emit) and the second real answer
+    // would be orphaned (code_review_2 H2). Serialize: each request starts only
+    // after the previous one has settled, so exactly one listener is pending.
+    const run = this.textRequestQueue.then(() => this.askAgentOutputToTextNow(question));
+    // Failures (timeout, send error) must not wedge the queue for later requests.
+    this.textRequestQueue = run.then(() => undefined, () => undefined);
+    return run;
+  }
+
+  private async askAgentOutputToTextNow(question: string): Promise<string> {
     this.convo.info(`Flow question (text out): "${question}"`, 'ASK');
     this.logger.info(`Asking agent to output as text: ${question}`);
 
@@ -1081,15 +1095,22 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
           reject(new Error('Timeout waiting for text response'));
         }, 30000); // 30 seconds timeout
 
-        try {
-          // Send the request
-          this.provider.sendTextForTextResponse(question);
-        } catch (error) {
-          // Clear the timeout and remove the listener if sending fails
-          this.homey.clearTimeout(timeoutId);
-          timeoutId = null;
+        // Clear the timeout and remove the listener if sending fails. Handles
+        // both a synchronous throw and an async rejection — without the latter
+        // a failed send left the request waiting for the full 30 s timeout.
+        const failSend = (error: any) => {
+          if (timeoutId) {
+            this.homey.clearTimeout(timeoutId);
+            timeoutId = null;
+          }
           this.provider.off('text.done', textDoneHandler);
           reject(error);
+        };
+
+        try {
+          Promise.resolve(this.provider.sendTextForTextResponse(question)).catch(failSend);
+        } catch (error) {
+          failSend(error);
         }
       });
     } else {
