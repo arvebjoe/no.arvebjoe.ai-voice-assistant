@@ -73,6 +73,10 @@
     "testLocalStage": {
       "method": "POST",
       "path": "/test-local-stage"
+    },
+    "getFeatureCosts": {
+      "method": "GET",
+      "path": "/feature-costs"
     }
   },
   "esm": true,
