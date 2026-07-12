@@ -1,5 +1,12 @@
 # TODO — single source of truth
 
+## Release testing — everything shipped since v1.4.0
+
+- [ ] Work through [`docs/release-testing-since-1.4.0.md`](./docs/release-testing-since-1.4.0.md)
+      before the next store release: List A is emulator-testable (real satellite on the
+      LAN, no Homey), List B needs the app running on the Homey Pro (pairing UI, flow
+      editor, settings webview, upgrade path, homey-log/Sentry, Homey-hosted audio).
+
 ## Code review 2 — remaining items (see [`docs/code_review_2.md`](./docs/code_review_2.md))
 
 External review of `main` @ `0a64afa` (ChatGPT 5.6 Sol). **Fixed 2026-07-12 with regression
