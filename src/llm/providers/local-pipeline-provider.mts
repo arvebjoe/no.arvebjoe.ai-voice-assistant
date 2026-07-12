@@ -427,7 +427,7 @@ export class LocalPipelineProvider extends (EventEmitter as new () => TypedEmitt
         this.tts = buildTtsClient(configs, this.options.voice);
         if (!this.manuallyClosing) {
             this.logger.info('Local endpoint settings changed — re-checking service health');
-            void this.start();
+            this.start().catch((err) => this.logger.error('Health re-check after settings change failed', err));
         }
     }
 

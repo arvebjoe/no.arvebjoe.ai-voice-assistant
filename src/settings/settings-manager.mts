@@ -26,6 +26,12 @@ export class SettingsManager {
   private globalSubs: Set<Subscriber<GlobalSettings>> = new Set();
   //private deviceSubs: Map<string, Set<Subscriber<DeviceSettings>>> = new Map();
   private logger = createLogger('Settings_Manager', true);
+  // A settings-page Save writes ~20 keys back-to-back and Homey fires one 'set'
+  // event per key. Emitting a snapshot per key made every subscriber (device
+  // rebuild/restart, local pipeline health re-probe) run ~20 times concurrently
+  // (code_review_2 H1). Coalesce the burst into one emit instead.
+  private emitTimer: ReturnType<typeof setTimeout> | null = null;
+  private static readonly EMIT_DEBOUNCE_MS = 300;
 
   private constructor() {
   }
@@ -80,6 +86,10 @@ export class SettingsManager {
     this.homey = null;
     this.globals = {};
     this.globalSubs.clear();
+    if (this.emitTimer) {
+      clearTimeout(this.emitTimer);
+      this.emitTimer = null;
+    }
   }
 
   /** Initialize with Homey reference once (idempotent). */
@@ -101,15 +111,36 @@ export class SettingsManager {
       this.logger.error('Failed to read initial global settings', e);      
     }
 
-    // Listen for updates from the Homey settings store
+    // Listen for updates from the Homey settings store. The snapshot is updated
+    // synchronously (getGlobal readers always see fresh values); only the
+    // subscriber notification is debounced so a multi-key save lands as one emit.
     if (homey?.settings?.on) {
       homey.settings.on('set', (key: string) => {
         const value = homey.settings.get(key);
         this.globals[key] = value;
-        this.emitGlobals();
         this.logger.info(`Global setting updated: ${key}`);
+        this.scheduleEmitGlobals();
       });
     }
+  }
+
+  /** Test hook: fire a pending debounced emit synchronously (no-op when idle). */
+  flushGlobalsEmit(): void {
+    if (this.emitTimer) {
+      clearTimeout(this.emitTimer);
+      this.emitTimer = null;
+      this.emitGlobals();
+    }
+  }
+
+  private scheduleEmitGlobals() {
+    if (this.emitTimer) {
+      clearTimeout(this.emitTimer);
+    }
+    this.emitTimer = setTimeout(() => {
+      this.emitTimer = null;
+      this.emitGlobals();
+    }, SettingsManager.EMIT_DEBOUNCE_MS);
   }
 
   /** Refresh all globals from Homey. */

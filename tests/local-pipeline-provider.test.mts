@@ -69,6 +69,12 @@ const toolManager = fakeToolManager(
     [{ name: 'get_time', description: 'time', parameters: { type: 'object', properties: {} } }],
 );
 
+/**
+ * Subscriber emits are debounced in SettingsManager (code_review_2 H1), so a
+ * setMockSetting burst only reaches the provider after a flush.
+ */
+const applySettings = () => settingsManager.flushGlobalsEmit();
+
 /** Build a provider whose three HTTP clients are stubbed out. */
 async function makeProvider(): Promise<LocalPipelineProvider> {
     settingsManager.reset();
@@ -340,10 +346,12 @@ describe('LocalPipelineProvider', () => {
             expect((p as any).llm).toBeInstanceOf(OllamaClient);
             homey.setMockSetting('mistral_api_key', 'sk-test');
             homey.setMockSetting('local_llm_provider', 'mistral');
+            applySettings();
             expect((p as any).llm).toBeInstanceOf(MistralClient);
             expect(p.hasApiKey()).toBe(true);
 
             homey.setMockSetting('local_llm_provider', 'ollama');
+            applySettings();
             expect((p as any).llm).toBeInstanceOf(OllamaClient);
         } finally {
             p.destroy();
@@ -359,16 +367,19 @@ describe('LocalPipelineProvider', () => {
             homey.setMockSetting('mistral_api_key', 'sk-test');
             homey.setMockSetting('local_stt_provider', 'mistral');
             homey.setMockSetting('local_tts_provider', 'mistral');
+            applySettings();
             expect((p as any).stt).toBeInstanceOf(MistralSttClient);
             expect((p as any).tts).toBeInstanceOf(MistralTtsClient);
             expect(p.hasApiKey()).toBe(true);
 
             // Without a key, any Mistral-backed stage flips hasApiKey false.
             homey.setMockSetting('mistral_api_key', '');
+            applySettings();
             expect(p.hasApiKey()).toBe(false);
 
             homey.setMockSetting('local_stt_provider', 'whisper');
             homey.setMockSetting('local_tts_provider', 'piper');
+            applySettings();
             expect((p as any).stt).toBeInstanceOf(WhisperClient);
             expect((p as any).tts).toBeInstanceOf(PiperClient);
             expect(p.hasApiKey()).toBe(true);
@@ -384,6 +395,7 @@ describe('LocalPipelineProvider', () => {
             homey.setMockSetting('local_stt_provider', 'wyoming');
             homey.setMockSetting('wyoming_tts_host', '10.0.0.9');
             homey.setMockSetting('local_tts_provider', 'wyoming');
+            applySettings();
             expect((p as any).stt).toBeInstanceOf(WyomingSttClient);
             expect((p as any).tts).toBeInstanceOf(WyomingTtsClient);
             expect(p.hasApiKey()).toBe(true);
@@ -392,6 +404,7 @@ describe('LocalPipelineProvider', () => {
 
             homey.setMockSetting('local_stt_provider', 'whisper');
             homey.setMockSetting('local_tts_provider', 'piper');
+            applySettings();
             expect((p as any).stt).toBeInstanceOf(WhisperClient);
             expect((p as any).tts).toBeInstanceOf(PiperClient);
         } finally {
@@ -404,11 +417,13 @@ describe('LocalPipelineProvider', () => {
         try {
             homey.setMockSetting('lmstudio_host', '10.0.0.9');
             homey.setMockSetting('local_llm_provider', 'lmstudio');
+            applySettings();
             expect((p as any).llm).toBeInstanceOf(LmStudioClient);
             expect(p.hasApiKey()).toBe(true);
             expect((p as any).llm.isConfigured()).toBe(true); // host alone suffices
 
             homey.setMockSetting('local_llm_provider', 'ollama');
+            applySettings();
             expect((p as any).llm).toBeInstanceOf(OllamaClient);
         } finally {
             p.destroy();
@@ -421,6 +436,7 @@ describe('LocalPipelineProvider', () => {
             homey.setMockSetting('local_stt_provider', 'openai');
             homey.setMockSetting('local_llm_provider', 'openai');
             homey.setMockSetting('local_tts_provider', 'openai');
+            applySettings();
             expect((p as any).stt).toBeInstanceOf(OpenAiSttClient);
             expect((p as any).llm).toBeInstanceOf(OpenAiLlmClient);
             expect((p as any).llm).not.toBeInstanceOf(MistralClient); // generic, not the subclass

@@ -1638,103 +1638,68 @@
 
       /* ----------------------------- save ----------------------------- */
 
+      function setSetting(key, value) {
+        return new Promise(function (resolve, reject) {
+          Homey.set(key, value, function (err) {
+            if (err) reject(err); else resolve();
+          });
+        });
+      }
+
       saveElement.addEventListener("click", function (e) {
-        Homey.set("openai_api_key", apiKeyElement.value.trim(), function (err) {
-          if (err) return Homey.alert(err);
-        });
-
-        // Save Gemini API key
-        Homey.set("gemini_api_key", geminiApiKeyElement.value.trim(), function (err) {
-          if (err) return Homey.alert(err);
-        });
-
-        // Save OpenAI Realtime model quality (full vs mini)
-        Homey.set("openai_model", document.getElementById("openai_model").value, function (err) {
-          if (err) return Homey.alert(err);
-        });
-
-        // Save the web-search gate + backend + Brave key. Off is stored as
-        // provider 'disabled' so the tool is not registered at all.
-        Homey.set("web_search_provider",
-          webSearchEnabledElement.checked ? webSearchSelectElement.value : "disabled", function (err) {
-            if (err) return Homey.alert(err);
-          });
-        Homey.set("brave_api_key", document.getElementById("brave_api_key").value.trim(), function (err) {
-          if (err) return Homey.alert(err);
-        });
-
-        // Save the weather + timers feature gates
-        Homey.set("weather_enabled", document.getElementById("weather_enabled").checked, function (err) {
-          if (err) return Homey.alert(err);
-        });
-        Homey.set("timers_enabled", document.getElementById("timers_enabled").checked, function (err) {
-          if (err) return Homey.alert(err);
-        });
-
-        // Save the Bring! shopping-list settings (enable flag + credentials + optional list)
-        Homey.set("bring_enabled", bringEnabledElement.checked, function (err) {
-          if (err) return Homey.alert(err);
-        });
-        Homey.set("bring_email", document.getElementById("bring_email").value.trim(), function (err) {
-          if (err) return Homey.alert(err);
-        });
-        Homey.set("bring_password", document.getElementById("bring_password").value, function (err) {
-          if (err) return Homey.alert(err);
-        });
-        Homey.set("bring_list_name", document.getElementById("bring_list_name").value.trim(), function (err) {
-          if (err) return Homey.alert(err);
-        });
-
-        // Save the Music Assistant settings (enable flag + server address)
-        Homey.set("music_assistant_enabled", musicAssistantEnabledElement.checked, function (err) {
-          if (err) return Homey.alert(err);
-        });
-        Homey.set("music_assistant_host", document.getElementById("music_assistant_host").value.trim(), function (err) {
-          if (err) return Homey.alert(err);
-        });
-        Homey.set("music_assistant_port", parseInt(document.getElementById("music_assistant_port").value, 10) || 8095, function (err) {
-          if (err) return Homey.alert(err);
-        });
-
-        // Save selected AI provider
-        Homey.set("voice_provider", providerSelectElement.value, function (err) {
-          if (err) return Homey.alert(err);
-        });
-
-        // Save the pipeline endpoints (harmless when another provider is active)
-        localSettingIds.forEach(function (id) {
-          Homey.set(id, document.getElementById(id).value.trim(), function (err) {
-            if (err) return Homey.alert(err);
-          });
-        });
-
-        // Get both value and text from the select element
+        // Collect every key/value first, write them all, and report ONE final
+        // result. The button is disabled while writes are in flight so a
+        // double-click can't interleave two save bursts.
         var selectedValue = languageSelectElement.value;
         var selectedText = languageSelectElement.options[languageSelectElement.selectedIndex].text;
 
-        Homey.set("selected_language_name", selectedText, function (err) {
-          if (err) return Homey.alert(err);
+        var pairs = [
+          ["openai_api_key", apiKeyElement.value.trim()],
+          ["gemini_api_key", geminiApiKeyElement.value.trim()],
+          // OpenAI Realtime model quality (full vs mini)
+          ["openai_model", document.getElementById("openai_model").value],
+          // Web-search gate + backend + Brave key. Off is stored as provider
+          // 'disabled' so the tool is not registered at all.
+          ["web_search_provider", webSearchEnabledElement.checked ? webSearchSelectElement.value : "disabled"],
+          ["brave_api_key", document.getElementById("brave_api_key").value.trim()],
+          // Weather + timers feature gates
+          ["weather_enabled", document.getElementById("weather_enabled").checked],
+          ["timers_enabled", document.getElementById("timers_enabled").checked],
+          // Bring! shopping-list settings (enable flag + credentials + optional list)
+          ["bring_enabled", bringEnabledElement.checked],
+          ["bring_email", document.getElementById("bring_email").value.trim()],
+          ["bring_password", document.getElementById("bring_password").value],
+          ["bring_list_name", document.getElementById("bring_list_name").value.trim()],
+          // Music Assistant settings (enable flag + server address)
+          ["music_assistant_enabled", musicAssistantEnabledElement.checked],
+          ["music_assistant_host", document.getElementById("music_assistant_host").value.trim()],
+          ["music_assistant_port", parseInt(document.getElementById("music_assistant_port").value, 10) || 8095],
+          // Selected AI provider
+          ["voice_provider", providerSelectElement.value],
+          ["selected_language_name", selectedText],
+          ["selected_language_code", selectedValue],
+          ["selected_voice", voiceSelectElement.value],
+          ["ai_instructions", aiInstructionsElement.value]
+        ];
+
+        // Pipeline endpoints (harmless when another provider is active)
+        localSettingIds.forEach(function (id) {
+          pairs.push([id, document.getElementById(id).value.trim()]);
         });
 
-        Homey.set("selected_language_code", selectedValue, function (err) {
-          if (err) return Homey.alert(err);
-        });
-
-        // Save selected voice
-        Homey.set("selected_voice", voiceSelectElement.value, function (err) {
-          if (err) return Homey.alert(err);
-        });
-
-        // Save AI instructions
-        Homey.set("ai_instructions", aiInstructionsElement.value, function (err) {
-          if (err) return Homey.alert(err);
-        });
-
-        // Repopulate the voice dropdown once the saves have landed — Voxtral's
-        // voice list is fetched from Mistral and needs the just-saved API key.
-        setTimeout(function () {
-          refreshVoices(providerSelectElement.value, voiceSelectElement.value, ttsProviderSelectElement.value);
-        }, 500);
+        saveElement.disabled = true;
+        Promise.all(pairs.map(function (p) { return setSetting(p[0], p[1]); }))
+          .then(function () {
+            // All writes have landed — repopulate the voice dropdown (Voxtral's
+            // voice list is fetched from Mistral and needs the just-saved key).
+            refreshVoices(providerSelectElement.value, voiceSelectElement.value, ttsProviderSelectElement.value);
+          })
+          .catch(function (err) {
+            Homey.alert(err && err.message ? err.message : String(err));
+          })
+          .then(function () {
+            saveElement.disabled = false;
+          });
       });
 
       // Tell Homey we're ready to be displayed

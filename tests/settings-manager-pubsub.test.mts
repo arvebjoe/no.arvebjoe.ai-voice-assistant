@@ -1,16 +1,27 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { settingsManager } from '../src/settings/settings-manager.mjs';
 import { MockHomey } from './mocks/mock-homey.mjs';
 
 // settingsManager is a shared singleton, so reset()+init() per test (the same
 // pattern used by tool-manager-local-time.test.mts).
+//
+// Subscriber notification is debounced (code_review_2 H1: a settings-page Save
+// writes ~20 keys and must land as ONE emit), so tests use fake timers and
+// advance past the debounce window to observe notifications.
 describe('SettingsManager pub/sub', () => {
     let homey: MockHomey;
 
+    const flushDebounce = () => vi.advanceTimersByTime(400);
+
     beforeEach(() => {
+        vi.useFakeTimers();
         settingsManager.reset();
         homey = new MockHomey();
         settingsManager.init(homey as any);
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
     });
 
     it('primes globals from Homey on init', () => {
@@ -36,16 +47,61 @@ describe('SettingsManager pub/sub', () => {
         expect(sub.mock.calls[0][0].openai_api_key).toBe('test-key');
     });
 
-    it('notifies subscribers when a setting changes', () => {
+    it('notifies subscribers when a setting changes (after the debounce)', () => {
         const sub = vi.fn();
         settingsManager.onGlobals(sub);
         sub.mockClear();
 
         homey.setMockSetting('selected_voice', 'verse');
 
+        // getGlobal sees the new value immediately, before any emit
+        expect(settingsManager.getGlobal('selected_voice')).toBe('verse');
+        expect(sub).not.toHaveBeenCalled();
+
+        flushDebounce();
+
         expect(sub).toHaveBeenCalledTimes(1);
         expect(sub.mock.calls[0][0].selected_voice).toBe('verse');
-        expect(settingsManager.getGlobal('selected_voice')).toBe('verse');
+    });
+
+    it('H1 — a burst of key writes coalesces into ONE emit with the final snapshot', () => {
+        const sub = vi.fn();
+        settingsManager.onGlobals(sub);
+        sub.mockClear();
+
+        // Simulate a settings-page Save: many keys written back-to-back
+        homey.setMockSetting('openai_api_key', 'new-key');
+        homey.setMockSetting('selected_voice', 'verse');
+        homey.setMockSetting('selected_language_code', 'no');
+        homey.setMockSetting('weather_enabled', false);
+        homey.setMockSetting('voice_provider', 'local');
+
+        expect(sub).not.toHaveBeenCalled();
+        flushDebounce();
+
+        expect(sub).toHaveBeenCalledTimes(1);
+        const snapshot = sub.mock.calls[0][0];
+        expect(snapshot.openai_api_key).toBe('new-key');
+        expect(snapshot.selected_voice).toBe('verse');
+        expect(snapshot.selected_language_code).toBe('no');
+        expect(snapshot.weather_enabled).toBe(false);
+        expect(snapshot.voice_provider).toBe('local');
+    });
+
+    it('a write during the debounce window restarts it and still lands in the emit', () => {
+        const sub = vi.fn();
+        settingsManager.onGlobals(sub);
+        sub.mockClear();
+
+        homey.setMockSetting('selected_voice', 'verse');
+        vi.advanceTimersByTime(200); // inside the window
+        homey.setMockSetting('selected_voice', 'aria');
+        vi.advanceTimersByTime(200); // window restarted — still nothing
+        expect(sub).not.toHaveBeenCalled();
+
+        flushDebounce();
+        expect(sub).toHaveBeenCalledTimes(1);
+        expect(sub.mock.calls[0][0].selected_voice).toBe('aria');
     });
 
     it('stops notifying after unsubscribe', () => {
@@ -55,6 +111,19 @@ describe('SettingsManager pub/sub', () => {
 
         unsub();
         homey.setMockSetting('selected_voice', 'aria');
+        flushDebounce();
+
+        expect(sub).not.toHaveBeenCalled();
+    });
+
+    it('reset cancels a pending emit', () => {
+        const sub = vi.fn();
+        settingsManager.onGlobals(sub);
+        sub.mockClear();
+
+        homey.setMockSetting('selected_voice', 'verse');
+        settingsManager.reset();
+        flushDebounce();
 
         expect(sub).not.toHaveBeenCalled();
     });
@@ -69,6 +138,7 @@ describe('SettingsManager pub/sub', () => {
         good.mockClear();
 
         expect(() => homey.setMockSetting('selected_voice', 'verse')).not.toThrow();
+        expect(() => flushDebounce()).not.toThrow();
 
         expect(bad).toHaveBeenCalledTimes(1);
         expect(good).toHaveBeenCalledTimes(1);

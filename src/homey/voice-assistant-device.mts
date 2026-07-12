@@ -48,6 +48,8 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
   private currentOpenAiModel: string = 'full';
 
   private settingsUnsubscribe?: () => void;
+  // Serializes handleSettingsChange runs (see the onGlobals subscription).
+  private settingsChangeQueue: Promise<void> = Promise.resolve();
   private providerOptions!: VoiceProviderOptions;
   private currentZone: string = '';
   private macAddress: string = '';
@@ -107,9 +109,14 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     this.inputBufferDebug = process.env.HE_EMULATOR === '1'
       && settingsManager.getGlobal('input_buffer_debug') === true;
 
-    // Subscribe to global settings changes to update agent on the fly
+    // Subscribe to global settings changes to update agent on the fly.
+    // Serialized through a promise queue: handleSettingsChange rebuilds/restarts
+    // the provider, and two overlapping runs can destroy the provider out from
+    // under each other (code_review_2 H1). Later snapshots wait for earlier ones.
     this.settingsUnsubscribe = settingsManager.onGlobals((newSettings) => {
-      this.handleSettingsChange(newSettings);
+      this.settingsChangeQueue = this.settingsChangeQueue
+        .then(() => this.handleSettingsChange(newSettings))
+        .catch((err) => this.logger.error('Settings change handling failed', err));
     });
 
     const services = getAppServices(this.homey);
@@ -124,7 +131,8 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       this.logger.info(`Device ${changed.device.name} changed zone from ${changed.oldZone} to ${changed.newZone}`);
       if (this.provider) {
         this.provider.updateZone(changed.newZone);
-        this.provider.restart();
+        Promise.resolve(this.provider.restart())
+          .catch((err) => this.logger.error('Provider restart after zone change failed', err));
       }
     });
 
@@ -929,7 +937,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       }
 
       if (needRestart) {
-        this.provider.restart();
+        await this.provider.restart();
       }
 
 
