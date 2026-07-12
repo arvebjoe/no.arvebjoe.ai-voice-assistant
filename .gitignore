@@ -11,3 +11,4 @@
 # Emulator voice clips for the `mic` command (usually personal recordings)
 /emulator/recordings/*.flac
 /emulator/recordings/*.wav
+/docs/music-assistant/music-assistant-data/

@@ -23,8 +23,10 @@ services:
     # streams audio to them from its own ports — the web UI/API on TCP 8095
     # (what this app talks to) and the audio stream server on TCP 8097/8098.
     # Port mappings can't forward multicast, so a bridge network won't work.
-    network_mode: host
-
+    #network_mode: host
+    ports:
+      - "8095:8095"
+    
     volumes:
       # All MA state (config, database, cache). Keep it next to this file.
       - ./music-assistant-data:/data/
