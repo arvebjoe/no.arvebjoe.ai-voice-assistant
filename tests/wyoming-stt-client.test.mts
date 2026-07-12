@@ -2,6 +2,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import net from 'node:net';
 import { WyomingSttClient } from '../src/llm/providers/local/wyoming-stt-client.mjs';
 import { WyomingTtsClient } from '../src/llm/providers/local/wyoming-tts-client.mjs';
+import { WyomingConnection } from '../src/llm/providers/local/wyoming-protocol.mjs';
 
 /**
  * In-process fake Wyoming server: real TCP, real newline-JSON framing with
@@ -184,5 +185,68 @@ describe('WyomingSttClient', () => {
 
         const client = new WyomingSttClient({ host: '127.0.0.1', port: server.port });
         expect(await client.transcribe(Buffer.alloc(320), 'en')).toBe('hello world');
+    });
+});
+
+describe('WyomingConnection framing bounds (M1)', () => {
+    /** Open a raw connection and hand back a writer into the client's socket. */
+    async function rawConnection(): Promise<{ conn: WyomingConnection; write: (chunk: string | Buffer) => void }> {
+        server = new FakeWyomingServer();
+        await server.start();
+        const conn = await WyomingConnection.connect('127.0.0.1', server.port, 1000);
+        while (!server.lastSocket) {
+            await new Promise((r) => setTimeout(r, 5));
+        }
+        return { conn, write: (chunk) => server.lastSocket!.write(chunk) };
+    }
+
+    it.each([
+        ['huge', { type: 'x', payload_length: 2 ** 40 }],
+        ['negative', { type: 'x', data_length: -5 }],
+        ['fractional', { type: 'x', payload_length: 1.5 }],
+        ['non-numeric', { type: 'x', data_length: 'abc' }],
+    ])('rejects a frame with a %s length and fails the connection', async (_kind, header) => {
+        const { conn, write } = await rawConnection();
+        try {
+            write(JSON.stringify(header) + '\n');
+            await expect(conn.waitFor(['x'], 1000)).rejects.toThrow(/invalid data_length\/payload_length/);
+        } finally {
+            conn.close();
+        }
+    });
+
+    it('rejects a header that never ends in a newline once it exceeds the cap', async () => {
+        const { conn, write } = await rawConnection();
+        try {
+            write(Buffer.alloc(70 * 1024, 0x61)); // 70 KB of 'a', no \n
+            await expect(conn.waitFor(['x'], 1000)).rejects.toThrow(/header exceeds/);
+        } finally {
+            conn.close();
+        }
+    });
+
+    it('rejects an unbounded flood of queued events', async () => {
+        const { conn, write } = await rawConnection();
+        try {
+            const frame = JSON.stringify({ type: 'ping' }) + '\n';
+            write(frame.repeat(1100)); // over MAX_QUEUED_EVENTS in one burst
+            // waitFor drains and drops the pings, then hits the recorded failure.
+            await expect(conn.waitFor(['never'], 1000)).rejects.toThrow(/queue exceeded/);
+        } finally {
+            conn.close();
+        }
+    });
+
+    it('still accepts a frame at a legitimate size after the caps', async () => {
+        const { conn, write } = await rawConnection();
+        try {
+            const payload = Buffer.alloc(64 * 1024, 7); // 64 KB of PCM-ish data
+            write(JSON.stringify({ type: 'audio-chunk', payload_length: payload.length }) + '\n');
+            write(payload);
+            const event = await conn.waitFor(['audio-chunk'], 1000);
+            expect(event.payload?.length).toBe(payload.length);
+        } finally {
+            conn.close();
+        }
     });
 });
