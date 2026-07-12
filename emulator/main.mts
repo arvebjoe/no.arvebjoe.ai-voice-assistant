@@ -17,6 +17,7 @@ import { config, getSatellites, settingsPath, EmulatorSatellite } from './config
 import { runDiscovery } from './runtime/discovery.mjs';
 import { listRecordings, loadRecording, resolveRecording, recordingsDir } from './runtime/recordings.mjs';
 import { injectRecording } from './runtime/mic-injector.mjs';
+import { flowCards } from './runtime/flow-cards.mjs';
 
 import App from '../app.mjs';
 import PEDriver from '../drivers/home-assistant-voice-preview-edition/driver.mjs';
@@ -138,6 +139,9 @@ Commands:
   devices           List all dummy devices and their current capability values
   zones             List zones
   state <name|id>   Show one device's capabilities
+  flow              List the app's flow cards; WHEN cards log automatically when fired (⚡)
+  and <card>        Run an AND (condition) card on the active satellite; prints true/false
+  then <card> [..]  Run a THEN (action) card on the active satellite (args: in order, or name=value)
   set <key> <val>   Change a global setting (e.g. set selected_voice nova) — rebuilds the agent
   help              Show this help
   quit              Exit
@@ -272,6 +276,35 @@ function startRepl(booted: BootedSatellite[], homey: any): void {
         case 'state': {
           if (!arg) { console.log('usage: state <name|id>'); break; }
           console.log(world.renderDevice(arg));
+          break;
+        }
+        case 'flow':
+        case 'flows':
+          console.log(flowCards.renderList());
+          break;
+        case 'and':
+        case 'then': {
+          const kind = cmd === 'and' ? 'condition' as const : 'action' as const;
+          if (!arg) {
+            console.log(`usage: ${cmd} <card>${cmd === 'then' ? ' [args]' : ''}   (see 'flow' for the cards)`);
+            break;
+          }
+          const a = requireActive();
+          if (!a) break;
+          const sp2 = arg.indexOf(' ');
+          const cardQuery = sp2 === -1 ? arg : arg.slice(0, sp2);
+          const argLine = sp2 === -1 ? '' : arg.slice(sp2 + 1);
+          const outcome = await flowCards.runCard(kind, cardQuery, a.device, argLine);
+          if (!outcome.ok) {
+            console.log(outcome.error);
+          } else if (kind === 'condition') {
+            console.log(`→ ${outcome.result === true}`);
+          } else {
+            // Actions usually return nothing; ask-agent-output-as-text returns
+            // its flow tokens — show them.
+            await settle(400);
+            console.log(outcome.result !== undefined ? `→ ${JSON.stringify(outcome.result)}` : '(done)');
+          }
           break;
         }
         case 'set': {

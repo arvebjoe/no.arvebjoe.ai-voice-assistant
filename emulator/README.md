@@ -17,6 +17,10 @@ Use it to:
 - **Inspect dummy device state** to confirm the assistant did what you asked.
 - **Edit app settings in the real settings page** in a browser
   (`http://localhost:8060/`) — saves apply live and persist to `settings.json`.
+- **Exercise the flow cards without building flows**: WHEN cards log to the
+  console when the app fires them; AND/THEN cards run from the console
+  (`and is-muted`, `then start-timer 90 pasta`) through the app's real
+  run-listeners.
 
 HE lives entirely under `emulator/` and is excluded from the app build
 (`tsconfig.json` → `exclude`) and from app packaging (`.homeyignore`). It never
@@ -60,8 +64,41 @@ use <name|#>      Switch the active satellite
 devices           List dummy devices + current capability values
 zones             List zones
 state <name|id>   Show one device's capabilities
+flow              List the app's flow cards; WHEN cards log automatically when fired (⚡)
+and <card>        Run an AND (condition) card on the active satellite; prints true/false
+then <card> [..]  Run a THEN (action) card on the active satellite
 set <key> <val>   Change a global setting on the fly (e.g. set selected_voice nova)
 help / quit
+```
+
+## Flow cards (`flow`, `and`, `then`)
+
+The last Homey-only surface — flow cards — is emulated end to end. The fake
+`homey.flow` hands out real card objects, so the run-listeners
+`VoiceAssistantDriver` registers are the ones that run:
+
+- **WHEN (triggers)** are fired by the app itself (`timer-started/-finished/
+  -cancelled`, `button-pressed`) and each firing is logged with its tokens:
+  `⚡ WHEN [timer-finished] on 'Living Room PE'  tokens: {"name":"pasta","duration":90}`.
+- **AND (conditions)** run from the console and print the listener's verdict:
+  `and is-muted` → `→ false`.
+- **THEN (actions)** run from the console with arguments — positional in the
+  card's declared order, or `name=value`; the last text argument takes the
+  rest of the line, so no quoting is needed:
+  `then start-timer 90 pasta water` (a 90 s timer named "pasta water"),
+  `then speak-text Dinner is ready`, `then ask-agent-output-as-text what time is it`
+  (prints the returned flow tokens).
+
+Card ids can be shortened to any unique prefix (`then cancel`,
+`and timer`). `flow` lists every card with its arguments and tokens — the list
+is read live from `.homeycompose/flow/`, so new cards appear automatically.
+A full timer round-trip to try:
+
+```
+HE> then start-timer 5 pasta     ⚡ WHEN [timer-started] …
+HE> and timer-is-running         → true
+                                 ⚡ WHEN [timer-finished] …  (5 s later)
+HE> then cancel                  ⚡ WHEN [timer-cancelled] …
 ```
 
 ## Settings web UI

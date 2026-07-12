@@ -6,21 +6,12 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { config } from '../config.mjs';
+import { flowCards } from './flow-cards.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const manifest = JSON.parse(
   readFileSync(resolve(__dirname, '../../.homeycompose/app.json'), 'utf8'),
 );
-
-/** Minimal Flow card stub: stores run-listeners, no-ops triggers. */
-function makeCard(id: string) {
-  return {
-    id,
-    registerRunListener(_fn: (...a: any[]) => any) { return this; },
-    registerArgumentAutocompleteListener(_n: string, _fn: (...a: any[]) => any) { return this; },
-    async trigger(_device?: any, _tokens?: any, _state?: any): Promise<void> {},
-  };
-}
 
 let homey: any = null;
 
@@ -52,11 +43,14 @@ export function getHomey(): any {
       },
     },
 
+    // Real card objects from the emulator registry: the driver's run-listeners
+    // land there (runnable via the REPL's `and`/`then`), and trigger firings
+    // are logged to the console instead of no-opped.
     flow: {
-      getConditionCard: (id: string) => makeCard(id),
-      getActionCard: (id: string) => makeCard(id),
-      getTriggerCard: (id: string) => makeCard(id),
-      getDeviceTriggerCard: (id: string) => makeCard(id),
+      getConditionCard: (id: string) => flowCards.getCard('condition', id),
+      getActionCard: (id: string) => flowCards.getCard('action', id),
+      getTriggerCard: (id: string) => flowCards.getCard('trigger', id),
+      getDeviceTriggerCard: (id: string) => flowCards.getCard('trigger', id),
     },
 
     geolocation: {
