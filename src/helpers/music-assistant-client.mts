@@ -229,11 +229,15 @@ export class MusicAssistantClient {
 
             ws.on('close', () => {
                 clearTimeout(timer);
+                // Only fail pending commands when the closing socket is still the
+                // current one — a stale socket's delayed 'close' (after a config
+                // change already opened a replacement) must not reject commands
+                // that belong to the new socket (code_review_2 M3).
                 if (this.ws === ws) {
                     this.ws = null;
                     this.connectPromise = null;
+                    this.failAllPending(new Error('Connection to Music Assistant closed.'));
                 }
-                this.failAllPending(new Error('Connection to Music Assistant closed.'));
                 fail(new Error(`Music Assistant at ${this.host}:${this.port} closed the connection.`));
             });
 

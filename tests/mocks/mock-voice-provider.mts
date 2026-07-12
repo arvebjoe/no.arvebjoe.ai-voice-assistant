@@ -29,7 +29,9 @@ export class FakeVoiceProvider extends EventEmitter {
 
     sendAudioChunk(_chunk: Buffer): void { this.rec('sendAudioChunk'); }
     async sendTextForAudioResponse(_t: string): Promise<void> { this.rec('sendTextForAudioResponse'); }
-    async sendTextForTextResponse(_t: string): Promise<void> { this.rec('sendTextForTextResponse'); }
+    // Optional per-test hook so a test can answer text requests (emit 'text.done').
+    public onTextRequest?: (text: string) => void;
+    async sendTextForTextResponse(t: string): Promise<void> { this.rec('sendTextForTextResponse'); this.onTextRequest?.(t); }
     async textToSpeech(_t: string): Promise<Buffer> { this.rec('textToSpeech'); return Buffer.alloc(0); }
     resetConversation(): void { this.rec('resetConversation'); }
 

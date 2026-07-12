@@ -1,5 +1,36 @@
 # TODO — single source of truth
 
+## Code review 2 — remaining items (see [`docs/code_review_2.md`](./docs/code_review_2.md))
+
+External review of `main` @ `0a64afa` (ChatGPT 5.6 Sol). **Fixed 2026-07-12 with regression
+tests: H1+L2, H2, H3, H4 (untrusted-data mitigation), M1, M3, M4** — full context in
+[`COMPLETED.md` §7](./COMPLETED.md). Still open:
+
+- [ ] **M2 — ESPHome transport is plaintext (no Noise encryption).** Known, deliberate deferral
+      (CLAUDE.md / COMPLETED.md §6). Treat as a **store-release criterion**: satellites with an
+      API encryption key set cannot connect at all today.
+- [ ] **H4 follow-up (product question):** an `allow_unlock_via_voice` setting (default off)?
+      The untrusted-content envelope + one-device unlock cap shipped; a code-enforced gate on
+      `locked=false` is the remaining option if the owner wants it.
+- [ ] **M5 — stage-test API as SSRF primitive.** Low urgency (behind Homey's authenticated
+      settings API; arbitrary LAN endpoints are the product's purpose). Only add basic body
+      type/port validation; do NOT block loopback/LAN ranges — that breaks legitimate setups.
+- [ ] **M6 — npm audit: legacy chains in `homey-api`/`homey-log`** (socket.io-client 2.x,
+      raven). Not fixable in this repo; ask Athom for updated releases. 0 critical/high.
+- [ ] **M7 — inconsistent provider `start()` readiness semantics.** Largely defused by the H1
+      serialization; revisit if lifecycle races reappear (centralize state in the provider seam).
+- [ ] **L1 — split oversized classes / reduce `any` at trust boundaries.** Long-term
+      refactoring; do opportunistically.
+- [ ] **L3 — pairing probe polls every 10 ms and leaks the 5 s timeout**
+      (`voice-assistant-driver.mts:212-231`). Resolve directly from `finish()`.
+- [ ] **L4 — dead `preStart` variable in `pcm-segmenter.mts:134`** — implement the documented
+      pre-pad windowing or remove the dead code/comment.
+- [ ] **L5 — no teardown for process/SDK listeners** (`app.mts:81-102`, GeoHelper,
+      DeviceManager). Mostly theoretical on Homey; add `dispose()` methods when touching those
+      files anyway.
+
+---
+
 ## Music via Music Assistant (PE + TR) — implemented 2026-07-09, live verification pending
 
 The control-plane integration is implemented and unit-tested (full context archived in

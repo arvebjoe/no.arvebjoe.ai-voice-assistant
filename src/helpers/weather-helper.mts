@@ -71,6 +71,10 @@ export class WeatherHelper {
     private logger = createLogger('WeatherHelper', true);
     private isInitialized = false;
     private baseUrl = 'https://api.open-meteo.com/v1';
+    // A stalled connection (no error, no data) would otherwise hang the awaiting
+    // caller forever — including init(), which app.mts awaits during startup, and
+    // any weather tool call holding a voice turn open (code_review_2 H3).
+    private static readonly FETCH_TIMEOUT_MS = 15_000;
 
     // Cache to avoid excessive API calls
     private currentWeatherCache: { data: WeatherData; timestamp: number } | null = null;
@@ -181,7 +185,7 @@ export class WeatherHelper {
             const url = `${this.baseUrl}/forecast?${params}`;
             this.logger.info(`Fetching current weather from Open-Meteo: ${url}`);
 
-            const response = await fetch(url);
+            const response = await fetch(url, { signal: AbortSignal.timeout(WeatherHelper.FETCH_TIMEOUT_MS) });
             if (!response.ok) {
                 throw new Error(`Open-Meteo API error: ${response.status} ${response.statusText}`);
             }
@@ -258,7 +262,7 @@ export class WeatherHelper {
             const url = `${this.baseUrl}/forecast?${params}`;
             this.logger.info(`Fetching forecast from Open-Meteo: ${url}`);
 
-            const response = await fetch(url);
+            const response = await fetch(url, { signal: AbortSignal.timeout(WeatherHelper.FETCH_TIMEOUT_MS) });
             if (!response.ok) {
                 throw new Error(`Open-Meteo API error: ${response.status} ${response.statusText}`);
             }
@@ -324,7 +328,7 @@ export class WeatherHelper {
             const url = `${this.baseUrl}/forecast?${params}`;
             this.logger.info(`Fetching illumination data from Open-Meteo: ${url}`);
 
-            const response = await fetch(url);
+            const response = await fetch(url, { signal: AbortSignal.timeout(WeatherHelper.FETCH_TIMEOUT_MS) });
             if (!response.ok) {
                 throw new Error(`Open-Meteo API error: ${response.status} ${response.statusText}`);
             }

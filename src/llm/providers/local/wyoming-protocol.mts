@@ -23,6 +23,21 @@ export interface WyomingEvent {
     payload: Buffer | null;
 }
 
+// Framing bounds (code_review_2 M1): the endpoint is user-configurable, so a
+// misconfigured/hostile service must not be able to make us buffer without
+// limit. Anything a real Wyoming STT/TTS exchange produces is far below these.
+const MAX_HEADER_BYTES = 64 * 1024;        // JSON header line (before the \n)
+const MAX_DATA_BYTES = 1024 * 1024;        // extra JSON after the header
+const MAX_PAYLOAD_BYTES = 32 * 1024 * 1024; // binary payload (raw PCM audio)
+const MAX_QUEUED_EVENTS = 1024;            // parsed events awaiting waitFor()
+
+/** data_length / payload_length must be a non-negative bounded integer. */
+function invalidLength(value: unknown, max: number): boolean {
+    if (value === undefined || value === null) return false;
+    const n = Number(value);
+    return !Number.isInteger(n) || n < 0 || n > max;
+}
+
 export class WyomingConnection {
     private socket: net.Socket;
     private buffer: Buffer = Buffer.alloc(0);
@@ -124,11 +139,25 @@ export class WyomingConnection {
         this.waiter?.resolve();
     }
 
+    /** Fail the connection on a framing violation and drop the socket. */
+    private abort(message: string): void {
+        this.buffer = Buffer.alloc(0);
+        this.fail(new Error(message));
+        try {
+            this.socket.destroy();
+        } catch { /* ignore */ }
+    }
+
     /** Parse as many complete events as the buffer holds. */
     private drainBuffer(): void {
         for (; ;) {
             const nl = this.buffer.indexOf(0x0a);
-            if (nl < 0) return;
+            if (nl < 0) {
+                if (this.buffer.length > MAX_HEADER_BYTES) {
+                    this.abort(`Wyoming header exceeds ${MAX_HEADER_BYTES} bytes without a newline`);
+                }
+                return;
+            }
 
             let header: any;
             try {
@@ -137,6 +166,14 @@ export class WyomingConnection {
                 // Corrupt line — skip it rather than wedging the stream.
                 this.buffer = this.buffer.subarray(nl + 1);
                 continue;
+            }
+
+            // Negative, fractional, non-numeric or oversized lengths would
+            // either desynchronize parsing or make us buffer without bound.
+            if (invalidLength(header?.data_length, MAX_DATA_BYTES)
+                || invalidLength(header?.payload_length, MAX_PAYLOAD_BYTES)) {
+                this.abort(`Wyoming frame has an invalid data_length/payload_length (${header?.data_length}/${header?.payload_length})`);
+                return;
             }
 
             const dataLength = Number(header?.data_length) || 0;
@@ -156,6 +193,10 @@ export class WyomingConnection {
                 : null;
             this.buffer = this.buffer.subarray(total);
 
+            if (this.queue.length >= MAX_QUEUED_EVENTS) {
+                this.abort(`Wyoming event queue exceeded ${MAX_QUEUED_EVENTS} entries`);
+                return;
+            }
             this.queue.push({ type: String(header?.type ?? ''), data, payload });
             this.waiter?.resolve();
         }
