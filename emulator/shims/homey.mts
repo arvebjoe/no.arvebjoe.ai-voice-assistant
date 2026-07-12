@@ -66,11 +66,22 @@ export class Device extends EventEmitter {
     this._listeners[cap] = fn;
   }
 
-  /** Emulator-only: drive a capability from the REPL (e.g. press onoff). */
+  /** Emulator-only: does the device react to this capability being set? */
+  hasCapabilityListener(cap: string): boolean {
+    return !!this._listeners[cap];
+  }
+
+  /**
+   * Emulator-only: drive a capability from the REPL (`press`), the way the
+   * Homey app UI would. Mirrors Homey's semantics: the listener runs first,
+   * and only if it doesn't throw is the capability value updated.
+   */
   async invokeCapabilityListener(cap: string, value: any): Promise<any> {
     const fn = this._listeners[cap];
     if (!fn) throw new Error(`No capability listener registered for '${cap}'`);
-    return fn(value);
+    const result = await fn(value);
+    this._capValues[cap] = value;
+    return result;
   }
 
   getAvailable(): boolean { return this._available; }

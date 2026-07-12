@@ -61,6 +61,12 @@ mic               List available recordings
 discover [sec]    Scan the LAN for ESPHome voice satellites and add them to settings.json
 sats              List configured satellites; ▶ marks the one ask/say/speak/mic target
 use <name|#>      Switch the active satellite
+press <sat> [capability [value]]
+                  Only a satellite given: list all its capability values (● = pressable).
+                  With capability+value: drive the listener like the Homey app UI,
+                  e.g. `press 1 volume_set 0.5`, `press living volume_mute true`.
+                  Capability names match by unique prefix; the value is set only
+                  if the listener succeeds (Homey semantics).
 devices           List dummy devices + current capability values
 zones             List zones
 state <name|id>   Show one device's capabilities

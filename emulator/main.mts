@@ -136,6 +136,9 @@ Commands:
   discover [sec]    Scan the LAN for ESPHome voice satellites and add them to settings.json
   sats              List configured satellites; the ▶ marks the one ask/say/speak/mic target
   use <name|#>      Switch the active satellite
+  press <sat> [capability [value]]
+                    Only a satellite: show all its capability values. With capability+value:
+                    drive its listener like the Homey app UI (e.g. press 1 volume_set 0.5)
   devices           List all dummy devices and their current capability values
   zones             List zones
   state <name|id>   Show one device's capabilities
@@ -157,6 +160,24 @@ function startRepl(booted: BootedSatellite[], homey: any): void {
     const a = active();
     if (!a) console.log('No satellite configured — run `discover` first.');
     return a;
+  };
+
+  /** Find a booted satellite by 1-based index or name substring (as `use`). */
+  const findSat = (query: string): number => {
+    const byIndex = Number(query);
+    let idx = Number.isInteger(byIndex) ? byIndex - 1 : -1;
+    if (idx < 0 || idx >= booted.length) {
+      idx = booted.findIndex((b) => b.sat.name.toLowerCase().includes(query.toLowerCase()));
+    }
+    return idx >= 0 && idx < booted.length ? idx : -1;
+  };
+
+  /** 'true'/'false'/number strings become real types (shared by set/press). */
+  const coerceValue = (raw: string): any => {
+    if (raw === 'true') return true;
+    if (raw === 'false') return false;
+    if (/^-?\d+(\.\d+)?$/.test(raw)) return Number(raw);
+    return raw;
   };
 
   rl.prompt();
@@ -257,14 +278,53 @@ function startRepl(booted: BootedSatellite[], homey: any): void {
         }
         case 'use': {
           if (!arg) { console.log('usage: use <name|#>'); break; }
-          const byIndex = Number(arg);
-          let idx = Number.isInteger(byIndex) ? byIndex - 1 : -1;
-          if (idx < 0 || idx >= booted.length) {
-            idx = booted.findIndex((b) => b.sat.name.toLowerCase().includes(arg.toLowerCase()));
-          }
-          if (idx < 0 || idx >= booted.length) { console.log(`No satellite matching '${arg}' (see 'sats')`); break; }
+          const idx = findSat(arg);
+          if (idx < 0) { console.log(`No satellite matching '${arg}' (see 'sats')`); break; }
           activeIndex = idx;
           console.log(`Active satellite: ${booted[idx].sat.name}`);
+          break;
+        }
+        case 'press': {
+          if (!arg) { console.log('usage: press <satellite> [capability [value]]'); break; }
+          const parts = arg.split(/\s+/);
+          const idx = findSat(parts[0]);
+          if (idx < 0) { console.log(`No satellite matching '${parts[0]}' (see 'sats')`); break; }
+          const dev = booted[idx].device;
+          const caps: string[] = dev.getCapabilities();
+
+          if (parts.length === 1) {
+            // Only the device given — show all capability values; ● marks the
+            // ones with a listener (i.e. pressable like a button in the app).
+            console.log(`${booted[idx].sat.name}:`);
+            for (const cap of caps) {
+              const mark = dev.hasCapabilityListener(cap) ? '●' : ' ';
+              console.log(`  ${mark} ${cap} = ${JSON.stringify(dev.getCapabilityValue(cap) ?? null)}`);
+            }
+            console.log('  ● = pressable:  press <satellite> <capability> <value>');
+            break;
+          }
+
+          // Capability by exact name, then unique prefix, then substring.
+          const q = parts[1].toLowerCase();
+          let matches = caps.filter((c) => c.toLowerCase() === q);
+          if (matches.length === 0) matches = caps.filter((c) => c.toLowerCase().startsWith(q));
+          if (matches.length === 0) matches = caps.filter((c) => c.toLowerCase().includes(q));
+          if (matches.length === 0) { console.log(`No capability matching '${parts[1]}' — 'press ${parts[0]}' lists them`); break; }
+          if (matches.length > 1) { console.log(`'${parts[1]}' is ambiguous: ${matches.join(', ')}`); break; }
+          const cap = matches[0];
+
+          if (parts.length === 2) {
+            console.log(`${cap} = ${JSON.stringify(dev.getCapabilityValue(cap) ?? null)}`);
+            break;
+          }
+
+          if (!dev.hasCapabilityListener(cap)) {
+            console.log(`'${cap}' is read-only (no listener) — the app sets it, e.g. via timers`);
+            break;
+          }
+          const value = coerceValue(parts.slice(2).join(' '));
+          await dev.invokeCapabilityListener(cap, value);
+          console.log(`pressed: ${cap} = ${JSON.stringify(value)}`);
           break;
         }
         case 'devices':
@@ -311,10 +371,7 @@ function startRepl(booted: BootedSatellite[], homey: any): void {
           const k = arg.indexOf(' ');
           if (k === -1) { console.log('usage: set <key> <value>'); break; }
           const key = arg.slice(0, k);
-          let value: any = arg.slice(k + 1).trim();
-          if (value === 'true') value = true;
-          else if (value === 'false') value = false;
-          else if (/^-?\d+(\.\d+)?$/.test(value)) value = Number(value);
+          const value = coerceValue(arg.slice(k + 1).trim());
           await homey.settings.set(key, value);
           console.log(`set ${key} = ${JSON.stringify(value)}`);
           break;
