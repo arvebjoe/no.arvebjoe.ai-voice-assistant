@@ -1302,11 +1302,23 @@
 
         meterTotal.textContent = fmt(total) + " tokens";
 
-        var isOllama = providerSelectElement.value === "local" &&
-          document.getElementById("local_llm_provider").value === "ollama";
-        if (isOllama) {
-          var numCtx = parseInt(document.getElementById("local_llm_num_ctx").value, 10) || 8192;
-          var pct = total / numCtx;
+        // The verdict needs a known window to compare against: Ollama's is
+        // the num_ctx we request; LM Studio's is read live from its REST API
+        // (refreshLmStudioContext). Other engines get the plain sum.
+        var pipelineLlm = providerSelectElement.value === "local"
+          ? document.getElementById("local_llm_provider").value : null;
+        var budget = 0, budgetLabel = "";
+        if (pipelineLlm === "ollama") {
+          budget = parseInt(document.getElementById("local_llm_num_ctx").value, 10) || 8192;
+          budgetLabel = "token window (num_ctx)";
+        } else if (pipelineLlm === "lmstudio" && lmstudioCtx) {
+          budget = lmstudioCtx.contextLength;
+          budgetLabel = lmstudioCtx.source === "max"
+            ? "token window (model max)"
+            : "token window (set in LM Studio)";
+        }
+        if (budget) {
+          var pct = total / budget;
           meterFill.style.width = Math.min(100, pct * 100) + "%";
           var cls, txt;
           if (pct < 0.5) { cls = "ok"; txt = "Fits — room to talk"; }
@@ -1315,14 +1327,21 @@
           meterState.className = "meter-state " + cls;
           meterState.textContent = txt;
           meterFill.style.background = cls === "ok" ? "#1e7a4c" : cls === "warn" ? "#9a6b00" : "#b3372e";
-          meterBudget.textContent = "of " + numCtx.toLocaleString("en-US") + " token window (num_ctx) · " +
+          meterBudget.textContent = "of " + budget.toLocaleString("en-US") + " " + budgetLabel + " · " +
             Math.round(pct * 100) + "%" + (pct >= 0.75 ? " — the model will start forgetting its rules" : "");
         } else {
           meterFill.style.width = "100%";
           meterFill.style.background = "#e4eae6";
           meterState.className = "meter-state none";
-          meterState.textContent = "No context limit";
-          meterBudget.textContent = "Sent on every request — with cloud engines this is spend, not a limit";
+          if (pipelineLlm === "lmstudio") {
+            // LM Studio has a real context window but it couldn't be read
+            // (yet) — honest label instead of "No context limit".
+            meterState.textContent = "Limit set in LM Studio";
+            meterBudget.textContent = "Sent on every request — keep it below the context length configured in LM Studio";
+          } else {
+            meterState.textContent = "No context limit";
+            meterBudget.textContent = "Sent on every request — with cloud engines this is spend, not a limit";
+          }
         }
       }
 
@@ -1341,7 +1360,8 @@
       languageSelectElement.addEventListener("change", refreshCosts);
       aiInstructionsElement.addEventListener("input", refreshBudget);
       document.getElementById("local_llm_num_ctx").addEventListener("input", refreshBudget);
-      document.getElementById("local_llm_provider").addEventListener("change", refreshBudget);
+      // (the local_llm_provider dropdown refreshes the budget via
+      // refreshLmStudioContext, registered below)
       FEATURES.forEach(function (f) {
         if (!f.always) document.getElementById(f.checkbox).addEventListener("change", refreshBudget);
       });
@@ -1380,6 +1400,44 @@
         refreshVoices(providerSelectElement.value, voiceSelectElement.value, ttsProviderSelectElement.value);
       });
 
+      /* ---------- LM Studio context window (for the budget meter) ----------
+         LM Studio's window is configured in the LM Studio UI, so it's read
+         back live from its REST API — via the app, because the settings
+         webview can't reach LAN services. Uses the CURRENT (possibly
+         unsaved) host/port/model form values, like the Test buttons. */
+
+      var lmstudioCtx = null; // { contextLength, source, model } when known
+      var lmstudioCtxSeq = 0; // ignore out-of-order replies
+
+      function refreshLmStudioContext() {
+        var seq = ++lmstudioCtxSeq;
+        lmstudioCtx = null;
+        refreshBudget();
+        var active = providerSelectElement.value === "local" &&
+          llmProviderSelectElement.value === "lmstudio";
+        if (!active) return;
+        var url = "/lmstudio-context" +
+          "?host=" + encodeURIComponent(document.getElementById("lmstudio_host").value.trim()) +
+          "&port=" + encodeURIComponent(document.getElementById("lmstudio_port").value.trim()) +
+          "&model=" + encodeURIComponent(document.getElementById("lmstudio_model").value.trim());
+        Homey.api("GET", url, null, function (err, result) {
+          if (seq !== lmstudioCtxSeq) return;
+          if (!err && result && result.ok && result.contextLength) lmstudioCtx = result;
+          refreshBudget();
+        });
+      }
+
+      // Debounced variant for text inputs and the settings-load burst.
+      var lmstudioCtxTimer = null;
+      function refreshLmStudioContextSoon() {
+        clearTimeout(lmstudioCtxTimer);
+        lmstudioCtxTimer = setTimeout(refreshLmStudioContext, 600);
+      }
+      ["lmstudio_host", "lmstudio_port", "lmstudio_model"].forEach(function (id) {
+        document.getElementById(id).addEventListener("input", refreshLmStudioContextSoon);
+      });
+      llmProviderSelectElement.addEventListener("change", refreshLmStudioContext);
+
       localSettingIds.forEach(function (id) {
         Homey.get(id, function (err, value) {
           if (err) return Homey.alert(err);
@@ -1391,6 +1449,9 @@
           }
           if (id === "local_llm_num_ctx" || id === "local_llm_provider") {
             refreshBudget();
+          }
+          if (id === "local_llm_provider" || id.indexOf("lmstudio_") === 0) {
+            refreshLmStudioContextSoon(); // debounced: the load burst coalesces into one probe
           }
         });
       });
@@ -1604,6 +1665,7 @@
         providerSelectElement.value = provider || "openai-realtime";
         refreshLocalVisibility();
         refreshBudget();
+        refreshLmStudioContextSoon();
 
         // Load the saved voice, then populate the list for the active provider.
         Homey.get("selected_voice", function (err, voice) {
@@ -1617,7 +1679,7 @@
       providerSelectElement.addEventListener("change", function () {
         refreshVoices(providerSelectElement.value, voiceSelectElement.value, ttsProviderSelectElement.value);
         refreshLocalVisibility();
-        refreshBudget();
+        refreshLmStudioContext(); // also refreshes the budget
       });
 
       Homey.get("selected_language_code", function (err, language) {

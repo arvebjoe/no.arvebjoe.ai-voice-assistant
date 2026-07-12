@@ -73,6 +73,10 @@
       "method": "POST",
       "path": "/test-local-stage"
     },
+    "getLmStudioContext": {
+      "method": "GET",
+      "path": "/lmstudio-context"
+    },
     "getFeatureCosts": {
       "method": "GET",
       "path": "/feature-costs"

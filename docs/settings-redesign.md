@@ -61,11 +61,16 @@ false precision anyway. Always display as approximate ("~1,900").
 **What the budget is compared against.** Only the local pipeline has a crisp
 answer: the binding limit for Ollama is what we request via
 `local_llm_num_ctx` (default 8192) — a setting on the same page, so the meter
-reacts instantly when either side changes. For LM Studio / OpenAI-compatible /
-Mistral the window is unknown; for the cloud realtime engines it's
-effectively unlimited. Scope the red/green verdict to the local pipeline;
-for other engines show the cost sum without a verdict (still useful — for
-cloud engines it's a per-turn money proxy).
+reacts instantly when either side changes. LM Studio's window is configured
+in the LM Studio UI at model-load time, but its REST API reports it back
+(`GET /api/v0/models` → `loaded_context_length`, or `max_context_length` as
+an upper-bound fallback), so the meter reads it live through the app's
+`/lmstudio-context` endpoint (the webview can't reach the LAN itself) and
+gives the same verdict; when LM Studio is unreachable the meter degrades to
+an honest "Limit set in LM Studio" label. For OpenAI-compatible / Mistral
+the window is unknown; for the cloud realtime engines it's effectively
+unlimited — those engines show the cost sum without a verdict (still useful —
+for cloud engines it's a per-turn money proxy).
 
 **Red does not mean "overhead > window".** The fixed overhead shares the
 window with history (capped at 20 messages), within-turn tool results, and

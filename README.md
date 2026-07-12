@@ -181,6 +181,8 @@ For Ollama there is also a **Context window (num_ctx)** setting (default 8192). 
 default window is too small for the assistant's instructions and tools, which makes small models
 silently "forget" their rules — leave this at the default unless you know you want a different
 trade-off between memory use and headroom (see [docs/cost-of-growth.md](./docs/cost-of-growth.md)).
+LM Studio has no such setting here — its context window is chosen in LM Studio when you load the
+model, and the app reads it back live so the token budget bar can tell you whether everything fits.
 
 Smart-home control, weather, timers and the rest of the tool set work the same on all three
 engines.
@@ -230,8 +232,10 @@ pipeline** (only selectable while the Custom pipeline provider is active), and o
 feature. A **token budget bar** stays visible at the bottom: every feature you enable adds
 instructions and tools to every request the AI makes, and the bar shows the total — tap it for a
 per-feature breakdown where you can flip features on and off directly. When the Custom pipeline
-runs on Ollama, the bar also shows whether everything fits in the configured context window
-(green/amber/red — red means the model will start "forgetting" its rules).
+runs on Ollama or LM Studio, the bar also shows whether everything fits in the context window
+(green/amber/red — red means the model will start "forgetting" its rules). For Ollama the window
+is the num_ctx setting; for LM Studio it's read live from the LM Studio server (the context
+length you configured when loading the model).
 
 **General**
 

@@ -1,5 +1,6 @@
 import { getVoicesForProvider, DEFAULT_VOICE_PROVIDER } from './src/llm/voice-provider-factory.mjs';
 import { testLocalStage, StageTestRequest, StageTestResult } from './src/llm/providers/local/stage-tester.mjs';
+import { getLmStudioContext, LmStudioContextResult } from './src/llm/providers/local/lmstudio-context.mjs';
 import { computeFeatureCosts, FeatureCostReport } from './src/settings/feature-costs.mjs';
 
 /**
@@ -30,6 +31,17 @@ export default {
      */
     async testLocalStage({ body }: { body: StageTestRequest }): Promise<StageTestResult> {
         return testLocalStage(body);
+    },
+
+    /**
+     * GET /lmstudio-context?host=<h>&port=<p>&model=<id> — the context window
+     * of the LM Studio model the pipeline would use, read live from LM
+     * Studio's REST API with the CURRENT (possibly unsaved) settings-form
+     * values, so the budget meter can give a real verdict for the lmstudio
+     * backend. Never throws — failures come back as { ok:false, message }.
+     */
+    async getLmStudioContext({ query }: { query: Record<string, string> }): Promise<LmStudioContextResult> {
+        return getLmStudioContext({ host: query?.host, port: query?.port, model: query?.model });
     },
 
     /**
