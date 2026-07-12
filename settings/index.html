@@ -537,6 +537,7 @@
             <select class="homey-form-input" id="provider_select">
               <option value="openai-realtime">OpenAI Realtime</option>
               <option value="gemini-realtime">Google Gemini Live</option>
+              <option value="mistral-realtime">Mistral (Voxtral)</option>
               <option value="local">Custom pipeline</option>
             </select>
             <div class="help-text">Which backend handles speech &amp; language. The Custom pipeline is configured in
@@ -575,6 +576,32 @@
                 <button type="button" class="secret-toggle" data-for="gemini_api_key">Show</button>
               </div>
               <div class="help-text">Visit https://aistudio.google.com/apikey to get one</div>
+            </div>
+          </div>
+
+          <!-- Mistral has no unified speech-to-speech API; this provider chains
+               Mistral's own realtime pieces (Voxtral Realtime STT websocket ->
+               chat completions -> Voxtral TTS) on one API key. The inputs mirror
+               the same settings the Custom pipeline's Mistral backends use
+               (see MIRRORED_INPUTS), so one key/model serves both. -->
+          <div id="mistral_realtime_settings" style="display: none;">
+            <div class="homey-form-group">
+              <label class="homey-form-label" for="mistral_api_key_rt">Mistral API key</label>
+              <div class="secret-wrap">
+                <input type="password" class="homey-form-input" id="mistral_api_key_rt" autocomplete="off"
+                  placeholder="Enter your Mistral API key here..." />
+                <button type="button" class="secret-toggle" data-for="mistral_api_key_rt">Show</button>
+              </div>
+              <div class="help-text">One key covers speech recognition (Voxtral Realtime), the language model and the
+                voice (Voxtral TTS). Visit https://console.mistral.ai to get one.</div>
+            </div>
+            <div class="homey-form-group">
+              <label class="homey-form-label" for="mistral_model_rt">Language model</label>
+              <input type="text" class="homey-form-input" id="mistral_model_rt" autocomplete="off"
+                placeholder="mistral-small-latest" />
+              <div class="help-text">The chat model that answers and controls your home. Empty =
+                <code>mistral-small-latest</code>; <code>mistral-medium-latest</code> understands tricky requests
+                better.</div>
             </div>
           </div>
 
@@ -1438,11 +1465,25 @@
       });
       llmProviderSelectElement.addEventListener("change", refreshLmStudioContext);
 
+      // The Mistral provider's inputs in General edit the SAME settings as the
+      // Custom pipeline's Mistral fields (one key/model for both) — the pipeline
+      // element is the one that loads and saves; its *_rt twin mirrors it live.
+      var MIRRORED_INPUTS = { mistral_api_key: "mistral_api_key_rt", mistral_model: "mistral_model_rt" };
+      Object.keys(MIRRORED_INPUTS).forEach(function (srcId) {
+        var src = document.getElementById(srcId);
+        var twin = document.getElementById(MIRRORED_INPUTS[srcId]);
+        src.addEventListener("input", function () { twin.value = src.value; });
+        twin.addEventListener("input", function () { src.value = twin.value; });
+      });
+
       localSettingIds.forEach(function (id) {
         Homey.get(id, function (err, value) {
           if (err) return Homey.alert(err);
           if (value !== null && value !== undefined && value !== "") {
             document.getElementById(id).value = value;
+          }
+          if (MIRRORED_INPUTS[id]) {
+            document.getElementById(MIRRORED_INPUTS[id]).value = document.getElementById(id).value;
           }
           if (id === "local_stt_provider" || id === "local_llm_provider" || id === "local_tts_provider") {
             refreshStageVisibility();
@@ -1465,6 +1506,8 @@
           provider === "openai-realtime" ? "" : "none";
         document.getElementById("gemini_realtime_settings").style.display =
           provider === "gemini-realtime" ? "" : "none";
+        document.getElementById("mistral_realtime_settings").style.display =
+          provider === "mistral-realtime" ? "" : "none";
         pipelineOptionElement.disabled = provider !== "local";
         if (provider !== "local" && sectionSelectElement.value === "pipeline") {
           showSection("general");

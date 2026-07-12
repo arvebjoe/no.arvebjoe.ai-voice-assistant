@@ -17,4 +17,22 @@ export interface ISttClient {
     describe(): string;
     /** Transcribe an utterance (may return '' when nothing intelligible was heard). */
     transcribe(pcm16k: Buffer, languageCode: string): Promise<string>;
+    /**
+     * Optional streaming mode: open a per-utterance session that transcribes
+     * WHILE the audio arrives, so the transcript is (nearly) done the moment
+     * the user stops talking. The pipeline uses it when present (opened at
+     * VAD speech start, finished at end-of-utterance) and falls back to
+     * `transcribe()` otherwise — backends without it are batch-only.
+     */
+    createStream?(languageCode: string, onDelta?: (text: string) => void): ISttStream;
+}
+
+/** One live streaming-transcription session (one utterance). */
+export interface ISttStream {
+    /** Feed mic PCM (16 kHz mono) as it arrives. Safe before the socket is ready (buffered). */
+    append(pcm16k: Buffer): void;
+    /** No more audio: flush the backend and resolve the final transcript. */
+    finish(): Promise<string>;
+    /** Drop the session without a result (turn aborted / VAD timeout). */
+    abort(): void;
 }

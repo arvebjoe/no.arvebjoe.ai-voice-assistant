@@ -6,6 +6,14 @@
       before the next store release: List A is emulator-testable (real satellite on the
       LAN, no Homey), List B needs the app running on the Homey Pro (pairing UI, flow
       editor, settings webview, upgrade path, homey-log/Sentry, Homey-hosted audio).
+- [ ] **Live-verify the first-class Mistral provider (2026-07-12, needs a real Mistral key
+      + satellite):** `voice_provider: 'mistral-realtime'` — full spoken turn (streaming
+      Voxtral Realtime STT fed during speech via the new `ISttClient.createStream` seam,
+      chat with tool calls, Voxtral TTS reply), the batch fallback when the websocket drops
+      mid-utterance, the mirrored key/model inputs in the General settings section
+      (`MIRRORED_INPUTS` — must stay in sync with the Custom pipeline's fields), and the
+      Voxtral voice dropdown after saving the key. Unit tests cover all of it with fakes;
+      nothing has run against the live endpoints yet.
 
 ## Code review 2 — remaining items (see [`docs/code_review_2.md`](./docs/code_review_2.md))
 

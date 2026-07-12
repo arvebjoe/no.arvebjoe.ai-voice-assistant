@@ -51,6 +51,7 @@ export class SettingsManager {
     return [
       { value: 'openai-realtime', name: 'OpenAI Realtime' },
       { value: 'gemini-realtime', name: 'Google Gemini Live' },
+      { value: 'mistral-realtime', name: 'Mistral (Voxtral)' },
       { value: 'local', name: 'Local (Whisper + Ollama + Piper)' }
     ];
   }

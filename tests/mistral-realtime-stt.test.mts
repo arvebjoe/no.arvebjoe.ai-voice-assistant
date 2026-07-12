@@ -70,4 +70,66 @@ describe('MistralRealtimeSttClient (fake WebSocket harness)', () => {
         createdSockets[0].__fail();
         await expect(promise).rejects.toThrow(/websocket/i);
     });
+
+    describe('createStream (live per-utterance session)', () => {
+        it('buffers audio until the session is ready, then streams live and finishes on flush', async () => {
+            const client = new MistralRealtimeSttClient({ apiKey: 'sk-test', model: '' });
+            const deltas: string[] = [];
+            const stream = client.createStream('en', (t) => deltas.push(t));
+            const ws = createdSockets[0];
+
+            // Mic audio arrives before the server's session.created: queued.
+            stream.append(Buffer.alloc(640, 1));
+            expect(ws.sentTypes()).toEqual([]);
+
+            ws.__message({ type: 'session.created', session: { request_id: 'r1', model: 'm' } });
+            expect(ws.sentTypes()).toEqual(['session.update', 'input_audio.append']);
+
+            // From now on audio goes straight out while the user is talking.
+            stream.append(Buffer.alloc(640, 2));
+            expect(ws.sentTypes()).toEqual(['session.update', 'input_audio.append', 'input_audio.append']);
+
+            ws.__message({ type: 'transcription.text.delta', text: 'hello ' });
+            const promise = stream.finish();
+            expect(ws.sentTypes().slice(-2)).toEqual(['input_audio.flush', 'input_audio.end']);
+
+            ws.__message({ type: 'transcription.text.delta', text: 'world' });
+            ws.__message({ type: 'transcription.done', text: 'hello world' });
+            await expect(promise).resolves.toBe('hello world');
+            expect(deltas).toEqual(['hello ', 'world']);
+        });
+
+        it('sends flush/end on session.created when finish() came first (short utterance)', async () => {
+            const client = new MistralRealtimeSttClient({ apiKey: 'sk-test', model: '' });
+            const stream = client.createStream('en');
+            const ws = createdSockets[0];
+
+            stream.append(Buffer.alloc(320, 1));
+            const promise = stream.finish(); // VAD closed before the socket was ready
+            ws.__message({ type: 'session.created', session: { request_id: 'r2', model: 'm' } });
+            expect(ws.sentTypes()).toEqual(['session.update', 'input_audio.append', 'input_audio.flush', 'input_audio.end']);
+
+            ws.__message({ type: 'transcription.done', text: 'hi' });
+            await expect(promise).resolves.toBe('hi');
+        });
+
+        it('abort() closes the socket and ignores further audio', () => {
+            const client = new MistralRealtimeSttClient({ apiKey: 'sk-test', model: '' });
+            const stream = client.createStream('en');
+            const ws = createdSockets[0];
+            ws.__message({ type: 'session.created', session: { request_id: 'r3', model: 'm' } });
+
+            stream.abort();
+            expect(ws.closeCalls.length).toBeGreaterThan(0);
+            stream.append(Buffer.alloc(320, 1));
+            expect(ws.sentTypes().filter((t) => t === 'input_audio.append')).toHaveLength(0);
+        });
+
+        it('finish() rejects immediately when the session already failed', async () => {
+            const client = new MistralRealtimeSttClient({ apiKey: 'sk-test', model: '' });
+            const stream = client.createStream('en');
+            createdSockets[0].__fail();
+            await expect(stream.finish()).rejects.toThrow(/websocket/i);
+        });
+    });
 });

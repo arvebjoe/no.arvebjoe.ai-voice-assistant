@@ -10,7 +10,7 @@ import { resamplePcm16Mono } from "../../helpers/wav.mjs";
 import { settingsManager, GlobalSettings } from "../../settings/settings-manager.mjs";
 import { isBlankOrHallucinatedTranscript } from "../transcript-hallucinations.mjs";
 import { SimpleVad } from "./local/simple-vad.mjs";
-import { ISttClient } from "./local/stt-client.mjs";
+import { ISttClient, ISttStream } from "./local/stt-client.mjs";
 import { ITtsClient } from "./local/tts-client.mjs";
 import { WhisperClient, LocalSttConfig } from "./local/whisper-client.mjs";
 import { ChatMessage, ILlmClient } from "./local/llm-client.mjs";
@@ -44,6 +44,10 @@ const MAX_HISTORY_MESSAGES = 20;
 // Re-probe the three services while idle so availability stays truthful
 // (there is no persistent socket whose close would tell us).
 const HEALTH_INTERVAL_MS = 60_000;
+// Rolling mic buffer kept while waiting for speech, so a streaming STT session
+// opened at VAD speech-start also gets the audio from just before it (mirrors
+// the VAD's own 300 ms pre-roll, with a little margin).
+const STREAM_PREBUFFER_BYTES = Math.round(16000 * 0.4) * 2;
 
 /** Default ports of the supported services. */
 export const LOCAL_DEFAULT_PORTS = { stt: 9000, llm: 11434, tts: 5000, wyomingStt: 10300, wyomingTts: 10200, lmstudio: 1234 } as const;
@@ -158,6 +162,18 @@ function buildTtsClient(configs: LocalConfigs, voice: string): ITtsClient {
         default: return new PiperClient({ ...configs.piper, voice });
     }
 }
+
+/**
+ * The three pipeline stages plus a JSON snapshot of the settings they were
+ * built from — `buildPipeline()`'s return, compared across settings changes so
+ * only a real endpoint change triggers a rebuild/health re-probe.
+ */
+export type PipelineBuild = {
+    stt: ISttClient;
+    llm: ILlmClient;
+    tts: ITtsClient;
+    configJson: string;
+};
 
 /**
  * Streaming filter that removes <think>…</think> spans from LLM output.
@@ -295,9 +311,11 @@ class SentenceSpeaker {
 export class LocalPipelineProvider extends (EventEmitter as new () => TypedEmitter<VoiceProviderEvents>) implements IVoiceProvider {
     // The PE mic's native rate — no upsampling, and exactly what Whisper wants.
     readonly inputSampleRate = 16000;
-    // No API key in this round. The setting never exists, so its value is
-    // always undefined/'' and the device's key-change check stays inert.
-    readonly apiKeySettingKey = "local_api_key";
+    // No API key for the local stages. The setting never exists, so its value
+    // is always undefined/'' and the device's key-change check stays inert.
+    // (Annotated `string`, not the literal: subclasses override it with their
+    // own key setting — see MistralRealtimeProvider.)
+    readonly apiKeySettingKey: string = "local_api_key";
 
     /**
      * Voices depend on the selected TTS backend: Piper's voice is fixed
@@ -350,9 +368,9 @@ export class LocalPipelineProvider extends (EventEmitter as new () => TypedEmitt
 
     private homey: any;
     private toolManager: ToolManager;
-    private logger = createLogger("LOCAL", true);
-    private options: VoiceProviderOptions;
-    private instructionState = new InstructionState(this.logger);
+    protected logger: ReturnType<typeof createLogger>;
+    protected options: VoiceProviderOptions;
+    private instructionState: InstructionState;
     private reconnect: ReconnectPolicy;
 
     private stt: ISttClient;
@@ -368,6 +386,12 @@ export class LocalPipelineProvider extends (EventEmitter as new () => TypedEmitt
     // VAD) -> 'processing' (STT/LLM/TTS running; further mic frames are dropped).
     private phase: 'idle' | 'listening' | 'processing' = 'idle';
     private vad = new SimpleVad();
+    // Live streaming-STT session (backends with createStream): opened at VAD
+    // speech start, fed every mic chunk, finished at end-of-utterance. The
+    // rolling pre-buffer holds the audio from just before speech was detected.
+    private sttStream: ISttStream | null = null;
+    private preBuffer: Buffer[] = [];
+    private preBufferLen = 0;
     // Conversation context (user/assistant/tool messages, no system — that is
     // prepended fresh each round so instruction reloads apply immediately).
     // Backend-neutral (see llm-client.mts), so it survives an LLM backend switch.
@@ -382,12 +406,14 @@ export class LocalPipelineProvider extends (EventEmitter as new () => TypedEmitt
         this.homey = homey;
         this.toolManager = toolManager;
         this.options = { ...opts };
+        this.logger = createLogger(this.loggerName(), true);
+        this.instructionState = new InstructionState(this.logger);
 
-        const configs = readLocalConfigs();
-        this.lastConfigJson = JSON.stringify(configs);
-        this.stt = buildSttClient(configs);
-        this.llm = buildLlmClient(configs);
-        this.tts = buildTtsClient(configs, this.options.voice);
+        const built = this.buildPipeline();
+        this.lastConfigJson = built.configJson;
+        this.stt = built.stt;
+        this.llm = built.llm;
+        this.tts = built.tts;
 
         this.reconnect = new ReconnectPolicy(homey, {
             connect: () => this.start(),
@@ -403,6 +429,27 @@ export class LocalPipelineProvider extends (EventEmitter as new () => TypedEmitt
         void this.instructionState.reload(this.instructionParams());
     }
 
+    /** Log-line prefix — subclasses hardwiring other stages use their own. */
+    protected loggerName(): string {
+        return "LOCAL";
+    }
+
+    /**
+     * Read the stage settings and construct the three clients. The seam that
+     * makes the pipeline's plumbing (VAD, turn loop, sentence TTS, health
+     * checks) reusable by providers that hardwire different stages — the
+     * Mistral provider overrides this to build its Voxtral/chat clients.
+     */
+    protected buildPipeline(): PipelineBuild {
+        const configs = readLocalConfigs();
+        return {
+            stt: buildSttClient(configs),
+            llm: buildLlmClient(configs),
+            tts: buildTtsClient(configs, this.options.voice),
+            configJson: JSON.stringify(configs),
+        };
+    }
+
     private instructionParams() {
         return {
             languageCode: this.options.languageCode,
@@ -415,18 +462,17 @@ export class LocalPipelineProvider extends (EventEmitter as new () => TypedEmitt
     }
 
     private onGlobalSettings(_globals: GlobalSettings): void {
-        const configs = readLocalConfigs();
-        const json = JSON.stringify(configs);
-        if (json === this.lastConfigJson) return;
-        this.lastConfigJson = json;
+        const built = this.buildPipeline();
+        if (built.configJson === this.lastConfigJson) return;
+        this.lastConfigJson = built.configJson;
         // All three stages are rebuilt on change (any of them may switch
         // backend entirely); clients are stateless besides caches, so this is
         // cheap and avoids per-backend configure() plumbing.
-        this.stt = buildSttClient(configs);
-        this.llm = buildLlmClient(configs);
-        this.tts = buildTtsClient(configs, this.options.voice);
+        this.stt = built.stt;
+        this.llm = built.llm;
+        this.tts = built.tts;
         if (!this.manuallyClosing) {
-            this.logger.info('Local endpoint settings changed — re-checking service health');
+            this.logger.info('Pipeline endpoint settings changed — re-checking service health');
             this.start().catch((err) => this.logger.error('Health re-check after settings change failed', err));
         }
     }
@@ -447,7 +493,7 @@ export class LocalPipelineProvider extends (EventEmitter as new () => TypedEmitt
             return; // no reconnect campaign: nothing changes until the settings do
         }
         if (!this.stt.isConfigured() || !this.llm.isConfigured() || !this.tts.isConfigured()) {
-            this.logger.warn('Local pipeline not configured — set the STT/LLM/TTS endpoints in the app settings');
+            this.logger.warn('Pipeline not configured — set the STT/LLM/TTS endpoints in the app settings');
             this.setConnected(false);
             return; // no reconnect campaign: nothing changes until the settings do
         }
@@ -465,9 +511,9 @@ export class LocalPipelineProvider extends (EventEmitter as new () => TypedEmitt
             this.emit("open");
             this.emit("Healthy");
             if (wasReconnect) this.emit("reconnected");
-            this.logger.info(`Local pipeline healthy (${this.stt.describe()}, ${this.llm.describe()}, ${this.tts.describe()})`);
+            this.logger.info(`Pipeline healthy (${this.stt.describe()}, ${this.llm.describe()}, ${this.tts.describe()})`);
         } catch (e: any) {
-            this.logger.error('Local pipeline health check failed', e);
+            this.logger.error('Pipeline health check failed', e);
             this.setConnected(false);
             this.emit("error", e instanceof Error ? e : new Error(String(e?.message ?? e)));
             this.emit("Unhealthy");
@@ -480,6 +526,7 @@ export class LocalPipelineProvider extends (EventEmitter as new () => TypedEmitt
         this.reconnect.reset();
         this.turnAbort?.abort();
         this.turnAbort = null;
+        this.abortSttStream();
         this.phase = 'idle';
         this.setConnected(false);
         this.emit("close", code, reason);
@@ -530,7 +577,7 @@ export class LocalPipelineProvider extends (EventEmitter as new () => TypedEmitt
         try {
             await Promise.all([this.stt.check(), this.llm.check(), this.tts.check()]);
         } catch (e: any) {
-            this.logger.error('Local service went away', e);
+            this.logger.error('A pipeline service went away', e);
             this.setConnected(false);
             this.emit("Unhealthy");
             if (!this.manuallyClosing) this.reconnect.schedule();
@@ -546,18 +593,37 @@ export class LocalPipelineProvider extends (EventEmitter as new () => TypedEmitt
         if (this.phase === 'idle') {
             this.phase = 'listening';
             this.vad.reset();
+            this.abortSttStream(); // paranoia: a stale session must not leak into this turn
+            this.preBuffer = [];
+            this.preBufferLen = 0;
         }
 
         try {
+            if (this.sttStream) {
+                // Streaming session open: the backend transcribes as we speak.
+                this.sttStream.append(pcm16Mono16k);
+            } else {
+                // Waiting for speech: keep a short rolling window so a session
+                // opened at speech start doesn't miss the first syllable.
+                this.preBuffer.push(pcm16Mono16k);
+                this.preBufferLen += pcm16Mono16k.length;
+                while (this.preBufferLen > STREAM_PREBUFFER_BYTES && this.preBuffer.length > 1) {
+                    this.preBufferLen -= this.preBuffer[0].length;
+                    this.preBuffer.shift();
+                }
+            }
+
             const result = this.vad.feed(pcm16Mono16k);
             if (result.speechStart) {
                 this.emit("speech", "local");
+                this.openSttStream();
             }
             if (result.utterance) {
                 this.phase = 'processing';
                 this.emit("silence", "local");
-                void this.runAudioTurn(result.utterance);
+                void this.runAudioTurn(result.utterance, this.takeSttStream());
             } else if (result.timeout) {
+                this.abortSttStream();
                 this.phase = 'idle';
                 this.emit("silence", "local");
                 this.emit("transcript.done", "");
@@ -572,14 +638,64 @@ export class LocalPipelineProvider extends (EventEmitter as new () => TypedEmitt
         this.messages = [];
     }
 
+    /**
+     * Open a live STT session at VAD speech start when the backend supports it
+     * (ISttClient.createStream), seeded with the pre-speech rolling buffer.
+     * Batch-only backends leave sttStream null and transcribe after the fact.
+     */
+    private openSttStream(): void {
+        if (this.sttStream || !this.stt.createStream) return;
+        try {
+            const stream = this.stt.createStream(
+                this.options.languageCode,
+                (delta) => this.emit("input_transcript.delta", delta),
+            );
+            for (const pcm of this.preBuffer) stream.append(pcm);
+            this.preBuffer = [];
+            this.preBufferLen = 0;
+            this.sttStream = stream;
+        } catch (e) {
+            // A failed open is not fatal: the turn falls back to batch STT.
+            this.logger.error('Failed to open streaming STT session — falling back to batch', e);
+        }
+    }
+
+    /** Hand the current streaming session to the turn and detach it. */
+    private takeSttStream(): ISttStream | null {
+        const stream = this.sttStream;
+        this.sttStream = null;
+        return stream;
+    }
+
+    private abortSttStream(): void {
+        try {
+            this.sttStream?.abort();
+        } catch { /* already dead */ }
+        this.sttStream = null;
+    }
+
     /** One spoken turn: STT the utterance, then answer it with audio. */
-    private async runAudioTurn(utterance: Buffer): Promise<void> {
+    private async runAudioTurn(utterance: Buffer, stream: ISttStream | null): Promise<void> {
         try {
             const started = Date.now();
-            const raw = await this.stt.transcribe(utterance, this.options.languageCode);
+            let raw: string;
+            if (stream) {
+                try {
+                    // The session heard the utterance live — just flush it.
+                    raw = await stream.finish();
+                } catch (e) {
+                    // The VAD kept the full clip, so a dropped socket only
+                    // costs one batch round-trip, not the turn.
+                    this.logger.error('Streaming STT failed — retrying the utterance as a batch', e);
+                    raw = await this.stt.transcribe(utterance, this.options.languageCode);
+                }
+            } else {
+                raw = await this.stt.transcribe(utterance, this.options.languageCode);
+            }
             const transcript = isBlankOrHallucinatedTranscript(raw) ? '' : raw.trim();
             this.logger.info(`STT ${(Date.now() - started)}ms: "${transcript}"`);
-            if (transcript) this.emit("input_transcript.delta", transcript);
+            // Streaming sessions already emitted their partials via onDelta.
+            if (transcript && !stream) this.emit("input_transcript.delta", transcript);
             this.emit("transcript.done", transcript);
 
             if (!transcript) {

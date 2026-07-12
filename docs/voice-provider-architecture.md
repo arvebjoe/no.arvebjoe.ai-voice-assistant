@@ -23,8 +23,10 @@ voice-assistant-device.mts
         ▼
 createVoiceProvider(homey, toolManager, options)   ← src/llm/voice-provider-factory.mts
         │  picks by the `voice_provider` setting
-        ├── OpenAIRealtimeProvider   (src/llm/providers/openai-realtime-agent.mts)
-        └── GeminiLiveProvider       (src/llm/providers/gemini-live-provider.mts)
+        ├── OpenAIRealtimeProvider    (src/llm/providers/openai-realtime-agent.mts)
+        ├── GeminiLiveProvider        (src/llm/providers/gemini-live-provider.mts)
+        ├── MistralRealtimeProvider   (src/llm/providers/mistral-realtime-provider.mts)
+        └── LocalPipelineProvider     (src/llm/providers/local-pipeline-provider.mts)
 ```
 
 Key files:
@@ -90,6 +92,19 @@ The original OpenAI Realtime WebSocket agent, now implementing the interface.
 24 kHz audio in/out; output modality switched live; back-compat names
 (`OpenAIRealtimeAgent`, `RealtimeOptions`, `RealtimeEvents`) preserved for tests.
 
+### MistralRealtimeProvider (`mistral-realtime`)
+First-class Mistral engine. Mistral has **no unified speech-to-speech realtime
+API** (only realtime *transcription* over websocket), so this provider is a
+thin `LocalPipelineProvider` subclass that hardwires the Mistral-native chain
+— Voxtral Realtime STT (streaming websocket, fed while the user talks via the
+`ISttClient.createStream` seam) → Mistral chat completions (tools) → Voxtral
+TTS — exactly Mistral's own voice-agent reference design. Key
+`mistral_api_key`, models `mistral_stt_realtime_model` / `mistral_model` /
+`mistral_tts_model`: the SAME settings the custom pipeline's Mistral backends
+use, so one account/key configuration serves both. Only `buildPipeline()` (and
+the key setting + voice list) differ from the base class; VAD, tool loop,
+sentence-by-sentence TTS and health checks are inherited.
+
 ### GeminiLiveProvider (`gemini-realtime`)
 Google Gemini Live API via the `@google/genai` SDK. Key `gemini_api_key`.
 
@@ -114,8 +129,10 @@ Google Gemini Live API via the `@google/genai` SDK. Key `gemini_api_key`.
 
 Global settings (Homey app settings, `settings/index.html`):
 
-- `voice_provider` — `openai-realtime` (default) or `gemini-realtime`.
-- `openai_api_key`, `gemini_api_key` — one per provider.
+- `voice_provider` — `openai-realtime` (default), `gemini-realtime`,
+  `mistral-realtime`, or `local`.
+- `openai_api_key`, `gemini_api_key`, `mistral_api_key` — one per provider
+  (the Mistral key is shared with the custom pipeline's Mistral stages).
 - Shared: `selected_voice`, `selected_language_code/name`, `ai_instructions`.
 
 `SettingsManager.getAvailableProviders()` lists the options for the UI; the
