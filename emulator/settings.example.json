@@ -20,7 +20,10 @@
     "_ESP_LOG_LEVEL_levels": "NONE, ERROR, WARN, INFO, CONFIG, DEBUG, VERBOSE, VERY_VERBOSE (or 0-7); empty/unknown = NONE",
     "ESP_LOG_LEVEL": "",
     "_AUDIO_FILE_TTL_MS": "ms a played audio file lingers before deletion; default 30000. Raise to keep debug recordings around longer.",
-    "AUDIO_FILE_TTL_MS": ""
+    "AUDIO_FILE_TTL_MS": "",
+    "_HE_SETTINGS": "settings web UI: port (default 8060) and bind interface (default 127.0.0.1 — localhost only; 0.0.0.0 exposes it, and your API keys, to the LAN)",
+    "HE_SETTINGS_PORT": "",
+    "HE_SETTINGS_HOST": ""
   },
   "geolocation": { "latitude": 59.9139, "longitude": 10.7522 },
   "timezone": "Europe/Oslo",

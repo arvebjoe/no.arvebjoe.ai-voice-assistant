@@ -50,9 +50,10 @@ export interface EmulatorConfig {
   devices: EmulatorDevice[];
   /**
    * Emulator-only environment variables read by the app code, e.g.
-   * `HE_HOST_IP` (advertised playback host) and `ESP_LOG_LEVEL`. Applied to
-   * process.env at load so you don't have to export them yourself. A real
-   * environment variable always wins over the settings.json value.
+   * `HE_HOST_IP` (advertised playback host), `ESP_LOG_LEVEL`, and the settings
+   * web UI's `HE_SETTINGS_PORT`/`HE_SETTINGS_HOST`. Applied to process.env at
+   * load so you don't have to export them yourself. A real environment
+   * variable always wins over the settings.json value.
    */
   env?: Record<string, string>;
 }

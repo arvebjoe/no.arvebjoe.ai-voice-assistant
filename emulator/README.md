@@ -15,6 +15,12 @@ Use it to:
   reproduce test cases without speaking.
 - **Find satellites on the LAN** and add them to the config (`discover`).
 - **Inspect dummy device state** to confirm the assistant did what you asked.
+- **Edit app settings in the real settings page** in a browser
+  (`http://localhost:8060/`) — saves apply live and persist to `settings.json`.
+- **Exercise the flow cards without building flows**: WHEN cards log to the
+  console when the app fires them; AND/THEN cards run from the console
+  (`and is-muted`, `then start-timer 90 pasta`) through the app's real
+  run-listeners.
 
 HE lives entirely under `emulator/` and is excluded from the app build
 (`tsconfig.json` → `exclude`) and from app packaging (`.homeyignore`). It never
@@ -55,12 +61,75 @@ mic               List available recordings
 discover [sec]    Scan the LAN for ESPHome voice satellites and add them to settings.json
 sats              List configured satellites; ▶ marks the one ask/say/speak/mic target
 use <name|#>      Switch the active satellite
+press <sat> [capability [value]]
+                  Only a satellite given: list all its capability values (● = pressable).
+                  With capability+value: drive the listener like the Homey app UI,
+                  e.g. `press 1 volume_set 0.5`, `press living volume_mute true`.
+                  Capability names match by unique prefix; the value is set only
+                  if the listener succeeds (Homey semantics).
 devices           List dummy devices + current capability values
 zones             List zones
 state <name|id>   Show one device's capabilities
+flow              List the app's flow cards; WHEN cards log automatically when fired (⚡)
+and <card>        Run an AND (condition) card on the active satellite; prints true/false
+then <card> [..]  Run a THEN (action) card on the active satellite
 set <key> <val>   Change a global setting on the fly (e.g. set selected_voice nova)
 help / quit
 ```
+
+## Flow cards (`flow`, `and`, `then`)
+
+The last Homey-only surface — flow cards — is emulated end to end. The fake
+`homey.flow` hands out real card objects, so the run-listeners
+`VoiceAssistantDriver` registers are the ones that run:
+
+- **WHEN (triggers)** are fired by the app itself (`timer-started/-finished/
+  -cancelled`, `button-pressed`) and each firing is logged with its tokens:
+  `⚡ WHEN [timer-finished] on 'Living Room PE'  tokens: {"name":"pasta","duration":90}`.
+- **AND (conditions)** run from the console and print the listener's verdict:
+  `and is-muted` → `→ false`.
+- **THEN (actions)** run from the console with arguments — positional in the
+  card's declared order, or `name=value`; the last text argument takes the
+  rest of the line, so no quoting is needed:
+  `then start-timer 90 pasta water` (a 90 s timer named "pasta water"),
+  `then speak-text Dinner is ready`, `then ask-agent-output-as-text what time is it`
+  (prints the returned flow tokens).
+
+Card ids can be shortened to any unique prefix (`then cancel`,
+`and timer`). `flow` lists every card with its arguments and tokens — the list
+is read live from `.homeycompose/flow/`, so new cards appear automatically.
+A full timer round-trip to try:
+
+```
+HE> then start-timer 5 pasta     ⚡ WHEN [timer-started] …
+HE> and timer-is-running         → true
+                                 ⚡ WHEN [timer-finished] …  (5 s later)
+HE> then cancel                  ⚡ WHEN [timer-cancelled] …
+```
+
+## Settings web UI
+
+HE hosts the app's **real** settings page (`settings/index.html`, unmodified)
+on `http://localhost:8060/` — the URL is printed in the startup banner. The
+page's `/homey.js` webview bridge (normally injected by Homey) is replaced by
+an emulator shim that maps the same `Homey.get/set/api` calls onto the running
+emulator:
+
+- **Loads** show the current values from the fake `homey.settings` (seeded from
+  `settings.json` → `global`).
+- **Saves** fire the normal settings events — `SettingsManager` picks them up
+  and the agent rebuilds live, exactly like a save on a real Homey — **and**
+  write through to `settings.json` → `global`, so they survive a restart.
+  (The console `set` command stays in-memory only, as before.)
+- `Homey.api` calls (`/voices`, `/feature-costs`, `/test-local-stage` — the
+  token-budget meter and the pipeline **Test** buttons) run against the app's
+  real `api.mts` handlers, so stage tests really probe your LAN services.
+
+By default the page is only reachable from the machine running HE — it hands
+out your API keys to anyone who can load it. Set `HE_SETTINGS_HOST=0.0.0.0`
+(e.g. in the `env` block) to expose it on the LAN, and `HE_SETTINGS_PORT` to
+move it off 8060. If the port can't be bound, HE logs a warning and keeps
+running without the web UI.
 
 ## Discovery (`discover`)
 
@@ -132,12 +201,15 @@ node --import tsx --import ./emulator/register.mjs ./emulator/main.mts
 |--------------|---------------------------------------------------------------------|
 | `HE_SETTINGS`| Path to an alternate settings file (defaults to `emulator/settings.json`). |
 | `HE_HOST_IP` | Override the host IP the app advertises in playback URLs. Set this when auto-detection picks the wrong interface (VPN/Docker/WSL/virtual adapter) and the satellite can't fetch the FLAC URL. Use the dev machine's LAN IP reachable by the satellite, e.g. `HE_HOST_IP=192.168.1.50 npm run emulator`. |
+| `HE_SETTINGS_PORT` | Port for the settings web UI (default `8060`). |
+| `HE_SETTINGS_HOST` | Interface the settings web UI binds (default `127.0.0.1` — localhost only, since the page exposes your API keys; `0.0.0.0` opens it to the LAN). |
 | `ESP_LOG_LEVEL` | Verbosity of the ESPHome native-API client log (e.g. `DEBUG`). |
 | `AUDIO_FILE_TTL_MS` | How long (ms) a played audio file lingers before deletion. Defaults to `30000`; raise it (the emulator ships `999000`) so `input_buffer_debug` recordings stick around long enough to inspect. |
 
-`HE_HOST_IP`, `ESP_LOG_LEVEL`, and `AUDIO_FILE_TTL_MS` can instead be set under
-the `env` block in `settings.json` (see above) so you don't have to export them
-on every run; an env var set on the command line still takes precedence.
+`HE_HOST_IP`, `ESP_LOG_LEVEL`, `AUDIO_FILE_TTL_MS`, `HE_SETTINGS_PORT`, and
+`HE_SETTINGS_HOST` can instead be set under the `env` block in `settings.json`
+(see above) so you don't have to export them on every run; an env var set on
+the command line still takes precedence.
 
 ## Notes / limitations
 
@@ -152,5 +224,5 @@ on every run; an env var set on the command line still takes precedence.
 - Audio files are written to the OS-resolved `/userdata/audio` (e.g.
   `C:\userdata\audio` on Windows), matching what the app's file-helper uses.
 - **Not supported:** Noise/encrypted ESPHome API (plaintext only, same as the
-  app) and the real Homey settings UI. Discovery here is the emulator's own
-  console flow, not Homey's pairing UI.
+  app). Discovery here is the emulator's own console flow, not Homey's pairing
+  UI — but the real settings page IS hosted (see "Settings web UI").
