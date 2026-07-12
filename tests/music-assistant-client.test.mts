@@ -110,6 +110,33 @@ describe('MusicAssistantClient', () => {
         await expect(client.sendCommand('anything')).resolves.toBe('ok');
     });
 
+    it('M3 — a stale socket closing does not fail commands pending on the new socket', async () => {
+        // Establish the first connection.
+        server.onCommand = (msg, socket) => {
+            socket.send(JSON.stringify({ message_id: msg.message_id, result: 'ok' }));
+        };
+        await client.sendCommand('ping');
+
+        // Reconfigure to a second server: disconnect() closes the old socket, but
+        // its 'close' event arrives asynchronously — while a command is already
+        // pending on the replacement socket (the reply is delayed to keep the
+        // window open). The stale close must not reject that command.
+        const server2 = new FakeMaServer();
+        await server2.start();
+        server2.onCommand = (msg, socket) => {
+            setTimeout(() => {
+                socket.send(JSON.stringify({ message_id: msg.message_id, result: 'ok2' }));
+            }, 75);
+        };
+        try {
+            client.configure('127.0.0.1', server2.port);
+            await expect(client.sendCommand('ping')).resolves.toBe('ok2');
+        } finally {
+            client.disconnect();
+            await server2.stop();
+        }
+    });
+
     it('maps players/all to the compact player shape', async () => {
         server.onCommand = (msg, socket) => {
             socket.send(JSON.stringify({

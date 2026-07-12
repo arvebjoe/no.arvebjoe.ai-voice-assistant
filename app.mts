@@ -41,7 +41,11 @@ export default class AiVoiceAssistantApp extends Homey.App implements AppService
     // Centralized settings manager (makes global settings accessible without this.homey)
     settingsManager.init(this.homey);
 
-    initAudioFolder();
+    // Awaited: the cleanup inside deletes EVERY file in the audio folder, so it
+    // must finish before devices come online and start writing reply audio — an
+    // unawaited cleanup could delete a just-written file, leaving the satellite
+    // a valid URL that 404s (code_review_2 M4).
+    await initAudioFolder();
 
     this.geoHelper = new GeoHelper(this.homey);
     await this.geoHelper.init();    
