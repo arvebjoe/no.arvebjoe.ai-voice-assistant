@@ -12,6 +12,7 @@ import { createInterface } from 'node:readline';
 import { getHomey } from './runtime/homey-context.mjs';
 import { world } from './runtime/fake-world.mjs';
 import { startAudioServer } from './runtime/audio-server.mjs';
+import { startSettingsWeb } from './runtime/settings-web.mjs';
 import { config, getSatellites, settingsPath, EmulatorSatellite } from './config.mjs';
 import { runDiscovery } from './runtime/discovery.mjs';
 import { listRecordings, loadRecording, resolveRecording, recordingsDir } from './runtime/recordings.mjs';
@@ -89,20 +90,27 @@ async function main(): Promise<void> {
   homey.app = app;
   await app.onInit();
 
-  // 2. One driver + device per configured satellite.
+  // 2. The settings web UI — the app's real settings page in a browser,
+  //    saving through to the fake homey.settings AND settings.json.
+  const settingsWebUrl = await startSettingsWeb(homey);
+
+  // 3. One driver + device per configured satellite.
   const booted: BootedSatellite[] = [];
   for (const sat of getSatellites()) {
     booted.push(await bootSatellite(sat));
   }
 
-  printBanner(booted);
+  printBanner(booted, settingsWebUrl);
   startRepl(booted, homey);
 }
 
 const settle = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
-function printBanner(booted: BootedSatellite[]): void {
+function printBanner(booted: BootedSatellite[], settingsWebUrl: string | null): void {
   console.log('\n---------------------------------------------------------------');
+  if (settingsWebUrl) {
+    console.log(`Settings UI: ${settingsWebUrl}  (saves write back to settings.json)`);
+  }
   if (booted.length === 0) {
     console.log('No satellites configured — run `discover` to find and add one.');
   } else {

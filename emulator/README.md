@@ -15,6 +15,8 @@ Use it to:
   reproduce test cases without speaking.
 - **Find satellites on the LAN** and add them to the config (`discover`).
 - **Inspect dummy device state** to confirm the assistant did what you asked.
+- **Edit app settings in the real settings page** in a browser
+  (`http://localhost:8060/`) — saves apply live and persist to `settings.json`.
 
 HE lives entirely under `emulator/` and is excluded from the app build
 (`tsconfig.json` → `exclude`) and from app packaging (`.homeyignore`). It never
@@ -61,6 +63,30 @@ state <name|id>   Show one device's capabilities
 set <key> <val>   Change a global setting on the fly (e.g. set selected_voice nova)
 help / quit
 ```
+
+## Settings web UI
+
+HE hosts the app's **real** settings page (`settings/index.html`, unmodified)
+on `http://localhost:8060/` — the URL is printed in the startup banner. The
+page's `/homey.js` webview bridge (normally injected by Homey) is replaced by
+an emulator shim that maps the same `Homey.get/set/api` calls onto the running
+emulator:
+
+- **Loads** show the current values from the fake `homey.settings` (seeded from
+  `settings.json` → `global`).
+- **Saves** fire the normal settings events — `SettingsManager` picks them up
+  and the agent rebuilds live, exactly like a save on a real Homey — **and**
+  write through to `settings.json` → `global`, so they survive a restart.
+  (The console `set` command stays in-memory only, as before.)
+- `Homey.api` calls (`/voices`, `/feature-costs`, `/test-local-stage` — the
+  token-budget meter and the pipeline **Test** buttons) run against the app's
+  real `api.mts` handlers, so stage tests really probe your LAN services.
+
+By default the page is only reachable from the machine running HE — it hands
+out your API keys to anyone who can load it. Set `HE_SETTINGS_HOST=0.0.0.0`
+(e.g. in the `env` block) to expose it on the LAN, and `HE_SETTINGS_PORT` to
+move it off 8060. If the port can't be bound, HE logs a warning and keeps
+running without the web UI.
 
 ## Discovery (`discover`)
 
@@ -132,12 +158,15 @@ node --import tsx --import ./emulator/register.mjs ./emulator/main.mts
 |--------------|---------------------------------------------------------------------|
 | `HE_SETTINGS`| Path to an alternate settings file (defaults to `emulator/settings.json`). |
 | `HE_HOST_IP` | Override the host IP the app advertises in playback URLs. Set this when auto-detection picks the wrong interface (VPN/Docker/WSL/virtual adapter) and the satellite can't fetch the FLAC URL. Use the dev machine's LAN IP reachable by the satellite, e.g. `HE_HOST_IP=192.168.1.50 npm run emulator`. |
+| `HE_SETTINGS_PORT` | Port for the settings web UI (default `8060`). |
+| `HE_SETTINGS_HOST` | Interface the settings web UI binds (default `127.0.0.1` — localhost only, since the page exposes your API keys; `0.0.0.0` opens it to the LAN). |
 | `ESP_LOG_LEVEL` | Verbosity of the ESPHome native-API client log (e.g. `DEBUG`). |
 | `AUDIO_FILE_TTL_MS` | How long (ms) a played audio file lingers before deletion. Defaults to `30000`; raise it (the emulator ships `999000`) so `input_buffer_debug` recordings stick around long enough to inspect. |
 
-`HE_HOST_IP`, `ESP_LOG_LEVEL`, and `AUDIO_FILE_TTL_MS` can instead be set under
-the `env` block in `settings.json` (see above) so you don't have to export them
-on every run; an env var set on the command line still takes precedence.
+`HE_HOST_IP`, `ESP_LOG_LEVEL`, `AUDIO_FILE_TTL_MS`, `HE_SETTINGS_PORT`, and
+`HE_SETTINGS_HOST` can instead be set under the `env` block in `settings.json`
+(see above) so you don't have to export them on every run; an env var set on
+the command line still takes precedence.
 
 ## Notes / limitations
 
@@ -152,5 +181,5 @@ on every run; an env var set on the command line still takes precedence.
 - Audio files are written to the OS-resolved `/userdata/audio` (e.g.
   `C:\userdata\audio` on Windows), matching what the app's file-helper uses.
 - **Not supported:** Noise/encrypted ESPHome API (plaintext only, same as the
-  app) and the real Homey settings UI. Discovery here is the emulator's own
-  console flow, not Homey's pairing UI.
+  app). Discovery here is the emulator's own console flow, not Homey's pairing
+  UI — but the real settings page IS hosted (see "Settings web UI").
