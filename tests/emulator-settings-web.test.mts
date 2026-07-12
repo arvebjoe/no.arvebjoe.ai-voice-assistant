@@ -88,6 +88,13 @@ describe('settings web UI', () => {
     }
   });
 
+  it('the shim bootstraps the page by calling onHomeyReady on DOM ready', async () => {
+    const js = await (await fetch(`${base}/homey.js`)).text();
+    // Without this call the page never attaches its event listeners.
+    expect(js).toContain('window.onHomeyReady(window.Homey)');
+    expect(js).toContain('DOMContentLoaded');
+  });
+
   it('Homey.get reads from the fake settings store', async () => {
     const res = await fetch(`${base}/he/settings/openai_api_key`);
     expect(await res.json()).toEqual({ value: 'sk-test' });

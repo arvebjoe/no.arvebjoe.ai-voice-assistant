@@ -103,6 +103,17 @@ const HOMEY_JS_SHIM = `(function () {
       if (cb) cb(null, ok);
     }
   };
+
+  // The real homey.js calls the page's onHomeyReady(Homey) once the DOM is
+  // ready — the settings page attaches ALL its event listeners and loads its
+  // values inside that callback, so without this call the page is inert.
+  // This shim is loaded from <head>, before onHomeyReady is defined, so wait
+  // for DOMContentLoaded.
+  function boot() {
+    if (typeof window.onHomeyReady === 'function') window.onHomeyReady(window.Homey);
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
 })();
 `;
 
