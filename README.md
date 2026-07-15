@@ -7,8 +7,9 @@ Talk to your smart home. This Homey app connects small, inexpensive voice device
 assistant that controls your Homey devices, answers questions, plays music, runs timers, and
 speaks back — in your language.
 
-You choose the brain: **OpenAI**, **Google Gemini**, or a fully **local / self-hosted** pipeline
-(Whisper + Ollama + Piper and friends) where no audio ever leaves your network.
+You choose the brain: **OpenAI**, **Google Gemini**, **Mistral** (Voxtral), or a fully
+**local / self-hosted** pipeline (Whisper + Ollama + Piper and friends) where no audio ever
+leaves your network.
 
 > **Status:** Active development. Open work lives in [TODO.md](./TODO.md); finished work is
 > archived in [COMPLETED.md](./COMPLETED.md).
@@ -161,6 +162,23 @@ The same real-time pipeline, powered by Gemini. Get an API key:
 2. **Create API key** and copy it.
 3. Paste it into the app settings in Homey.
 
+### Mistral (Voxtral, cloud)
+
+The European alternative, everything on one Mistral account and one API key. Mistral has no
+single speech-to-speech API; this engine chains Mistral's own realtime pieces the way their
+voice-agent reference design does: **Voxtral Realtime** speech-to-text (a streaming websocket
+that transcribes *while you talk*, sub-500 ms), a **Mistral chat model** for the reasoning and
+smart-home tools (default `mistral-small-latest`, configurable), and **Voxtral TTS** for the
+reply, with a live voice library to pick from. Get an API key:
+
+1. Sign in at [https://console.mistral.ai/](https://console.mistral.ai/)
+2. Create an API key and copy it.
+3. Paste it into the app settings in Homey.
+
+The same Mistral key and models also serve the Custom pipeline's Mistral backends, so you can
+later switch to mix-and-match (e.g. Voxtral speech-to-text with a local Ollama model) without
+reconfiguring anything.
+
 ### Local / self-hosted (private)
 
 Run the whole pipeline on your own hardware — speech never has to leave your LAN. The pipeline
@@ -184,8 +202,8 @@ trade-off between memory use and headroom (see [docs/cost-of-growth.md](./docs/c
 LM Studio has no such setting here — its context window is chosen in LM Studio when you load the
 model, and the app reads it back live so the token budget bar can tell you whether everything fits.
 
-Smart-home control, weather, timers and the rest of the tool set work the same on all three
-engines.
+Smart-home control, weather, timers and the rest of the tool set work the same on every
+engine.
 
 ---
 
@@ -240,8 +258,9 @@ length you configured when loading the model).
 **General**
 
 * **Language** — the language you'll speak with the assistant.
-* **AI provider** — **OpenAI Realtime**, **Google Gemini Live**, or **Custom pipeline**.
-* **API key** — for the selected cloud provider (OpenAI or Gemini).
+* **AI provider** — **OpenAI Realtime**, **Google Gemini Live**, **Mistral (Voxtral)**, or
+  **Custom pipeline**.
+* **API key** — for the selected cloud provider (OpenAI, Gemini or Mistral).
 * **Model quality** *(OpenAI only)* — **Full** for the best understanding, **Mini** for a much
   cheaper, slightly faster model.
 * **Voice** — the voice the assistant speaks with. The list adapts to the selected provider
@@ -324,9 +343,10 @@ down live.
 1. **Wake & stream.** The wake word is detected *on the device*. It then streams raw microphone
    audio (16 kHz PCM) to the Homey app over the ESPHome native API — the same LAN protocol Home
    Assistant uses, so stock firmware just works.
-2. **Understand.** The app forwards the audio to the selected engine. Cloud engines (OpenAI /
-   Gemini) do speech detection, transcription and reasoning in one real-time session; the local
-   engine chains its own voice-activity detection → STT → LLM.
+2. **Understand.** The app forwards the audio to the selected engine. OpenAI and Gemini do
+   speech detection, transcription and reasoning in one real-time session; the Mistral and
+   Custom pipeline engines run voice-activity detection in the app and chain STT → LLM
+   (Mistral's Voxtral Realtime STT transcribes over a streaming websocket while you talk).
 3. **Act.** The AI doesn't just chat — it gets a set of **tools**: query and control your Homey
    devices and zones, read the weather and local time, and manage timers. When you say *"turn off
    the kitchen lights"*, the model calls a tool and the app executes it through Homey's API.
@@ -359,9 +379,9 @@ entirely on the engine you pick — with the local pipeline, nothing does.
 ## Privacy & security
 
 * Your API keys stay in your Homey app settings; sensitive values are masked in the app logs.
-* With a **cloud** engine, audio and text are sent to **OpenAI** or **Google** (or **Mistral**,
-  if selected for a local-pipeline stage) to fulfil your requests. Don't use those engines if
-  that's not acceptable for your environment.
+* With a **cloud** engine, audio and text are sent to **OpenAI**, **Google** or **Mistral**
+  (whichever you selected — as the provider or for a Custom pipeline stage) to fulfil your
+  requests. Don't use those engines if that's not acceptable for your environment.
 * With a fully **local** pipeline, audio and text stay on your own network.
 
 ---

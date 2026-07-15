@@ -330,6 +330,73 @@ describe('LocalPipelineProvider', () => {
         expect(messages[messages.length - 1]).toMatchObject({ role: 'user', content: 'say hello' });
     });
 
+    it('streams the utterance through a live STT session when the backend supports one', async () => {
+        const append = vi.fn();
+        const abort = vi.fn();
+        const finish = vi.fn(async () => 'turn on the light');
+        const createStream = vi.fn((_lang: string, onDelta?: (t: string) => void) => {
+            onDelta?.('turn on ');
+            onDelta?.('the light');
+            return { append, finish, abort };
+        });
+        (provider as any).stt.createStream = createStream;
+
+        const deltas: string[] = [];
+        (provider as any).on('input_transcript.delta', (d: string) => deltas.push(d));
+        const transcriptDone = once(provider, 'transcript.done');
+        const responseDone = once(provider, 'response.done');
+
+        feedAll(provider, silence(200));
+        feedAll(provider, speech(600));
+        feedAll(provider, silence(900));
+
+        const [transcript] = await transcriptDone;
+        expect(transcript).toBe('turn on the light');
+        await responseDone;
+
+        // Session opened once at speech start, fed live, flushed at the end —
+        // the batch transcribe() path was never taken.
+        expect(createStream).toHaveBeenCalledTimes(1);
+        expect(createStream.mock.calls[0][0]).toBe('en');
+        expect(append).toHaveBeenCalled();
+        expect(finish).toHaveBeenCalledTimes(1);
+        expect(abort).not.toHaveBeenCalled();
+        expect(sttTranscribe).not.toHaveBeenCalled();
+        // The user transcript streamed in as deltas (no duplicate final delta).
+        expect(deltas.join('')).toBe('turn on the light');
+    });
+
+    it('falls back to batch STT when the streaming session fails', async () => {
+        (provider as any).stt.createStream = vi.fn(() => ({
+            append: vi.fn(),
+            finish: vi.fn(async () => { throw new Error('socket died mid-stream'); }),
+            abort: vi.fn(),
+        }));
+        const transcriptDone = once(provider, 'transcript.done');
+        feedAll(provider, speech(600));
+        feedAll(provider, silence(900));
+        const [transcript] = await transcriptDone;
+        // The VAD kept the clip; the batch stub answered.
+        expect(transcript).toBe('turn on the light');
+        expect(sttTranscribe).toHaveBeenCalledTimes(1);
+    });
+
+    it('aborts a dangling STT session on VAD timeout (false start, then nothing)', async () => {
+        const abort = vi.fn();
+        const finish = vi.fn(async () => '');
+        (provider as any).stt.createStream = vi.fn(() => ({ append: vi.fn(), finish, abort }));
+
+        const transcriptDone = once(provider, 'transcript.done', 5000);
+        // A click shorter than minSpeechMs opens the session (speechStart) but
+        // folds back into silence; the turn then times out with it dangling.
+        feedAll(provider, speech(100));
+        feedAll(provider, silence(9000));
+        const [transcript] = await transcriptDone;
+        expect(transcript).toBe('');
+        expect(abort).toHaveBeenCalledTimes(1);
+        expect(finish).not.toHaveBeenCalled();
+    });
+
     it('emits error (and no response.done) when a pipeline stage fails', async () => {
         sttTranscribe.mockRejectedValueOnce(new Error('whisper down'));
         const err = once(provider, 'error');

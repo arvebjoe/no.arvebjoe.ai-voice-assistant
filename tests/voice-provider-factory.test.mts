@@ -7,6 +7,7 @@ import {
 import { OpenAIRealtimeProvider } from '../src/llm/providers/openai-realtime-agent.mjs';
 import { GeminiLiveProvider } from '../src/llm/providers/gemini-live-provider.mjs';
 import { LocalPipelineProvider } from '../src/llm/providers/local-pipeline-provider.mjs';
+import { MistralRealtimeProvider } from '../src/llm/providers/mistral-realtime-provider.mjs';
 import { settingsManager } from '../src/settings/settings-manager.mjs';
 import { MockHomey } from './mocks/mock-homey.mjs';
 
@@ -22,6 +23,7 @@ describe('voice-provider-factory', () => {
         homey = new MockHomey();
         homey.setMockSetting('openai_api_key', 'openai-secret');
         homey.setMockSetting('gemini_api_key', 'gemini-secret');
+        homey.setMockSetting('mistral_api_key', 'mistral-secret');
         settingsManager.init(homey as any);
     });
 
@@ -49,6 +51,18 @@ describe('voice-provider-factory', () => {
         homey.setMockSetting('voice_provider', 'gemini-realtime');
         const provider = createVoiceProvider(homey as any, toolManager, {} as any, 'openai-realtime');
         expect(provider).toBeInstanceOf(OpenAIRealtimeProvider);
+    });
+
+    it('constructs the Mistral provider on request and resolves the shared Mistral key', () => {
+        const opts: any = {};
+        const provider = createVoiceProvider(homey as any, toolManager, opts, 'mistral-realtime');
+        expect(provider).toBeInstanceOf(MistralRealtimeProvider);
+        // The Mistral provider IS a pipeline under the hood (hardwired stages).
+        expect(provider).toBeInstanceOf(LocalPipelineProvider);
+        expect(opts.apiKey).toBe('mistral-secret');
+        expect(provider.apiKeySettingKey).toBe('mistral_api_key');
+        expect(provider.hasApiKey()).toBe(true);
+        (provider as MistralRealtimeProvider).destroy();
     });
 
     it('constructs the keyless local provider on request', () => {
@@ -88,6 +102,14 @@ describe('voice-provider-factory', () => {
 
         it('falls back to the OpenAI list for an unknown provider id', async () => {
             expect(await getVoicesForProvider('nope')).toEqual(await getVoicesForProvider('openai-realtime'));
+        });
+
+        it('serves the Voxtral sentinel for the Mistral provider when the voice list is unavailable', async () => {
+            // No live fetch in unit tests: the list probe fails and the
+            // dropdown still gets its single sentinel entry.
+            homey.setMockSetting('mistral_api_key', '');
+            const voices = await getVoicesForProvider('mistral-realtime');
+            expect(voices.map((v) => v.value)).toEqual(['']);
         });
     });
 });

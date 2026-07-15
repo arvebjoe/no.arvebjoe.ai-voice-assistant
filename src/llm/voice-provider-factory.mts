@@ -2,6 +2,7 @@ import { IVoiceProvider, VoiceProviderOptions } from './voice-provider.mjs';
 import { OpenAIRealtimeProvider } from './providers/openai-realtime-agent.mjs';
 import { GeminiLiveProvider } from './providers/gemini-live-provider.mjs';
 import { LocalPipelineProvider } from './providers/local-pipeline-provider.mjs';
+import { MistralRealtimeProvider } from './providers/mistral-realtime-provider.mjs';
 import { ToolManager } from './tool-manager.mjs';
 import { settingsManager } from '../settings/settings-manager.mjs';
 import { createLogger } from '../helpers/logger.mjs';
@@ -15,6 +16,8 @@ export const DEFAULT_VOICE_PROVIDER = 'openai-realtime';
 const API_KEY_SETTING: Record<string, string> = {
     'openai-realtime': 'openai_api_key',
     'gemini-realtime': 'gemini_api_key',
+    // Shared with the custom pipeline's Mistral-backed stages — one key.
+    'mistral-realtime': 'mistral_api_key',
     // The local pipeline is keyless (this round): the setting never exists, so
     // the resolved key is always '' and the device's key checks stay inert.
     'local': 'local_api_key',
@@ -34,6 +37,8 @@ export async function getVoicesForProvider(providerId: string, localTtsBackend?:
             return OpenAIRealtimeProvider.getAvailableVoices();
         case 'gemini-realtime':
             return GeminiLiveProvider.getAvailableVoices();
+        case 'mistral-realtime':
+            return MistralRealtimeProvider.getAvailableVoices();
         case 'local':
             return LocalPipelineProvider.getAvailableVoices(localTtsBackend);
         default:
@@ -70,6 +75,9 @@ export function createVoiceProvider(
 
         case 'gemini-realtime':
             return new GeminiLiveProvider(homey, toolManager, options);
+
+        case 'mistral-realtime':
+            return new MistralRealtimeProvider(homey, toolManager, options);
 
         case 'local':
             return new LocalPipelineProvider(homey, toolManager, options);

@@ -3,6 +3,7 @@ Turn ESPHome voice assistant devices into a natural voice interface for Homey. S
 You choose the AI engine:
     - OpenAI Realtime — low-latency cloud speech-to-speech, with a choice between the full model (best quality) and the mini model (cheaper and faster).
     - Google Gemini Live — the same real-time pipeline, powered by Gemini.
+    - Mistral (Voxtral) — the European alternative on one API key: streaming Voxtral speech recognition that transcribes while you talk, a Mistral chat model, and Voxtral voices.
     - Local / self-hosted — Whisper, Voxtral Realtime, Ollama, LM Studio, Piper, Wyoming and any OpenAI-compatible server. Mix and match per stage; with a fully local setup no audio leaves your network.
 
 The assistant can also search the web for current information (opening hours, departures, what's on at the cinema) using OpenAI web search or the Brave Search API, and it can tell you what it is able to do when you ask for help.
@@ -18,7 +19,7 @@ Supported devices:
 
 Requirements:
     - A compatible ESPHome voice device with microphone and speaker
-    - An API key for your chosen cloud engine (OpenAI or Google Gemini), or your own local AI services
+    - An API key for your chosen cloud engine (OpenAI, Google Gemini or Mistral), or your own local AI services
     - Optional: a Music Assistant server for music playback
 
 Useful Flow cards:
