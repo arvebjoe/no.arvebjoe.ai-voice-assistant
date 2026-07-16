@@ -3,6 +3,7 @@ import { EspVoiceAssistantClient } from '../voice_assistant/esp-voice-assistant-
 import { PairDevice } from '../helpers/interfaces.mjs';
 import VoiceAssistantDevice from './voice-assistant-device.mjs';
 import { createLogger } from '../helpers/logger.mjs';
+import { registerImprovPairHandlers } from '../ble/improv-pair-handlers.mjs';
 
 
 export default abstract class VoiceAssistantDriver extends Homey.Driver {
@@ -257,6 +258,27 @@ export default abstract class VoiceAssistantDriver extends Homey.Driver {
         this.logger.info(`Checked ${results.length} devices for voice capabilities`, undefined, { results });
 
         return results;
+    }
+
+    /**
+     * Custom pair flow: the "start" view offers the normal network search
+     * (list_devices, backed by onPairListDevices below) or the Bluetooth
+     * Wi-Fi setup wizard (improv_setup view) for satellites that are not on
+     * the network yet. The Improv handlers live in src/ble/ so they stay
+     * unit-testable without the Homey SDK.
+     */
+    async onPair(session: Homey.Driver.PairSession): Promise<void> {
+        session.setHandler('list_devices', async () => this.onPairListDevices());
+
+        const improv = registerImprovPairHandlers({
+            session,
+            ble: this.homey.ble,
+        });
+
+        // Fired when the pair dialog closes — never leave a BLE connection open.
+        session.setHandler('disconnect', async () => {
+            await improv.dispose();
+        });
     }
 
     /**

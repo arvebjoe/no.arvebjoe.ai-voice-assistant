@@ -1,0 +1,310 @@
+<!-- Shared pair view: identical copy exists in the other voice-assistant driver's
+     pair/ folder (Homey requires pair views inside each driver directory).
+     Keep both copies in sync when editing.
+
+     Bluetooth Wi-Fi setup wizard (Improv over BLE). Backend handlers are
+     registered by registerImprovPairHandlers() in src/ble/improv-pair-handlers.mts:
+       improv_scan / improv_connect / improv_provision / improv_identify / improv_disconnect
+     Live progress arrives via the 'improv_status' event ({ state, error }). -->
+<style>
+  .improv {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 16px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 14px;
+  }
+  .improv .step { display: none; }
+  .improv .step.active { display: block; }
+  .improv h3 {
+    margin: 0 0 10px;
+    font-size: 16px;
+    text-align: center;
+  }
+  .improv p { margin: 6px 0; }
+  .improv .muted { font-size: 12px; opacity: 0.65; }
+  .improv .center { text-align: center; }
+  .improv .spinner {
+    margin: 18px auto;
+    width: 28px;
+    height: 28px;
+    border: 3px solid rgba(128, 128, 128, 0.25);
+    border-top-color: currentColor;
+    border-radius: 50%;
+    animation: improv-spin 0.9s linear infinite;
+  }
+  @keyframes improv-spin { to { transform: rotate(360deg); } }
+  .improv .device-list { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+  .improv button.device,
+  .improv button.action,
+  .improv button.secondary {
+    display: block;
+    width: 100%;
+    padding: 12px 14px;
+    border-radius: 10px;
+    border: 1px solid rgba(128, 128, 128, 0.35);
+    background: rgba(128, 128, 128, 0.08);
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+    text-align: left;
+  }
+  .improv button.device b { display: block; font-size: 14px; }
+  .improv button.device span { display: block; font-size: 12px; opacity: 0.7; }
+  .improv button.action {
+    text-align: center;
+    font-weight: 600;
+    background: #2f80ed;
+    border-color: #2f80ed;
+    color: #fff;
+  }
+  .improv button.action:disabled { opacity: 0.5; cursor: default; }
+  .improv button.secondary { text-align: center; }
+  .improv label { display: block; font-size: 12px; opacity: 0.75; margin: 10px 0 4px; }
+  .improv input[type="text"], .improv input[type="password"] {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px solid rgba(128, 128, 128, 0.4);
+    background: transparent;
+    color: inherit;
+    font: inherit;
+  }
+  .improv .row { display: flex; align-items: center; gap: 6px; margin-top: 6px; font-size: 12px; }
+  .improv .error {
+    color: #d94c4c;
+    font-size: 13px;
+    margin-top: 8px;
+    display: none;
+  }
+  .improv .error.visible { display: block; }
+  .improv .success-icon { font-size: 40px; text-align: center; margin: 10px 0; }
+  .improv a.linkish {
+    background: none; border: none; padding: 0;
+    color: #2f80ed; text-decoration: underline; cursor: pointer; font-size: 13px;
+  }
+</style>
+
+<div class="improv">
+
+  <div class="step" id="step-scanning">
+    <h3>Searching over Bluetooth&hellip;</h3>
+    <div class="spinner"></div>
+    <p class="muted center">Looking for devices in Wi-Fi setup mode. Make sure the device is powered on and close to your Homey.</p>
+  </div>
+
+  <div class="step" id="step-list">
+    <h3>Choose your device</h3>
+    <div class="device-list" id="device-list"></div>
+    <p></p>
+    <button class="secondary" id="btn-rescan">Scan again</button>
+    <p class="muted">A device only appears here while it is <b>not</b> connected to Wi-Fi. Already set up? Go back and use &ldquo;Find it on my network&rdquo;.</p>
+  </div>
+
+  <div class="step" id="step-none">
+    <h3>No devices found</h3>
+    <p>No device in Wi-Fi setup mode was found over Bluetooth.</p>
+    <p class="muted">Checklist: the device is powered on &middot; it is near your Homey (Bluetooth range) &middot; it is not already connected to Wi-Fi (a connected device turns Bluetooth setup off) &middot; it is not being set up by another app right now.</p>
+    <p></p>
+    <button class="action" id="btn-rescan-none">Scan again</button>
+  </div>
+
+  <div class="step" id="step-connecting">
+    <h3>Connecting&hellip;</h3>
+    <div class="spinner"></div>
+    <p class="muted center" id="connecting-name"></p>
+  </div>
+
+  <div class="step" id="step-credentials">
+    <h3 id="cred-title">Wi-Fi settings</h3>
+    <p class="muted">Enter the Wi-Fi network this device should join. <b>2.4&nbsp;GHz networks only.</b></p>
+    <label for="improv-ssid">Network name (SSID)</label>
+    <input type="text" id="improv-ssid" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" />
+    <label for="improv-password">Password</label>
+    <input type="password" id="improv-password" autocomplete="off" />
+    <div class="row">
+      <input type="checkbox" id="improv-showpw" />
+      <label for="improv-showpw" style="margin:0;">Show password</label>
+    </div>
+    <p class="center" id="identify-row" style="display:none;">
+      <a class="linkish" id="btn-identify">Not sure it&rsquo;s the right device? Make it blink</a>
+    </p>
+    <div class="error" id="cred-error"></div>
+    <p></p>
+    <button class="action" id="btn-provision">Connect device to Wi-Fi</button>
+  </div>
+
+  <div class="step" id="step-working">
+    <h3>Setting up Wi-Fi</h3>
+    <div class="spinner"></div>
+    <p class="center" id="working-status">Sending Wi-Fi credentials&hellip;</p>
+    <p class="muted center" id="working-hint"></p>
+  </div>
+
+  <div class="step" id="step-done">
+    <div class="success-icon">&#10003;</div>
+    <h3>Device is on your Wi-Fi!</h3>
+    <p class="muted center">It can take up to a minute for the device to show up on the network. The next screen keeps searching &mdash; leave it open until your device appears.</p>
+    <p></p>
+    <button class="action" id="btn-continue">Continue &mdash; find it on the network</button>
+  </div>
+
+  <div class="step" id="step-already">
+    <h3>Already set up</h3>
+    <p>This device reports that it is already connected to Wi-Fi.</p>
+    <p class="muted">Use &ldquo;Find it on my network&rdquo; instead. If you want to move it to a different network, factory-reset the device first.</p>
+    <p></p>
+    <button class="action" id="btn-goto-lan">Find it on my network</button>
+    <button class="secondary" id="btn-rescan-already" style="margin-top:8px;">Scan again</button>
+  </div>
+
+</div>
+
+<script type="application/javascript">
+  (function () {
+    // Improv state bytes (see src/ble/improv-ble-client.mts)
+    var STATE_AWAITING_AUTHORIZATION = 1;
+    var STATE_PROVISIONING = 3;
+    var STATE_PROVISIONED = 4;
+
+    var currentStep = null;
+    var working = false;
+
+    function $(id) { return document.getElementById(id); }
+
+    function show(step) {
+      currentStep = step;
+      var steps = document.querySelectorAll('.improv .step');
+      for (var i = 0; i < steps.length; i++) steps[i].classList.remove('active');
+      $('step-' + step).classList.add('active');
+    }
+
+    function setCredError(message) {
+      var el = $('cred-error');
+      el.textContent = message || '';
+      el.classList.toggle('visible', !!message);
+    }
+
+    function scan() {
+      show('scanning');
+      Homey.emit('improv_scan')
+        .then(function (res) {
+          if (!res || res.ok !== true) {
+            return Homey.alert((res && res.message) || 'Bluetooth scan failed.')
+              .then(function () { show('none'); });
+          }
+          if (!res.devices.length) { show('none'); return; }
+          renderList(res.devices);
+          show('list');
+        })
+        .catch(function (err) {
+          Homey.alert(String(err && err.message || err || 'Bluetooth scan failed.'));
+          show('none');
+        });
+    }
+
+    function renderList(devices) {
+      var list = $('device-list');
+      list.innerHTML = '';
+      devices.forEach(function (device) {
+        var btn = document.createElement('button');
+        btn.className = 'device';
+        var title = document.createElement('b');
+        title.textContent = device.name;
+        var sub = document.createElement('span');
+        var details = [];
+        if (device.address) details.push(device.address);
+        if (typeof device.rssi === 'number') details.push(device.rssi + ' dBm');
+        sub.textContent = details.join(' · ');
+        btn.appendChild(title);
+        btn.appendChild(sub);
+        btn.addEventListener('click', function () { connect(device); });
+        list.appendChild(btn);
+      });
+    }
+
+    function connect(device) {
+      $('connecting-name').textContent = device.name;
+      show('connecting');
+      Homey.emit('improv_connect', { id: device.id })
+        .then(function (res) {
+          if (!res || res.ok !== true) {
+            return Homey.alert((res && res.message) || 'Could not connect to the device.')
+              .then(scan);
+          }
+          if (res.alreadyProvisioned) { show('already'); return; }
+          $('cred-title').textContent = 'Wi-Fi settings for ' + res.name;
+          $('identify-row').style.display = res.supportsIdentify ? '' : 'none';
+          setCredError('');
+          show('credentials');
+        })
+        .catch(function (err) {
+          Homey.alert(String(err && err.message || err || 'Could not connect to the device.'));
+          scan();
+        });
+    }
+
+    function provision() {
+      var ssid = $('improv-ssid').value.trim();
+      var password = $('improv-password').value;
+      if (!ssid) { setCredError('Enter the Wi-Fi network name (SSID).'); return; }
+      setCredError('');
+      working = true;
+      $('working-status').textContent = 'Sending Wi-Fi credentials…';
+      $('working-hint').textContent = '';
+      show('working');
+
+      Homey.emit('improv_provision', { ssid: ssid, password: password })
+        .then(function (res) {
+          working = false;
+          if (res && res.ok === true) { show('done'); return; }
+          var code = res && res.code;
+          if (code === 'unable_to_connect' || code === 'invalid_input') {
+            setCredError((res && res.message) || 'The device could not join the network.');
+            show('credentials');
+          } else if (code === 'authorization_timeout' || code === 'not_authorized') {
+            setCredError((res && res.message) || 'Setup was not authorized on the device.');
+            show('credentials');
+          } else {
+            Homey.alert((res && res.message) || 'Wi-Fi setup failed.').then(scan);
+          }
+        })
+        .catch(function (err) {
+          working = false;
+          Homey.alert(String(err && err.message || err || 'Wi-Fi setup failed.')).then(scan);
+        });
+    }
+
+    // Live progress while provision() runs on the driver side
+    Homey.on('improv_status', function (status) {
+      if (!working || currentStep !== 'working' || !status) return;
+      if (status.state === STATE_AWAITING_AUTHORIZATION) {
+        $('working-status').textContent = 'Waiting for permission…';
+        $('working-hint').textContent = 'Press the button on the device to allow Wi-Fi setup (on the Voice PE this is the center button).';
+      } else if (status.state === STATE_PROVISIONING) {
+        $('working-status').textContent = 'Device is joining the Wi-Fi network…';
+        $('working-hint').textContent = '';
+      } else if (status.state === STATE_PROVISIONED) {
+        $('working-status').textContent = 'Connected!';
+        $('working-hint').textContent = '';
+      }
+    });
+
+    $('btn-rescan').addEventListener('click', scan);
+    $('btn-rescan-none').addEventListener('click', scan);
+    $('btn-rescan-already').addEventListener('click', scan);
+    $('btn-provision').addEventListener('click', provision);
+    $('btn-continue').addEventListener('click', function () { Homey.showView('list_devices'); });
+    $('btn-goto-lan').addEventListener('click', function () { Homey.showView('list_devices'); });
+    $('improv-showpw').addEventListener('change', function () {
+      $('improv-password').type = this.checked ? 'text' : 'password';
+    });
+    $('btn-identify').addEventListener('click', function () {
+      Homey.emit('improv_identify').catch(function () { });
+    });
+
+    scan();
+  })();
+</script>

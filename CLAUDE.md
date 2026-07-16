@@ -40,6 +40,7 @@ Both drivers are thin subclasses of shared base classes in `src/homey/`:
 - `drivers/home-assistant-voice-preview-edition/` and `drivers/xiaozhi-ai/` each have a `device.mts` + `driver.mts` that extend `VoiceAssistantDevice` / `VoiceAssistantDriver`.
 - All real logic lives in `src/homey/voice-assistant-device.mts` and `voice-assistant-driver.mts`. Subclasses only set per-model flags like `needDelayedPlayback` and `thisAssistantType`.
 - Flow card run-listeners are registered **once** across all driver instances (guarded by a static `flowCardsInitialized` flag in `VoiceAssistantDriver`).
+- **Pairing** (PE + TR drivers): a custom `onPair` flow — a `start` choice view, then either the system `list_devices` (mDNS, backed by `onPairListDevices`) or a **Bluetooth Wi-Fi setup wizard** (`pair/improv_setup.html`, identical copies per driver — keep in sync) that provisions un-networked devices via **Improv over BLE**. Protocol client: `src/ble/improv-ble-client.mts`; pair-socket wiring: `src/ble/improv-pair-handlers.mts` (unit-tested with fakes in `tests/mocks/mock-improv-ble.mts`). Needs the `homey:wireless:ble` permission. Reference: `docs/wifi-provisioning-improv-ble.md`.
 
 ### Voice pipeline (the core data flow)
 

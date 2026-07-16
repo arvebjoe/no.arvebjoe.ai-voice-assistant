@@ -1,0 +1,70 @@
+<!-- Shared pair view: identical copy exists in the other voice-assistant driver's
+     pair/ folder (Homey requires pair views inside each driver directory).
+     Keep both copies in sync when editing. -->
+<style>
+  .va-start {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 16px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+  .va-start p.lead {
+    margin: 4px 0 8px;
+    text-align: center;
+    font-size: 15px;
+  }
+  .va-start button.choice {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 14px 16px;
+    border-radius: 12px;
+    border: 1px solid rgba(128, 128, 128, 0.35);
+    background: rgba(128, 128, 128, 0.08);
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+  }
+  .va-start button.choice b {
+    display: block;
+    font-size: 15px;
+    margin-bottom: 3px;
+  }
+  .va-start button.choice span {
+    display: block;
+    font-size: 13px;
+    opacity: 0.7;
+  }
+  .va-start .hint {
+    font-size: 12px;
+    opacity: 0.6;
+    text-align: center;
+    margin-top: 6px;
+  }
+</style>
+
+<div class="va-start">
+  <p class="lead">How do you want to add your voice assistant?</p>
+
+  <button class="choice" id="va-choice-lan">
+    <b>Find it on my network</b>
+    <span>The device is already connected to Wi-Fi</span>
+  </button>
+
+  <button class="choice" id="va-choice-ble">
+    <b>Set up Wi-Fi via Bluetooth</b>
+    <span>New device that is not on your Wi-Fi yet</span>
+  </button>
+
+  <p class="hint">Bluetooth setup uses your Homey's Bluetooth radio &mdash; place the device near your Homey first.</p>
+</div>
+
+<script type="application/javascript">
+  document.getElementById('va-choice-lan').addEventListener('click', function () {
+    Homey.showView('list_devices');
+  });
+  document.getElementById('va-choice-ble').addEventListener('click', function () {
+    Homey.showView('improv_setup');
+  });
+</script>
