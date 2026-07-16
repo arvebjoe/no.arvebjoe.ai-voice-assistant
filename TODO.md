@@ -69,6 +69,43 @@ Assistant ≥ 2.7 streams to the PE and TR directly over Sendspin.
 
 ---
 
+## Wi-Fi setup via Bluetooth (Improv BLE) — implemented 2026-07-16, live verification pending
+
+Fixes the miserable TR first-setup experience (previously: install HA in Docker + the HA phone
+app just to push Wi-Fi credentials). The pairing wizard now has a **"Set up Wi-Fi via
+Bluetooth"** path for the PE and TR drivers: Homey scans for Improv BLE devices, the user picks
+one, enters SSID + password, and the device joins the network, then flows into the normal mDNS
+`list_devices` view. Protocol/SDK reference: [`docs/wifi-provisioning-improv-ble.md`](./docs/wifi-provisioning-improv-ble.md).
+Code: `src/ble/improv-ble-client.mts` (protocol), `src/ble/improv-pair-handlers.mts` (pair
+socket wiring, unit-tested with fakes), `drivers/{pe,tr}/pair/{start,improv_setup}.html`
+(views — identical copies, keep in sync), `homey:wireless:ble` permission.
+
+**Remaining: verify on real hardware** (owner has a TR + PE; unit tests cover the protocol
+against an ESPHome-like fake only):
+
+- [ ] **BLE long write (the go/no-go):** the WIFI_SETTINGS packet (SSID+password, typically
+      30–70 bytes) exceeds the 23-byte default ATT MTU. Confirm `characteristic.write()` on the
+      Homey Pro delivers it intact (the fake can't prove this). On failure the wizard surfaces
+      "possible MTU/long-write limitation" — if that appears, we need Athom support input.
+- [ ] **TR end-to-end:** factory-reset TR shows up in the Bluetooth scan (as `3RSPK-…`),
+      provisioning succeeds, device then appears in the network search and pairs. Check whether
+      the TR requires authorization (unknown — HA app didn't seem to need it).
+- [ ] **PE end-to-end:** factory-reset/unprovisioned PE advertises; the **center-button
+      authorization** flow works (wizard shows "press the button" from the `improv_status`
+      event); LED ring twinkles during setup.
+- [ ] **Wrong-password retry:** enter a bad password → wizard returns to the credentials form
+      (error 0x03), retry with the right one **on the same connection** succeeds.
+- [ ] **Notifications vs polling:** watch the `Improv_BLE` log lines (`homey app run --remote`)
+      — if `Could not subscribe to notifications` appears, the 500 ms polling backstop carries
+      the flow; confirm state changes still arrive.
+- [ ] **Scan behavior / advertisement cache:** Homey caches BLE advertisements ≥30 s — check
+      that a just-powered-on device appears within a rescan or two, and "Scan again" recovers
+      from stale entries (connect failure → back to scan).
+- [ ] **Cleanup:** abandoning the wizard mid-flow (close pair dialog, navigate back) leaves no
+      BLE connection dangling (device must re-appear in a later scan).
+
+---
+
 ## Feature ideas — 2026-07-10 brainstorm (owner-approved, not yet started)
 
 Ordered roughly by wow-per-effort. None are started; pick one and spec it before coding.
@@ -92,15 +129,6 @@ image analysis — see [`COMPLETED.md` §6](./COMPLETED.md)).
       user/presence API.
 
 ### High value, more work
-
-- [ ] **Wi-Fi provisioning during pairing (Improv over BLE)** — fix the miserable TR
-      first-setup experience (today: install HA in Docker + HA phone app just to push Wi-Fi
-      credentials). Both the TR and the Voice PE speak Improv BLE while unprovisioned; Homey
-      SDK has everything needed (`homey.ble` + custom pairing views). **Feasibility research
-      done 2026-07-16** — protocol details, SDK surface, proposed pair-flow design, and the
-      go/no-go unknowns (BLE long-write/MTU behavior must be tested on hardware first) are in
-      [`docs/wifi-provisioning-improv-ble.md`](./docs/wifi-provisioning-improv-ble.md). Needs
-      the `homey:wireless:ble` permission, an `improv-ble-client.mts`, and custom pair views.
 
 - [ ] **Reminders (the missing sibling of timers)** — *"remind me tomorrow at 8 to take out the
       recycling"*. Unlike timers these need persistence (app settings) and delivery: spoken

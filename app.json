@@ -19,7 +19,8 @@
   "brandColor": "#0E0B08",
   "permissions": [
     "homey:manager:geolocation",
-    "homey:manager:api"
+    "homey:manager:api",
+    "homey:wireless:ble"
   ],
   "images": {
     "small": "/assets/images/small.png",
@@ -73,6 +74,10 @@
     "testLocalStage": {
       "method": "POST",
       "path": "/test-local-stage"
+    },
+    "getLmStudioContext": {
+      "method": "GET",
+      "path": "/lmstudio-context"
     },
     "getFeatureCosts": {
       "method": "GET",
@@ -499,10 +504,20 @@
       },
       "pair": [
         {
+          "id": "start"
+        },
+        {
+          "id": "improv_setup",
+          "navigation": {
+            "prev": "start"
+          }
+        },
+        {
           "id": "list_devices",
           "template": "list_devices",
           "navigation": {
-            "next": "add_devices"
+            "next": "add_devices",
+            "prev": "start"
           }
         },
         {
@@ -592,10 +607,20 @@
       },
       "pair": [
         {
+          "id": "start"
+        },
+        {
+          "id": "improv_setup",
+          "navigation": {
+            "prev": "start"
+          }
+        },
+        {
           "id": "list_devices",
           "template": "list_devices",
           "navigation": {
-            "next": "add_devices"
+            "next": "add_devices",
+            "prev": "start"
           }
         },
         {

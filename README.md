@@ -50,12 +50,14 @@ Norwegian, Spanish, Danish, Russian, Polish and Korean** — pick yours in the a
 
 ## Quick start
 
-1. **Flash** your device with ESPHome firmware and get it on your Wi-Fi
-   (see [Hardware setup](#hardware-setup) below).
+1. **Flash** your device with ESPHome firmware (see [Hardware setup](#hardware-setup) below —
+   the ThirdReality needs no flashing at all).
 2. **Install** this app on your Homey.
 3. In the app settings, **choose an AI engine** and enter the matching API key
    (or point it at your local services — see [Choosing an AI engine](#choosing-an-ai-engine)).
-4. **Add the device** in Homey — it's discovered automatically on your LAN.
+4. **Add the device** in Homey — it's discovered automatically on your LAN. Not on Wi-Fi yet?
+   Pick **Set up Wi-Fi via Bluetooth** in the pairing wizard and Homey will put it on your
+   network (see [Bluetooth Wi-Fi setup](#getting-a-device-onto-wi-fi-bluetooth-setup)).
 5. **Say the wake word** and ask something — or test from a Flow with the
    *Ask the assistant* / *Say* cards.
 
@@ -70,6 +72,24 @@ standard ESPHome firmware.
 > **Note:** the app connects to the ESPHome API in plaintext. If your device has an API
 > **encryption key** configured (common when a device was previously adopted by Home Assistant),
 > remove the key from its ESPHome config — encrypted connections are not supported yet.
+
+### Getting a device onto Wi-Fi (Bluetooth setup)
+
+A brand-new (or factory-reset) **Voice PE** or **ThirdReality** device isn't on your network
+yet, so LAN discovery can't find it. While unprovisioned, these devices advertise
+**Improv Wi-Fi over Bluetooth** — and the pairing wizard in this app speaks it. Choose
+**Set up Wi-Fi via Bluetooth** when adding a device: Homey finds it over Bluetooth, you enter
+your Wi-Fi name and password, and the device joins your network. No Home Assistant, vendor
+apps or USB cables needed.
+
+* Place the device **near your Homey** during setup — it's Homey's own Bluetooth radio doing
+  the talking, not your phone's.
+* **2.4 GHz networks only** (that's all the devices' Wi-Fi supports).
+* On the **Voice PE**, press the **center button** when the wizard asks — the device requires a
+  physical touch to authorize Wi-Fi setup (the LED ring twinkles while Bluetooth setup is
+  active).
+* A device that is already connected to Wi-Fi switches its Bluetooth setup off — use the
+  normal network search instead.
 
 ### 1) Home Assistant Voice: Preview Edition (PE)
 
@@ -129,7 +149,10 @@ An open-source Linux-based smart speaker that speaks the same ESPHome native API
 so it **works with this app out of the box — no flashing needed**. It has an LED ring, a Home
 button, a hardware mic-mute switch, and on-device wake words (default *"Okay Nabu"*). It is also
 a native **Music Assistant / Sendspin multi-room speaker**, which pairs nicely with the
-[music feature](#playing-music-music-assistant) below. Technical deep-dive:
+[music feature](#playing-music-music-assistant) below. Fresh out of the box it isn't on your
+Wi-Fi yet — use the pairing wizard's
+[Bluetooth Wi-Fi setup](#getting-a-device-onto-wi-fi-bluetooth-setup) to get it connected.
+Technical deep-dive:
 [docs/thirdreality-voice-and-music](./docs/thirdreality-voice-and-music/README.md).
 
 ---
@@ -365,6 +388,12 @@ entirely on the engine you pick — with the local pipeline, nothing does.
 
 * **Device not found during pairing:** make sure it's powered, on the same LAN/subnet as Homey,
   and has no ESPHome API **encryption key** set (see the note under Hardware setup).
+* **Bluetooth Wi-Fi setup finds nothing:** the device only advertises while it is *not*
+  connected to Wi-Fi — and it must be within Bluetooth range of your **Homey** (not your
+  phone). Power-cycle the device, move it next to Homey and scan again. If another app
+  (e.g. Home Assistant) is mid-setup with the device, close that first.
+* **Bluetooth setup says the device could not join the network:** double-check the password,
+  and remember these devices only support **2.4 GHz** networks — a 5 GHz-only SSID won't work.
 * **No audio/response:** check the device volume and mute state, and confirm the selected
   engine's API key (or local service hosts) are set — use the settings page's **Test** buttons
   for the local pipeline.

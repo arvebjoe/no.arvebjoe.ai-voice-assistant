@@ -17,6 +17,8 @@ Supported devices:
     - ThirdReality Voice & Music Assistant (works out of the box, and doubles as a Music Assistant multi-room speaker)
     - XiaoZhi AI devices (running RealDeco's ESPHome firmware)
 
+New device that is not on your Wi-Fi yet? The pairing wizard can set it up for you: choose "Set up Wi-Fi via Bluetooth", Homey finds the device over Bluetooth and sends it your network name and password — no other apps or cables needed (Voice PE and ThirdReality; place the device near your Homey during setup).
+
 Requirements:
     - A compatible ESPHome voice device with microphone and speaker
     - An API key for your chosen cloud engine (OpenAI, Google Gemini or Mistral), or your own local AI services

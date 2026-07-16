@@ -1,6 +1,12 @@
 # Wi-Fi provisioning from the Homey app (Improv over BLE)
 
-Research notes, 2026-07-16. **No code yet — this is the feasibility study.**
+Research notes, 2026-07-16.
+
+> **Status: implemented 2026-07-16** (same day) — protocol client in
+> `src/ble/improv-ble-client.mts`, pair-socket wiring in `src/ble/improv-pair-handlers.mts`,
+> wizard views in `drivers/{home-assistant-voice-preview-edition,thirdreality-voice--music-assistant}/pair/`,
+> `homey:wireless:ble` permission in `.homeycompose/app.json`. Live-hardware verification
+> checklist lives in `TODO.md`. This document remains the protocol/SDK reference.
 
 ## The problem
 
