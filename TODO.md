@@ -93,6 +93,15 @@ image analysis — see [`COMPLETED.md` §6](./COMPLETED.md)).
 
 ### High value, more work
 
+- [ ] **Wi-Fi provisioning during pairing (Improv over BLE)** — fix the miserable TR
+      first-setup experience (today: install HA in Docker + HA phone app just to push Wi-Fi
+      credentials). Both the TR and the Voice PE speak Improv BLE while unprovisioned; Homey
+      SDK has everything needed (`homey.ble` + custom pairing views). **Feasibility research
+      done 2026-07-16** — protocol details, SDK surface, proposed pair-flow design, and the
+      go/no-go unknowns (BLE long-write/MTU behavior must be tested on hardware first) are in
+      [`docs/wifi-provisioning-improv-ble.md`](./docs/wifi-provisioning-improv-ble.md). Needs
+      the `homey:wireless:ble` permission, an `improv-ble-client.mts`, and custom pair views.
+
 - [ ] **Reminders (the missing sibling of timers)** — *"remind me tomorrow at 8 to take out the
       recycling"*. Unlike timers these need persistence (app settings) and delivery: spoken
       announcement on the satellite that set it, plus a Homey timeline/push notification as
