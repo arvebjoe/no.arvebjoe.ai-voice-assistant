@@ -167,6 +167,27 @@ describe('registerImprovPairHandlers', () => {
         expect(res.ok).toBe(true);
     });
 
+    it('reconnects and retries when the device drops the BLE link after a failed attempt (ThirdReality)', async () => {
+        const device = new FakeImprovDevice({
+            correctPassword: 'right',
+            dropLinkAfterFailedProvision: true,
+            urls: ['http://192.168.0.56'],
+        });
+        const { session } = setup([device]);
+
+        await session.invoke('improv_scan');
+        await session.invoke('improv_connect', { id: device.advertisement.uuid });
+
+        const bad = await session.invoke('improv_provision', { ssid: 'iot', password: 'wrong' });
+        expect(bad).toMatchObject({ ok: false, code: 'unable_to_connect' });
+
+        // The device silently killed the link; the retry write would die with
+        // an ATT error — the handler must reconnect and retry transparently.
+        const good = await session.invoke('improv_provision', { ssid: 'iot', password: 'right' });
+        expect(good).toEqual({ ok: true, urls: ['http://192.168.0.56'] });
+        expect(device.connected).toBe(false); // cleaned up after success
+    });
+
     it('maps a never-pressed authorizer button to authorization_timeout', async () => {
         const device = new FakeImprovDevice({ requireAuthorization: true });
         const { session } = setup([device]);

@@ -86,12 +86,11 @@ end-to-end ✓ (needs **no** authorization — connects already-Authorized), PE 
 (center-button prompt shows — needed a fix: 'status' only fired on transitions), scan /
 advertisement cache ✓. The session also fixed TR mDNS discovery (`txt.platform`), added a
 per-driver BLE name filter (PE advertises `ha-voice-pe-XXXXXX`, NOT its mDNS name!) and a
-live-updating `list_devices` view. Wrong-password retry ✓ (clear "could not join" error) and
-mid-flow abandonment cleanup ✓ were also verified. Still untested:
-
-- [ ] **Notifications vs polling:** the flow works, but nobody checked WHICH path carried it —
-      if `Could not subscribe to notifications` appears in the `Improv_BLE` log lines, the
-      500 ms polling backstop is doing the work; confirm state changes still arrive.
+live-updating `list_devices` view. Wrong-password retry ✓ (clear "could not join" error;
+exposed a TR firmware quirk — it kills the BLE link after a failed join, fixed with a
+transparent reconnect+retry in `improv-pair-handlers`), mid-flow abandonment cleanup ✓, and
+notifications ✓ (confirmed carrying the state updates — the 500 ms polling backstop is idle).
+**Every item on this checklist is verified — nothing remains.**
 
 ---
 

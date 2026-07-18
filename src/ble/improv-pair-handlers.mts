@@ -104,6 +104,7 @@ export function registerImprovPairHandlers(options: ImprovPairOptions): ImprovPa
 
     let scanResults = new Map<string, ImprovDiscoveredDevice>();
     let activeSession: ImprovBleSession | null = null;
+    let lastDevice: ImprovDiscoveredDevice | null = null;
     let disposed = false;
     let idleTimer: NodeJS.Timeout | null = null;
     let anyViewShown = false;
@@ -124,6 +125,51 @@ export function registerImprovPairHandlers(options: ImprovPairOptions): ImprovPa
         activeSession = null;
         if (current) {
             await current.disconnect().catch(() => { });
+        }
+    };
+
+    /** Create a session for `device`, wire live status forwarding, make it active. */
+    const wireSession = (device: ImprovDiscoveredDevice): ImprovBleSession => {
+        const improv = new ImprovBleSession(device.advertisement, options.sessionOptions);
+        activeSession = improv;
+        // Forward live state changes so the wizard can show progress
+        // ("press the button…", "joining Wi-Fi…") while provision() runs.
+        improv.on('status', (status) => {
+            session.emit('improv_status', status).catch(() => { });
+        });
+        return improv;
+    };
+
+    /**
+     * Reconnect to the device of the last successful improv_connect. Some
+     * firmwares (the ThirdReality, observed live 2026-07-19) drop/reset the
+     * BLE link after a FAILED Wi-Fi join even though the Improv spec keeps
+     * the connection open — the credentials retry then dies with an ATT
+     * error and needs a fresh connection. The stored advertisement handle
+     * may itself be stale after the device's BLE stack reset, so fall back
+     * to one rescan and match the same peripheral.
+     */
+    const reconnectLastDevice = async (): Promise<boolean> => {
+        if (!lastDevice || disposed) return false;
+        await closeActiveSession();
+        try {
+            await wireSession(lastDevice).connect();
+            return true;
+        } catch {
+            await closeActiveSession();
+        }
+        try {
+            const found = await discoverImprovDevices(ble);
+            const again = found.find((d) => d.id === lastDevice!.id)
+                ?? found.find((d) => !!d.address && d.address === lastDevice!.address);
+            if (!again) return false;
+            scanResults.set(again.id, again);
+            lastDevice = again;
+            await wireSession(again).connect();
+            return true;
+        } catch {
+            await closeActiveSession();
+            return false;
         }
     };
 
@@ -185,15 +231,10 @@ export function registerImprovPairHandlers(options: ImprovPairOptions): ImprovPa
             return fail('device_not_found', 'Device not found — scan again and pick a device from the list.');
         }
         await closeActiveSession();
-        const improv = new ImprovBleSession(device.advertisement, options.sessionOptions);
-        activeSession = improv;
-        // Forward live state changes so the wizard can show progress
-        // ("press the button…", "joining Wi-Fi…") while provision() runs.
-        improv.on('status', (status) => {
-            session.emit('improv_status', status).catch(() => { });
-        });
+        const improv = wireSession(device);
         try {
             const info = await improv.connect();
+            lastDevice = device;
             return {
                 ok: true,
                 name: device.name,
@@ -216,10 +257,27 @@ export function registerImprovPairHandlers(options: ImprovPairOptions): ImprovPa
             return fail('invalid_input', 'Enter the Wi-Fi network name (SSID).');
         }
         if (!activeSession) {
-            return fail('device_not_found', 'Not connected to a device — scan and connect first.');
+            // The device may have dropped the link after a failed attempt —
+            // try to pick it back up transparently before giving up.
+            if (!(await reconnectLastDevice())) {
+                return fail('device_not_found', 'Not connected to a device — scan and connect first.');
+            }
         }
         try {
-            const urls = await activeSession.provision(ssid, password, options.provisionOptions);
+            let urls: string[];
+            try {
+                urls = await activeSession!.provision(ssid, password, options.provisionOptions);
+            } catch (err: any) {
+                // Improv-level outcomes (wrong password, not authorized,
+                // timeouts) surface to the user. Anything else is a transport
+                // failure: the ThirdReality kills the BLE link after a failed
+                // Wi-Fi join, so the retry write dies with an ATT error even
+                // though the session looked connected. Reconnect, retry once.
+                if (err instanceof ImprovDeviceError || err instanceof ImprovTimeoutError) throw err;
+                logger.warn(`Provision write failed on a dead BLE link (${err?.message ?? err}) — reconnecting for one retry`);
+                if (!(await reconnectLastDevice())) throw err;
+                urls = await activeSession!.provision(ssid, password, options.provisionOptions);
+            }
             // The device drops the BLE link once provisioned; clean up our side too.
             await closeActiveSession();
             return { ok: true, urls };

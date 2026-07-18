@@ -498,3 +498,16 @@ root-caused two long-standing pairing complaints.
   websocket is still CONNECTING; `ws` emits a synthetic error for close-during-connect that we
   logged + homey-log captured as an exception on every fresh pair. The error handler now
   swallows exactly that case while `isManuallyClosing` (one info line instead).
+- [x] **TR kills the BLE link after a failed Wi-Fi join (wrong-password retry broke).** Improv
+  spec says the connection stays open after error 0x03 (UnableToConnect) so credentials can be
+  retried on the same link — and the handler deliberately kept the session for that. The TR
+  instead silently resets its BLE stack: the retry write died with `ATT error: 0x0e` and the
+  peripheral dropped (observed live 2026-07-19; the owner had to back out and reconnect
+  manually). Fix in `improv-pair-handlers.mts`: track the last connected device; when a
+  provision attempt fails with a TRANSPORT error (not an ImprovDeviceError/ImprovTimeoutError,
+  which are real outcomes for the user), transparently reconnect — falling back to one rescan
+  if the stored advertisement handle went stale with the device's BLE reset — and retry once.
+  Also covers `improv_provision` arriving with no active session at all. Regression-tested with
+  a `dropLinkAfterFailedProvision` fake. Also confirmed live: **notifications carry the Improv
+  state updates on Homey Pro** (no `Could not subscribe` warnings; the 500 ms polling backstop
+  is idle) — the last open Improv checklist item.
