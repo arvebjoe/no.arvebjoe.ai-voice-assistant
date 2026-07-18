@@ -80,27 +80,19 @@ Code: `src/ble/improv-ble-client.mts` (protocol), `src/ble/improv-pair-handlers.
 socket wiring, unit-tested with fakes), `drivers/{pe,tr}/pair/{start,improv_setup}.html`
 (views — identical copies, keep in sync), `homey:wireless:ble` permission.
 
-**Remaining: verify on real hardware** (owner has a TR + PE; unit tests cover the protocol
-against an ESPHome-like fake only):
+**Live-verified on real hardware 2026-07-18/19** (factory-reset TR + PE, full context in
+[`COMPLETED.md` §8](./COMPLETED.md)): BLE long write ✓ (both devices provisioned), TR
+end-to-end ✓ (needs **no** authorization — connects already-Authorized), PE end-to-end ✓
+(center-button prompt shows — needed a fix: 'status' only fired on transitions), scan /
+advertisement cache ✓. The session also fixed TR mDNS discovery (`txt.platform`), added a
+per-driver BLE name filter (PE advertises `ha-voice-pe-XXXXXX`, NOT its mDNS name!) and a
+live-updating `list_devices` view. Still untested:
 
-- [ ] **BLE long write (the go/no-go):** the WIFI_SETTINGS packet (SSID+password, typically
-      30–70 bytes) exceeds the 23-byte default ATT MTU. Confirm `characteristic.write()` on the
-      Homey Pro delivers it intact (the fake can't prove this). On failure the wizard surfaces
-      "possible MTU/long-write limitation" — if that appears, we need Athom support input.
-- [ ] **TR end-to-end:** factory-reset TR shows up in the Bluetooth scan (as `3RSPK-…`),
-      provisioning succeeds, device then appears in the network search and pairs. Check whether
-      the TR requires authorization (unknown — HA app didn't seem to need it).
-- [ ] **PE end-to-end:** factory-reset/unprovisioned PE advertises; the **center-button
-      authorization** flow works (wizard shows "press the button" from the `improv_status`
-      event); LED ring twinkles during setup.
 - [ ] **Wrong-password retry:** enter a bad password → wizard returns to the credentials form
       (error 0x03), retry with the right one **on the same connection** succeeds.
-- [ ] **Notifications vs polling:** watch the `Improv_BLE` log lines (`homey app run --remote`)
-      — if `Could not subscribe to notifications` appears, the 500 ms polling backstop carries
-      the flow; confirm state changes still arrive.
-- [ ] **Scan behavior / advertisement cache:** Homey caches BLE advertisements ≥30 s — check
-      that a just-powered-on device appears within a rescan or two, and "Scan again" recovers
-      from stale entries (connect failure → back to scan).
+- [ ] **Notifications vs polling:** the flow works, but nobody checked WHICH path carried it —
+      if `Could not subscribe to notifications` appears in the `Improv_BLE` log lines, the
+      500 ms polling backstop is doing the work; confirm state changes still arrive.
 - [ ] **Cleanup:** abandoning the wizard mid-flow (close pair dialog, navigate back) leaves no
       BLE connection dangling (device must re-appear in a later scan).
 
