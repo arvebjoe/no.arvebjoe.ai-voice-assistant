@@ -311,6 +311,16 @@ loaded at all: no tools, no prompt text, no cost.
 **Custom pipeline** *(Custom provider only)* — per-stage backend choice plus host/port or
 URL/key/model for each, with Test buttons, and the Ollama context-window size (num_ctx).
 
+**Logging** — stream the app's logs to any **syslog** server (RFC 5424 over UDP or TCP):
+rsyslog/syslog-ng, a Synology or QNAP log center, Grafana Alloy/Loki, Papertrail, and so on.
+Enter the server's address and port (default 514), pick UDP or TCP, and choose a level:
+conversation events are logged at **INFO**, while the detailed per-subsystem logs (ESP
+connection, AI provider, tools, webserver, …) — which are normally not written to the app's own
+log at all — go out at **DEBUG**, so a collector can capture everything without making the
+in-app log noisy. Warnings and errors are always included, every line is tagged with its
+subsystem name for filtering, and secret-looking values are masked before they leave the app.
+A **Send test message** button verifies the address before you save.
+
 Settings changes apply on the fly — no app restart needed.
 
 **Per-device settings** (on the device in Homey): *Initial audio skip* and *Follow-up audio skip*

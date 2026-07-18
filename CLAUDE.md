@@ -58,7 +58,7 @@ ESP32 device  <--TCP/protobuf-->  EspVoiceAssistantClient  <-->  VoiceAssistantD
 
 ### Supporting helpers (`src/helpers/`)
 
-`device-manager.mts` (queries/controls Homey devices and zones via `ApiHelper`, tracks voice-assistant devices, fires zone-change callbacks), `weather-helper.mts`, `geo-helper.mts`, `webserver.mts` (builds LAN audio URLs), `file-helper.mts` (audio folder + scheduled deletion), audio utilities (`Pcm16kTo24k`, `pcm-segmenter`, `audio-encoders`), `sound-urls.mts`, `logger.mts` (`createLogger(name, disabled?)` — colorized, routes to Homey log).
+`device-manager.mts` (queries/controls Homey devices and zones via `ApiHelper`, tracks voice-assistant devices, fires zone-change callbacks), `weather-helper.mts`, `geo-helper.mts`, `webserver.mts` (builds LAN audio URLs), `file-helper.mts` (audio folder + scheduled deletion), audio utilities (`Pcm16kTo24k`, `pcm-segmenter`, `audio-encoders`), `sound-urls.mts`, `logger.mts` (`createLogger(name, disabled?)` — colorized, routes to Homey log), `remote-log.mts` (opt-in RFC 5424 syslog forwarding over UDP/TCP, `remote_log_*` settings — every Logger mirrors into it: enabled loggers at INFO, `disabled: true` loggers at DEBUG so quieted subsystems still reach a collector, warn/error always; wired in `app.mts` via `settingsManager.onGlobals` → `configureRemoteLogFromSettings`).
 
 ### Settings page, Web API and feature costs
 

@@ -497,6 +497,7 @@
         <optgroup label="Setup">
           <option value="general">General</option>
           <option value="pipeline" id="pipeline_option">Custom pipeline</option>
+          <option value="logging">Logging</option>
         </optgroup>
         <optgroup label="Features">
           <option value="smart">Smart home control</option>
@@ -1129,6 +1130,62 @@
           </div>
         </div>
       </section>
+
+      <!-- ============================ Logging ============================ -->
+      <section class="section" data-section="logging">
+        <div class="card">
+          <div class="feature-head">
+            <div>
+              <div class="feature-title">Remote logging</div>
+              <div class="feature-sub">Send the app's logs to a syslog server</div>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="remote_log_enabled" aria-label="Enable remote logging" />
+              <span class="knob"></span>
+            </label>
+          </div>
+          <div class="feature-body" data-feature-body="logging">
+            <div class="note">Streams the app's logs to any syslog server on your network or in the cloud
+              (rsyslog, syslog-ng, Synology/QNAP log center, Grafana Alloy/Loki, Papertrail, …) over the
+              standard syslog protocol (RFC 5424). Conversation events are sent as INFO; the detailed
+              per-subsystem logs (ESP connection, AI provider, tools, webserver, …) — which are normally
+              not written to the app's own log — are sent as DEBUG; warnings and errors always ride along.
+              Each subsystem is tagged with its name so you can filter. No token cost — this never touches
+              the AI.</div>
+            <div class="homey-form-group">
+              <label class="homey-form-label" for="remote_log_host">Syslog server address</label>
+              <input type="text" class="homey-form-input" id="remote_log_host" autocomplete="off"
+                placeholder="e.g. 192.168.1.10" />
+            </div>
+            <div class="homey-form-group">
+              <label class="homey-form-label" for="remote_log_port">Port</label>
+              <input type="number" class="homey-form-input" id="remote_log_port" placeholder="514" />
+              <div class="help-text">The standard syslog port is 514.</div>
+            </div>
+            <div class="homey-form-group">
+              <label class="homey-form-label" for="remote_log_protocol">Protocol</label>
+              <select class="homey-form-input" id="remote_log_protocol">
+                <option value="udp">UDP (standard, fire-and-forget)</option>
+                <option value="tcp">TCP (reliable delivery)</option>
+              </select>
+            </div>
+            <div class="homey-form-group">
+              <label class="homey-form-label" for="remote_log_level">Log level</label>
+              <select class="homey-form-input" id="remote_log_level">
+                <option value="debug">Debug — everything, including all subsystems</option>
+                <option value="info">Info — conversation events</option>
+                <option value="warn">Warnings and errors only</option>
+                <option value="error">Errors only</option>
+              </select>
+            </div>
+            <div class="homey-form-group">
+              <button type="button" class="stage-test-btn" id="remote_log_test_btn">Send test
+                message</button>
+              <span class="stage-test-result" id="remote_log_test_result"></span>
+            </div>
+          </div>
+        </div>
+      </section>
     </main>
 
     <!-- Sticky footer: token budget meter (tap for the per-feature breakdown)
@@ -1559,7 +1616,7 @@
         };
       }
 
-      document.querySelectorAll(".stage-test-btn").forEach(function (btn) {
+      document.querySelectorAll(".stage-test-btn[data-stage]").forEach(function (btn) {
         var result = document.getElementById(btn.getAttribute("data-stage") + "_test_result");
         btn.addEventListener("click", function () {
           btn.disabled = true;
@@ -1664,6 +1721,60 @@
       Homey.get("music_assistant_port", function (err, value) {
         if (err) return Homey.alert(err);
         document.getElementById("music_assistant_port").value = value || 8095;
+      });
+
+      // Remote syslog logging (no token cost — not part of the budget meter).
+      var remoteLogEnabledElement = document.getElementById("remote_log_enabled");
+      function refreshRemoteLogVisibility() {
+        document.querySelector('[data-feature-body="logging"]')
+          .classList.toggle("off", !remoteLogEnabledElement.checked);
+      }
+      remoteLogEnabledElement.addEventListener("change", refreshRemoteLogVisibility);
+      Homey.get("remote_log_enabled", function (err, enabled) {
+        if (err) return Homey.alert(err);
+        remoteLogEnabledElement.checked = enabled === true || enabled === "true";
+        refreshRemoteLogVisibility();
+      });
+      Homey.get("remote_log_host", function (err, value) {
+        if (err) return Homey.alert(err);
+        if (value) document.getElementById("remote_log_host").value = value;
+      });
+      Homey.get("remote_log_port", function (err, value) {
+        if (err) return Homey.alert(err);
+        document.getElementById("remote_log_port").value = value || 514;
+      });
+      Homey.get("remote_log_protocol", function (err, value) {
+        if (err) return Homey.alert(err);
+        document.getElementById("remote_log_protocol").value = value === "tcp" ? "tcp" : "udp";
+      });
+      Homey.get("remote_log_level", function (err, value) {
+        if (err) return Homey.alert(err);
+        document.getElementById("remote_log_level").value = value || "debug";
+      });
+
+      // Send one test line with the CURRENT (unsaved) form values, via the app
+      // (the settings webview itself can't reach LAN services).
+      var remoteLogTestBtn = document.getElementById("remote_log_test_btn");
+      var remoteLogTestResult = document.getElementById("remote_log_test_result");
+      remoteLogTestBtn.addEventListener("click", function () {
+        remoteLogTestBtn.disabled = true;
+        remoteLogTestResult.className = "stage-test-result";
+        remoteLogTestResult.textContent = "Sending…";
+        var body = {
+          host: document.getElementById("remote_log_host").value.trim(),
+          port: document.getElementById("remote_log_port").value.trim(),
+          protocol: document.getElementById("remote_log_protocol").value
+        };
+        Homey.api("POST", "/test-remote-log", body, function (err, res) {
+          remoteLogTestBtn.disabled = false;
+          if (err || !res) {
+            remoteLogTestResult.className = "stage-test-result fail";
+            remoteLogTestResult.textContent = "✗ " + (err || "No response from the app");
+            return;
+          }
+          remoteLogTestResult.className = "stage-test-result " + (res.ok ? "ok" : "fail");
+          remoteLogTestResult.textContent = (res.ok ? "✓ " : "✗ ") + res.message;
+        });
       });
 
       // Show/hide toggles for the masked API-key inputs.
@@ -1779,6 +1890,12 @@
           ["music_assistant_enabled", musicAssistantEnabledElement.checked],
           ["music_assistant_host", document.getElementById("music_assistant_host").value.trim()],
           ["music_assistant_port", parseInt(document.getElementById("music_assistant_port").value, 10) || 8095],
+          // Remote syslog logging
+          ["remote_log_enabled", remoteLogEnabledElement.checked],
+          ["remote_log_host", document.getElementById("remote_log_host").value.trim()],
+          ["remote_log_port", parseInt(document.getElementById("remote_log_port").value, 10) || 514],
+          ["remote_log_protocol", document.getElementById("remote_log_protocol").value],
+          ["remote_log_level", document.getElementById("remote_log_level").value],
           // Selected AI provider
           ["voice_provider", providerSelectElement.value],
           ["selected_language_name", selectedText],

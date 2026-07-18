@@ -174,7 +174,9 @@ export class SettingsManager {
       // Wyoming protocol services (wyoming-faster-whisper 10300, wyoming-piper 10200)
       'wyoming_stt_host', 'wyoming_stt_port', 'wyoming_tts_host', 'wyoming_tts_port',
       // LM Studio desktop app (OpenAI dialect, port 1234, model optional)
-      'lmstudio_host', 'lmstudio_port', 'lmstudio_model'];
+      'lmstudio_host', 'lmstudio_port', 'lmstudio_model',
+      // Remote syslog logging (third-party log collectors)
+      'remote_log_enabled', 'remote_log_host', 'remote_log_port', 'remote_log_protocol', 'remote_log_level'];
 
     for (const k of knownKeys) {
       this.globals[k] = this.homey.settings.get(k);

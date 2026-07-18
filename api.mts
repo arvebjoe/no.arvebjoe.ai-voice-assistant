@@ -2,6 +2,7 @@ import { getVoicesForProvider, DEFAULT_VOICE_PROVIDER } from './src/llm/voice-pr
 import { testLocalStage, StageTestRequest, StageTestResult } from './src/llm/providers/local/stage-tester.mjs';
 import { getLmStudioContext, LmStudioContextResult } from './src/llm/providers/local/lmstudio-context.mjs';
 import { computeFeatureCosts, FeatureCostReport } from './src/settings/feature-costs.mjs';
+import { sendTestLogLine, RemoteLogTestRequest, RemoteLogTestResult } from './src/helpers/remote-log.mjs';
 
 /**
  * App Web API — called from the settings page via `Homey.api(...)`.
@@ -62,5 +63,15 @@ export default {
             query?.language || 'en',
             query?.name || 'English',
         );
+    },
+
+    /**
+     * POST /test-remote-log — send one syslog test line with the CURRENT
+     * (possibly unsaved) settings-form values, so the user can verify the
+     * collector address before saving. Never throws — failures come back
+     * as { ok:false, message }.
+     */
+    async testRemoteLog({ body }: { body: RemoteLogTestRequest }): Promise<RemoteLogTestResult> {
+        return sendTestLogLine(body);
     },
 };
