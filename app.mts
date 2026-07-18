@@ -8,6 +8,7 @@ import { WeatherHelper } from './src/helpers/weather-helper.mjs';
 import { AppServices } from './src/helpers/app-services.mjs';
 import { settingsManager } from './src/settings/settings-manager.mjs';
 import { createLogger } from './src/helpers/logger.mjs';
+import { configureRemoteLogFromSettings } from './src/helpers/remote-log.mjs';
 import homeyLogPkg from 'homey-log'; // requires "esModuleInterop": true in tsconfig
 const { Log } = homeyLogPkg;
 
@@ -40,6 +41,12 @@ export default class AiVoiceAssistantApp extends Homey.App implements AppService
 
     // Centralized settings manager (makes global settings accessible without this.homey)
     settingsManager.init(this.homey);
+
+    // Remote syslog forwarding: every Logger (including the quieted subsystem
+    // ones) mirrors into this transport when it's enabled in settings. The
+    // subscription fires once immediately with the current snapshot, then on
+    // every settings save.
+    settingsManager.onGlobals((globals) => configureRemoteLogFromSettings(globals));
 
     // Awaited: the cleanup inside deletes EVERY file in the audio folder, so it
     // must finish before devices come online and start writing reply audio — an

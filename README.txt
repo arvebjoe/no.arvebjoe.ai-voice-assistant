@@ -31,6 +31,8 @@ Useful Flow cards:
     - Start and cancel timers, and trigger Flows when a timer starts, finishes or is cancelled.
     - "Heard something" and "Thinking" triggers show what the assistant heard, which tools it used and what it replied — pipe them to the timeline or a logger to easily debug your setup.
 
+For troubleshooting or long-term monitoring you can stream the app's logs to your own syslog server (Synology/QNAP log center, rsyslog, Grafana, Papertrail and similar) — enable it in settings, enter the server address and port, and pick how much detail you want.
+
 The assistant speaks your language — English, Dutch, German, French, Italian, Swedish, Norwegian, Spanish, Danish, Russian, Polish and Korean.
 
 Please look in the GitHub repository for setup instructions and more details (link below).

@@ -81,6 +81,10 @@
     "getFeatureCosts": {
       "method": "GET",
       "path": "/feature-costs"
+    },
+    "testRemoteLog": {
+      "method": "POST",
+      "path": "/test-remote-log"
     }
   }
 }

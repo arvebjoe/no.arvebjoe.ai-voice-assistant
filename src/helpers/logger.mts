@@ -1,5 +1,6 @@
 import Homey from 'homey/lib/Homey.js';
 import util from 'util';
+import { remoteLog, SYSLOG_ERROR, SYSLOG_WARNING, SYSLOG_INFO, SYSLOG_DEBUG } from './remote-log.mjs';
 
 // ANSI color codes
 const colors = {
@@ -85,9 +86,38 @@ class Logger {
 
     info(message: string, subFrom: string = '', details: any = null) {
         if (this.disabled) {
+            // Quieted subsystem loggers still forward to the remote syslog
+            // transport (when configured) — at DEBUG severity, so a collector
+            // can capture everything without re-enabling console chatter.
+            this.emitRemote(SYSLOG_DEBUG, subFrom, message, details);
             return;
         }
+        // Enabled loggers (e.g. CONVO) are the app's normal narrative → INFO.
+        this.emitRemote(SYSLOG_INFO, subFrom, message, details);
         this.write(message, subFrom, details);
+    }
+
+    // Forward one entry to the remote syslog transport. All formatting cost is
+    // skipped unless the transport is enabled and wants this severity.
+    private emitRemote(severity: number, subFrom: string, message: string, details: any) {
+        try {
+            if (!remoteLog.wants(severity)) {
+                return;
+            }
+            let text = subFrom ? `[${subFrom}] ${message}` : message;
+            if (details !== null && details !== undefined &&
+                (typeof details !== 'object' || Object.keys(details).length > 0)) {
+                text += ` | ${util.inspect(maskSecrets(details), {
+                    colors: false,
+                    depth: null,
+                    breakLength: Infinity,
+                    compact: true
+                })}`;
+            }
+            remoteLog.send(severity, this.from, text);
+        } catch (_) {
+            // Remote logging must never break the caller.
+        }
     }
 
     // Unconditional write — `disabled` only silences info/log chatter; warn()
@@ -132,6 +162,7 @@ class Logger {
     error(message: string, details: any = null) {
 
         try {
+            this.emitRemote(SYSLOG_ERROR, 'ERROR', message, details);
             this.reportError(details instanceof Error ? details : new Error(String(details)), message);
 
             if (Logger.homey) {
@@ -149,6 +180,7 @@ class Logger {
     }
 
     warn(message: string, details: any = null) {
+        this.emitRemote(SYSLOG_WARNING, 'WARN', message, details);
         this.write(message, 'WARN', details);
     }
 
