@@ -332,6 +332,11 @@ down live.
 **Triggers (When…)**
 
 * A timer is started / finished / cancelled
+* **Heard something** — speech-to-text finished; the transcript is available as a **text** tag.
+  Great for debugging: pipe it to the timeline or a logger to see exactly what the assistant heard
+* **Thinking** — the assistant produced a reply or used a tool ("Using tool get_devices"); the
+  message is a **text** tag and a **type** tag says whether it was a `tool` call or the final
+  `reply`. Combine with *Heard something* to follow a whole conversation on the timeline
 * Plus standard device triggers (turned on/off, volume changed)
 
 **Conditions (And…)**

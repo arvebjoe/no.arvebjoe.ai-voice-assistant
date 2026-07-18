@@ -682,6 +682,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       }
 
       this.convo.info(`Heard: "${transcript}"`, 'STT');
+      this.fireDeviceTrigger('assistant-heard', { text: transcript });
       this.esp.stt_end(transcript);
       this.esp.intent_start();
     });
@@ -696,6 +697,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     this.provider.on('tool.called', async (d: { callId: string; name: string; args: any }) => {
       this.convo.info(`${d.name} ${this.compact(d.args)}`, 'TOOL');
       this.logger.info(`${d.name}`, 'TOOL_CALLED', d.args);
+      this.fireDeviceTrigger('assistant-thinking', { text: `Using tool ${d.name}`, type: 'tool' });
       await this.devicePromise;
     });
 
@@ -712,6 +714,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       if (reply) {
         this.convo.info(`Reply: "${reply}"`, 'LLM');
         this.logger.info(`LLM reply: ${reply}`, "LLM");
+        this.fireDeviceTrigger('assistant-thinking', { text: reply, type: 'reply' });
       }
 
       this.logger.info("Conversation completed");
@@ -1123,37 +1126,33 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     return this.isMutedValue;
   }
 
-  // --- Timer Flow-card surface -------------------------------------------------
+  // --- Flow-card trigger surface -------------------------------------------------
 
   /**
-   * Fire a timer device-trigger card. These cards carry a `device` argument, so
-   * they are device-trigger cards and must be obtained via getDeviceTriggerCard()
-   * (getTriggerCard() throws for them). Passing `this` as the first arg lets Homey
-   * scope each flow to the device that fired it — no run-listener needed.
+   * Fire a device-trigger card. These cards carry a `device` argument, so they
+   * must be obtained via getDeviceTriggerCard() (getTriggerCard() throws for
+   * them). Passing `this` as the first arg lets Homey scope each flow to the
+   * device that fired it — no run-listener needed. Used by the timer lifecycle
+   * cards, 'button-pressed', and the 'assistant-heard'/'assistant-thinking'
+   * debug cards.
    */
-  private fireTimerTrigger(cardId: string, t: TimerSummary): void {
+  private fireDeviceTrigger(cardId: string, tokens: Record<string, string | number | boolean>): void {
     try {
       this.homey.flow.getDeviceTriggerCard(cardId)
-        .trigger(this, { name: t.name || '', duration: t.total_seconds })
+        .trigger(this, tokens)
         .catch((err: any) => this.logger.error(`Error firing ${cardId} trigger:`, err));
     } catch (err) {
       this.logger.error(`Error firing ${cardId} trigger:`, err);
     }
   }
 
-  /**
-   * Fire the 'button-pressed' device trigger (the physical top button on the
-   * ThirdReality). Same device-trigger pattern as the timer cards above; the
-   * event type string from the firmware rides along as a token.
-   */
+  private fireTimerTrigger(cardId: string, t: TimerSummary): void {
+    this.fireDeviceTrigger(cardId, { name: t.name || '', duration: t.total_seconds });
+  }
+
+  /** The physical top button on the ThirdReality; the firmware's event type rides along. */
   private fireButtonPressedTrigger(eventType: string): void {
-    try {
-      this.homey.flow.getDeviceTriggerCard('button-pressed')
-        .trigger(this, { event: eventType || '' })
-        .catch((err: any) => this.logger.error('Error firing button-pressed trigger:', err));
-    } catch (err) {
-      this.logger.error('Error firing button-pressed trigger:', err);
-    }
+    this.fireDeviceTrigger('button-pressed', { event: eventType || '' });
   }
 
   /** Condition card: true while a countdown is active (a ringing timer is not "running"). */

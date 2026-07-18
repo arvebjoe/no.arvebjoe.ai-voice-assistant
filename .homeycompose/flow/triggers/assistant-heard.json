@@ -1,0 +1,30 @@
+{
+  "title": {
+    "en": "Heard something"
+  },
+  "hint": {
+    "en": "Fires when speech-to-text finishes transcribing what was said to this device. Useful for debugging: pipe the text to the timeline or a logger to see exactly what the assistant heard."
+  },
+  "args": [
+    {
+      "type": "device",
+      "name": "device",
+      "title": {
+        "en": "Device"
+      },
+      "filter": "driver_id=home-assistant-voice-preview-edition|xiaozhi-ai|thirdreality-voice--music-assistant"
+    }
+  ],
+  "tokens": [
+    {
+      "name": "text",
+      "type": "string",
+      "title": {
+        "en": "Text"
+      },
+      "example": {
+        "en": "turn off the kitchen lights"
+      }
+    }
+  ]
+}
