@@ -282,8 +282,15 @@ export function registerImprovPairHandlers(options: ImprovPairOptions): ImprovPa
             await closeActiveSession();
             return { ok: true, urls };
         } catch (err: any) {
-            logger.error('Provisioning failed', err);
             const failure = toFailure(err);
+            // Wrong password / not-authorized / timeouts are expected user-facing
+            // outcomes the wizard handles — log them as warnings so they don't
+            // fire an exception report (homey-log captures logger.error).
+            if (err instanceof ImprovDeviceError || err instanceof ImprovTimeoutError) {
+                logger.warn(`Provisioning failed: ${failure.code} — ${err.message}`);
+            } else {
+                logger.error('Provisioning failed', err);
+            }
             // Wrong credentials keep the device in AUTHORIZED state on an open
             // connection — keep the session so the user can retry immediately.
             if (failure.code !== 'unable_to_connect' || !activeSession?.isConnected) {
