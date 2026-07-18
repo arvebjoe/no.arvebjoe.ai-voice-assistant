@@ -448,7 +448,9 @@ M6 npm-audit chains, M7 start() semantics, L1/L3/L4/L5) stay open in TODO.md.
 ## 8. TR + PE pairing live verification & fixes — 2026-07-18/19
 
 Live session with a factory-reset TR and PE. Verified the Improv BLE wizard end-to-end on both
-devices (TODO §Wi-Fi setup) and root-caused two long-standing pairing complaints.
+devices (TODO §Wi-Fi setup) — including wrong-password handling (clear "could not join the
+Wi-Fi" error, retry works) and mid-flow wizard abandonment (no dangling BLE connection) — and
+root-caused two long-standing pairing complaints.
 
 - [x] **TR invisible in "Find it on my network" — mDNS discovery condition.** The shared
   discovery config (`.homeycompose/discovery/esphome.json`) only accepted `txt.platform`

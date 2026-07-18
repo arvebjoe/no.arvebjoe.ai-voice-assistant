@@ -86,15 +86,12 @@ end-to-end ✓ (needs **no** authorization — connects already-Authorized), PE 
 (center-button prompt shows — needed a fix: 'status' only fired on transitions), scan /
 advertisement cache ✓. The session also fixed TR mDNS discovery (`txt.platform`), added a
 per-driver BLE name filter (PE advertises `ha-voice-pe-XXXXXX`, NOT its mDNS name!) and a
-live-updating `list_devices` view. Still untested:
+live-updating `list_devices` view. Wrong-password retry ✓ (clear "could not join" error) and
+mid-flow abandonment cleanup ✓ were also verified. Still untested:
 
-- [ ] **Wrong-password retry:** enter a bad password → wizard returns to the credentials form
-      (error 0x03), retry with the right one **on the same connection** succeeds.
 - [ ] **Notifications vs polling:** the flow works, but nobody checked WHICH path carried it —
       if `Could not subscribe to notifications` appears in the `Improv_BLE` log lines, the
       500 ms polling backstop is doing the work; confirm state changes still arrive.
-- [ ] **Cleanup:** abandoning the wizard mid-flow (close pair dialog, navigate back) leaves no
-      BLE connection dangling (device must re-appear in a later scan).
 
 ---
 
