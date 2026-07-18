@@ -101,12 +101,14 @@ Casa detection), **code-review-2 fixes**, **Sentry throttling**, **reconnect pol
 
 ### Pairing & drivers
 
-- [ ] **Pair all three device types through Homey's real pairing UI**: PE, XiaoZhi, and
-      the new ThirdReality driver. The discovery filter changed
-      (`txt.platform` regex now `esp32|ESP32` — added for TR) and HA-Voice/Nabu-Casa
-      type detection changed; Homey's mDNS stack is not the emulator's.
-- [ ] ThirdReality appears in the add-device list with the new icon/images and pairs to
-      the correct driver (not swallowed by the PE driver).
+- [ ] **Pair all three device types through Homey's real pairing UI**: PE ✓ and TR ✓
+      (verified live 2026-07-18/19, incl. the full BLE Wi-Fi wizard — see
+      `COMPLETED.md` §8; the `txt.platform` regex needed broadening to
+      `esp32|ESP32|ThirdReality|thirdreality`, the TR advertises `platform=ThirdReality`).
+      **XiaoZhi still untested.**
+- [x] ThirdReality appears in the add-device list with the new icon/images and pairs to
+      the correct driver (not swallowed by the PE driver). _Verified 2026-07-18 after the
+      discovery-condition fix._
 - [ ] Re-pairing / repair of an existing device still works.
 - [ ] M2 store-release criterion: a satellite **with API encryption enabled** fails
       pairing *gracefully* (clear failure, no crash) — the client is plaintext-only.

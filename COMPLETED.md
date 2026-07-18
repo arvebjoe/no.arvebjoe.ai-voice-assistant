@@ -444,3 +444,81 @@ M6 npm-audit chains, M7 start() semantics, L1/L3/L4/L5) stay open in TODO.md.
   without awaiting; its cleanup deletes EVERY file in `/userdata/audio`, so an early reply-audio
   write could be deleted mid-startup (valid URL → 404 on the satellite). Now awaited before any
   device comes online.
+
+## 8. TR + PE pairing live verification & fixes — 2026-07-18/19
+
+**Closes the "Wi-Fi setup via Bluetooth (Improv BLE)" TODO section — implemented 2026-07-16,
+now FULLY verified on real hardware.** The feature: the PE/TR pairing wizard's "Set up Wi-Fi
+via Bluetooth" path (fixes the miserable TR first-setup experience — previously HA-in-Docker +
+the HA phone app just to push Wi-Fi credentials). Code: `src/ble/improv-ble-client.mts`
+(protocol), `src/ble/improv-pair-handlers.mts` (pair socket wiring, unit-tested with fakes),
+`drivers/{pe,tr}/pair/{start,improv_setup}.html` (views — identical copies, keep in sync),
+`homey:wireless:ble` permission. Reference: `docs/wifi-provisioning-improv-ble.md`.
+
+Verified in a live session with a factory-reset TR and PE: BLE long write ✓ (the go/no-go —
+both devices provisioned), TR end-to-end ✓ (needs **no** authorization, connects
+already-Authorized), PE end-to-end ✓ (center-button prompt), wrong-password retry ✓, mid-flow
+abandonment cleanup ✓ (no dangling BLE connection), scan/advertisement-cache behavior ✓,
+notifications ✓ (carry the state updates on Homey Pro; the 500 ms polling backstop is idle).
+The session also root-caused two long-standing pairing complaints (TR mDNS discovery, the
+Firefox blank dialog) and fixed the bugs below.
+
+- [x] **TR invisible in "Find it on my network" — mDNS discovery condition.** The shared
+  discovery config (`.homeycompose/discovery/esphome.json`) only accepted `txt.platform`
+  matching `esp32|ESP32`; the TR is a Linux box advertising `platform=ThirdReality` (verified
+  live with the emulator's `dns-sd` browser). The TR README's "discovery works as-is" claim had
+  only checked the `_esphomelib._tcp` service name. Regex broadened to
+  `esp32|ESP32|ThirdReality|thirdreality`. **When adding any non-ESP32 satellite, check its TXT
+  `platform` value first.**
+- [x] **Intermittently blank pairing dialog — Firefox, not us.** Breadcrumb logging proved the
+  pair session always reached `onPair` while the first custom view never rendered (`showView`
+  event never fired; backend-forced `session.showView()` ignored; the Homey served the view
+  HTML 15/15 over the CLI). Chrome and the iPhone app: 100% reliable. Root cause confirmed by
+  the owner: **Firefox's Enhanced Tracking Protection blocks the cross-origin `homeylocal.com`
+  pair-view iframe** on my.homey.app; a normal `homey app install` (vs dev `homey app run`)
+  also reduces the failure rate. Kept as permanent diagnostics: `[Pair]` session breadcrumb,
+  `Pair view shown:` log, and a 2.5 s warn-only blank-view detector (a showView auto-nudge was
+  tried and removed — the dead client ignores it).
+- [x] **BLE wizard: per-driver device filter.** Both satellites in setup mode appeared in both
+  drivers' Bluetooth lists. Added `deviceNameFilter` (improv-pair-handlers) driven by a new
+  `VoiceAssistantDriver.improvNameFilter`: TR = `/3rspk|thirdreality/i`, PE =
+  `/home[-\s]?assistan|ha[-\s]?voice/i`. **Gotchas that shaped the PE pattern:** the BLE
+  advertisement name is NOT the mDNS/HA-app name — a factory 26.x PE advertises
+  `ha-voice-pe-093b27` while the HA app displays `home-assistan-093b27` (GATT-read, truncated
+  full name); BLE truncates to fit the 31-byte advertisement. Devices discovered WITHOUT a
+  localName are always kept (ESPHome alternates name/service advertisements) — only
+  positively-identified foreign devices are hidden, and the scan logs every advertisement's
+  localName (`Improv adv:`) so future name mismatches are a ten-second diagnosis.
+- [x] **"Press the button" prompt never showed (PE authorization).** The Improv client emitted
+  'status' only on state TRANSITIONS, but an authorizer device is already in
+  AwaitingAuthorization when provision() starts waiting → no event → the wizard stayed on
+  "Sending Wi-Fi credentials…". `provision()` now emits the current state when entering the
+  wait. Verified live: PE shows the center-button prompt; **TR needs no authorization at all**
+  (connects already-Authorized).
+- [x] **Post-BLE network search raced the device's Wi-Fi join.** Clicking "find it on the
+  network" quickly showed an empty list (satellite takes up to ~1 min to join + announce).
+  `list_devices` now holds its promise open (template shows its native "Searching…" spinner)
+  re-scanning every 5 s until a device is found or a 2-min deadline passes — resolving empty
+  early and emitting later leaves the template's "No new devices" text on screen (glitch is
+  specific to the empty→found transition; appending to a populated list renders fine).
+  Per-session probe cache distinguishes **definitive** rejections (device answered, wrong
+  model — never re-probed) from **transient** failures (mDNS up, API not yet — retried every
+  round); `checkVoiceCapabilities` now returns `{ device, definitive }`.
+- [x] **Spurious "WebSocket was closed before the connection was established".** Adding a
+  device fires its zone-resolve callback which calls `provider.restart()` while the OpenAI
+  websocket is still CONNECTING; `ws` emits a synthetic error for close-during-connect that we
+  logged + homey-log captured as an exception on every fresh pair. The error handler now
+  swallows exactly that case while `isManuallyClosing` (one info line instead).
+- [x] **TR kills the BLE link after a failed Wi-Fi join (wrong-password retry broke).** Improv
+  spec says the connection stays open after error 0x03 (UnableToConnect) so credentials can be
+  retried on the same link — and the handler deliberately kept the session for that. The TR
+  instead silently resets its BLE stack: the retry write died with `ATT error: 0x0e` and the
+  peripheral dropped (observed live 2026-07-19; the owner had to back out and reconnect
+  manually). Fix in `improv-pair-handlers.mts`: track the last connected device; when a
+  provision attempt fails with a TRANSPORT error (not an ImprovDeviceError/ImprovTimeoutError,
+  which are real outcomes for the user), transparently reconnect — falling back to one rescan
+  if the stored advertisement handle went stale with the device's BLE reset — and retry once.
+  Also covers `improv_provision` arriving with no active session at all. Regression-tested with
+  a `dropLinkAfterFailedProvision` fake. Also confirmed live: **notifications carry the Improv
+  state updates on Homey Pro** (no `Could not subscribe` warnings; the 500 ms polling backstop
+  is idle) — the last open Improv checklist item.

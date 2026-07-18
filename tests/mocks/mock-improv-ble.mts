@@ -41,6 +41,12 @@ export interface FakeImprovDeviceOptions {
     provisionDelayMs?: number;
     /** Advertise the 128-bit service uuid (true) or only Improv service data (false). */
     advertiseServiceUuid?: boolean;
+    /**
+     * Mimic the ThirdReality: after a FAILED provision attempt (wrong
+     * password) the device silently kills the BLE link, so the next write
+     * dies with an ATT error and the peripheral drops. A reconnect works.
+     */
+    dropLinkAfterFailedProvision?: boolean;
 }
 
 function encodeStrings(values: string[]): Buffer {
@@ -81,6 +87,11 @@ class FakeCharacteristic implements BleCharacteristicLike {
     }
 
     async write(data: Buffer): Promise<Buffer> {
+        if (this.device.linkPoisoned) {
+            this.device.linkPoisoned = false;
+            this.device.connected = false;
+            throw new Error('Operation failed with ATT error: 0x0e');
+        }
         this.device.assertConnected();
         this.onWrite?.(data);
         return data;
@@ -110,6 +121,8 @@ class FakePeripheral implements BlePeripheralLike {
 
 export class FakeImprovDevice {
     connected = false;
+    /** Set after a failed provision when dropLinkAfterFailedProvision: the next write throws + drops the link. */
+    linkPoisoned = false;
     identifyCount = 0;
     lastWrittenPacket: Buffer | null = null;
     state: ImprovState;
@@ -230,6 +243,9 @@ export class FakeImprovDevice {
             } else {
                 this.setState(ImprovState.Authorized);
                 this.setError(ImprovErrorState.UnableToConnect);
+                if (this.options.dropLinkAfterFailedProvision) {
+                    this.linkPoisoned = true;
+                }
             }
         }, delay);
     }
