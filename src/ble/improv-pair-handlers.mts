@@ -36,6 +36,22 @@ export interface ImprovPairOptions {
     improvViewId?: string;
     /** Safety net: drop the BLE connection after this much inactivity. */
     idleTimeoutMs?: number;
+    /**
+     * Per-driver scan filter: only list Improv devices whose advertised name
+     * matches (e.g. /3rspk|thirdreality/i for the TR driver, so a factory-reset
+     * PE waiting in BLE mode doesn't show up in the TR wizard and vice versa).
+     * Devices advertising WITHOUT a name are always kept: ESPHome alternates
+     * between name and Improv-service advertisements, so a matching device can
+     * legitimately be discovered nameless — only positively-identified foreign
+     * devices are hidden.
+     */
+    deviceNameFilter?: RegExp;
+    /**
+     * Notified on every pair-view change (this module owns the session's single
+     * 'showView' handler; the driver uses this to stop its background device
+     * list re-scan when the user leaves the list view).
+     */
+    onShowView?: (viewId: string) => void;
 }
 
 export type ImprovFailureCode =
@@ -90,6 +106,8 @@ export function registerImprovPairHandlers(options: ImprovPairOptions): ImprovPa
     let activeSession: ImprovBleSession | null = null;
     let disposed = false;
     let idleTimer: NodeJS.Timeout | null = null;
+    let anyViewShown = false;
+    let firstViewTimer: NodeJS.Timeout | null = null;
 
     const touch = () => {
         if (idleTimer) clearTimeout(idleTimer);
@@ -114,17 +132,42 @@ export function registerImprovPairHandlers(options: ImprovPairOptions): ImprovPa
         disposed = true;
         if (idleTimer) clearTimeout(idleTimer);
         idleTimer = null;
+        if (firstViewTimer) clearTimeout(firstViewTimer);
+        firstViewTimer = null;
         await closeActiveSession();
     };
+
+    // Blank-first-view detector (diagnostic only): the session opened but the
+    // client never rendered a view. Known cause: Firefox's Enhanced Tracking
+    // Protection blocks the web app's cross-origin pair-view iframe (confirmed
+    // 2026-07-18) — nothing app-side can rescue it (a backend showView() nudge
+    // was tried and ignored), so just leave a breadcrumb in the log.
+    firstViewTimer = setTimeout(() => {
+        firstViewTimer = null;
+        if (disposed || anyViewShown) return;
+        logger.warn('Pair session opened but no view was shown — client-side render failure (e.g. Firefox ETP blocking the pair-view iframe)');
+    }, 2500);
+    firstViewTimer.unref?.();
 
     session.setHandler('improv_scan', async () => {
         touch();
         // A rescan invalidates any half-finished connection
         await closeActiveSession();
         try {
-            const devices = await discoverImprovDevices(ble);
+            const discovered = await discoverImprovDevices(ble);
+            const filter = options.deviceNameFilter;
+            const devices = filter
+                ? discovered.filter((d) => !d.advertisement.localName || filter.test(d.advertisement.localName))
+                : discovered;
+            const hidden = discovered.length - devices.length;
             scanResults = new Map(devices.map((d) => [d.id, d]));
-            logger.info(`Found ${devices.length} Improv device(s)`);
+            logger.info(`Found ${devices.length} Improv device(s)`
+                + (hidden > 0 ? ` (${hidden} hidden by name filter ${filter})` : ''));
+            for (const d of discovered) {
+                logger.info(`  Improv adv: localName=${JSON.stringify(d.advertisement.localName ?? null)}`
+                    + ` address=${d.advertisement.address ?? '?'}`
+                    + (devices.includes(d) ? '' : ' [hidden]'));
+            }
             return {
                 ok: true,
                 devices: devices.map(({ id, name, address, rssi, state }) => ({ id, name, address, rssi, state })),
@@ -212,6 +255,15 @@ export function registerImprovPairHandlers(options: ImprovPairOptions): ImprovPa
     // a BLE connection dangling — Homey keeps peripherals connected until
     // disconnect() is called explicitly.
     session.setHandler('showView', async (viewId: string) => {
+        logger.info(`Pair view shown: ${viewId}`);
+        anyViewShown = true;
+        if (firstViewTimer) {
+            clearTimeout(firstViewTimer);
+            firstViewTimer = null;
+        }
+        try {
+            options.onShowView?.(viewId);
+        } catch { }
         if (viewId !== improvViewId) {
             await closeActiveSession();
         }

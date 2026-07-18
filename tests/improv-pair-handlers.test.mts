@@ -25,7 +25,7 @@ class FakePairSession implements PairSessionLike {
     }
 }
 
-function setup(devices: FakeImprovDevice[], options: { correctPassword?: string } = {}) {
+function setup(devices: FakeImprovDevice[], options: { correctPassword?: string; deviceNameFilter?: RegExp } = {}) {
     const session = new FakePairSession();
     const ble = new FakeBleManager(devices.map((d) => d.advertisement));
     const controller = registerImprovPairHandlers({
@@ -33,6 +33,7 @@ function setup(devices: FakeImprovDevice[], options: { correctPassword?: string 
         ble,
         sessionOptions: { pollIntervalMs: 15 },
         provisionOptions: { authorizationTimeoutMs: 500, provisioningTimeoutMs: 2000 },
+        deviceNameFilter: options.deviceNameFilter,
     });
     return { session, ble, controller };
 }
@@ -61,6 +62,36 @@ describe('registerImprovPairHandlers', () => {
             state: ImprovState.Authorized,
         });
         expect(entry.advertisement).toBeUndefined();
+    });
+
+    it('deviceNameFilter hides foreign-named devices and keeps matching + nameless ones', async () => {
+        const tr = new FakeImprovDevice({ uuid: 'fake-tr', name: '3RSPK-A1B2C Improv via BLE' });
+        const pe = new FakeImprovDevice({ uuid: 'fake-pe', name: 'home-assistant-voice-0908d1' });
+        const nameless = new FakeImprovDevice({ uuid: 'fake-anon' });
+        (nameless.advertisement as any).localName = undefined;
+
+        const { session } = setup([tr, pe, nameless], { deviceNameFilter: /3rspk|thirdreality/i });
+
+        const res = await session.invoke('improv_scan');
+        expect(res.ok).toBe(true);
+        const ids = res.devices.map((d: any) => d.id).sort();
+        // The PE is positively identified as foreign and hidden; the nameless
+        // advertisement could be anything (ESPHome alternates name/service
+        // advertising) so it stays visible.
+        expect(ids).toEqual(['fake-anon', 'fake-tr']);
+
+        // A hidden device must not be connectable either.
+        const denied = await session.invoke('improv_connect', { id: 'fake-pe' });
+        expect(denied).toMatchObject({ ok: false, code: 'device_not_found' });
+    });
+
+    it('scan without a deviceNameFilter lists everything', async () => {
+        const tr = new FakeImprovDevice({ uuid: 'fake-tr', name: '3RSPK-A1B2C Improv via BLE' });
+        const pe = new FakeImprovDevice({ uuid: 'fake-pe', name: 'home-assistant-voice-0908d1' });
+        const { session } = setup([tr, pe]);
+
+        const res = await session.invoke('improv_scan');
+        expect(res.devices).toHaveLength(2);
     });
 
     it('connect requires a preceding scan and a known id', async () => {
@@ -114,6 +145,26 @@ describe('registerImprovPairHandlers', () => {
 
         const good = await session.invoke('improv_provision', { ssid: 'MyWifi', password: 'right' });
         expect(good.ok).toBe(true);
+    });
+
+    it('forwards AwaitingAuthorization to the view when provision starts on an authorizer device', async () => {
+        const device = new FakeImprovDevice({ requireAuthorization: true, correctPassword: 'pw' });
+        const { session } = setup([device]);
+
+        await session.invoke('improv_scan');
+        await session.invoke('improv_connect', { id: device.advertisement.uuid });
+
+        const provisionPromise = session.invoke('improv_provision', { ssid: 'MyWifi', password: 'pw' });
+        // The device sits in AwaitingAuthorization (no state TRANSITION happens),
+        // yet the view must still be told to show "press the button".
+        await new Promise((r) => setTimeout(r, 50));
+        expect(session.emitted.some(
+            (e) => e.event === 'improv_status' && e.data.state === ImprovState.AwaitingAuthorization,
+        )).toBe(true);
+
+        device.pressButton();
+        const res = await provisionPromise;
+        expect(res.ok).toBe(true);
     });
 
     it('maps a never-pressed authorizer button to authorization_timeout', async () => {

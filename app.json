@@ -82,11 +82,87 @@
     "getFeatureCosts": {
       "method": "GET",
       "path": "/feature-costs"
+    },
+    "testRemoteLog": {
+      "method": "POST",
+      "path": "/test-remote-log"
     }
   },
   "esm": true,
   "flow": {
     "triggers": [
+      {
+        "title": {
+          "en": "Heard something"
+        },
+        "hint": {
+          "en": "Fires when speech-to-text finishes transcribing what was said to this device. Useful for debugging: pipe the text to the timeline or a logger to see exactly what the assistant heard."
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "title": {
+              "en": "Device"
+            },
+            "filter": "driver_id=home-assistant-voice-preview-edition|xiaozhi-ai|thirdreality-voice--music-assistant"
+          }
+        ],
+        "tokens": [
+          {
+            "name": "text",
+            "type": "string",
+            "title": {
+              "en": "Text"
+            },
+            "example": {
+              "en": "turn off the kitchen lights"
+            }
+          }
+        ],
+        "id": "assistant-heard"
+      },
+      {
+        "title": {
+          "en": "Thinking"
+        },
+        "hint": {
+          "en": "Fires while the assistant works on an answer: once for every tool it uses (\"Using tool get_devices\") and once with the final reply. Useful for debugging: pipe the text to the timeline or a logger to follow what the assistant is doing."
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "title": {
+              "en": "Device"
+            },
+            "filter": "driver_id=home-assistant-voice-preview-edition|xiaozhi-ai|thirdreality-voice--music-assistant"
+          }
+        ],
+        "tokens": [
+          {
+            "name": "text",
+            "type": "string",
+            "title": {
+              "en": "Text"
+            },
+            "example": {
+              "en": "Using tool get_devices"
+            }
+          },
+          {
+            "name": "type",
+            "type": "string",
+            "title": {
+              "en": "Type"
+            },
+            "example": {
+              "en": "tool"
+            }
+          }
+        ],
+        "id": "assistant-thinking"
+      },
       {
         "title": {
           "en": "Button pressed"
@@ -789,7 +865,7 @@
             "field": "txt.platform",
             "match": {
               "type": "regex",
-              "value": "esp32|ESP32"
+              "value": "esp32|ESP32|ThirdReality|thirdreality"
             }
           }
         ]

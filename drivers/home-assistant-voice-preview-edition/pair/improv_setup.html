@@ -99,7 +99,7 @@
     <h3>Choose your device</h3>
     <div class="device-list" id="device-list"></div>
     <p></p>
-    <button class="secondary" id="btn-rescan">Scan again</button>
+    <button type="button" class="secondary" id="btn-rescan">Scan again</button>
     <p class="muted">A device only appears here while it is <b>not</b> connected to Wi-Fi. Already set up? Go back and use &ldquo;Find it on my network&rdquo;.</p>
   </div>
 
@@ -108,7 +108,7 @@
     <p>No device in Wi-Fi setup mode was found over Bluetooth.</p>
     <p class="muted">Checklist: the device is powered on &middot; it is near your Homey (Bluetooth range) &middot; it is not already connected to Wi-Fi (a connected device turns Bluetooth setup off) &middot; it is not being set up by another app right now.</p>
     <p></p>
-    <button class="action" id="btn-rescan-none">Scan again</button>
+    <button type="button" class="action" id="btn-rescan-none">Scan again</button>
   </div>
 
   <div class="step" id="step-connecting">
@@ -133,7 +133,7 @@
     </p>
     <div class="error" id="cred-error"></div>
     <p></p>
-    <button class="action" id="btn-provision">Connect device to Wi-Fi</button>
+    <button type="button" class="action" id="btn-provision">Connect device to Wi-Fi</button>
   </div>
 
   <div class="step" id="step-working">
@@ -148,7 +148,7 @@
     <h3>Device is on your Wi-Fi!</h3>
     <p class="muted center">It can take up to a minute for the device to show up on the network. The next screen keeps searching &mdash; leave it open until your device appears.</p>
     <p></p>
-    <button class="action" id="btn-continue">Continue &mdash; find it on the network</button>
+    <button type="button" class="action" id="btn-continue">Continue &mdash; find it on the network</button>
   </div>
 
   <div class="step" id="step-already">
@@ -156,8 +156,8 @@
     <p>This device reports that it is already connected to Wi-Fi.</p>
     <p class="muted">Use &ldquo;Find it on my network&rdquo; instead. If you want to move it to a different network, factory-reset the device first.</p>
     <p></p>
-    <button class="action" id="btn-goto-lan">Find it on my network</button>
-    <button class="secondary" id="btn-rescan-already" style="margin-top:8px;">Scan again</button>
+    <button type="button" class="action" id="btn-goto-lan">Find it on my network</button>
+    <button type="button" class="secondary" id="btn-rescan-already" style="margin-top:8px;">Scan again</button>
   </div>
 
 </div>

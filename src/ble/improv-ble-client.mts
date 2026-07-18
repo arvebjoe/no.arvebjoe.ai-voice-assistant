@@ -372,6 +372,11 @@ export class ImprovBleSession extends EventEmitter {
 
         if (this.state === ImprovState.AwaitingAuthorization) {
             this.logger.info('Awaiting on-device authorization (button press)');
+            // 'status' normally fires only on state TRANSITIONS, but the device
+            // is already in AwaitingAuthorization when this wait begins — emit
+            // the current state explicitly so the wizard can show the
+            // "press the button on the device" instruction.
+            this.emitStatus();
             await this.waitFor(
                 () => this.state !== null && this.state !== ImprovState.AwaitingAuthorization,
                 authorizationTimeoutMs,
