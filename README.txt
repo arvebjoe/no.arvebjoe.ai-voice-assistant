@@ -29,6 +29,7 @@ Useful Flow cards:
     - "Say" for quick text-to-speech on the device speaker.
     - "Playback audio from URL", handy for sound effects or pre-recorded messages.
     - Start and cancel timers, and trigger Flows when a timer starts, finishes or is cancelled.
+    - "Heard something" and "Thinking" triggers show what the assistant heard, which tools it used and what it replied — pipe them to the timeline or a logger to easily debug your setup.
 
 The assistant speaks your language — English, Dutch, German, French, Italian, Swedish, Norwegian, Spanish, Danish, Russian, Polish and Korean.
 
