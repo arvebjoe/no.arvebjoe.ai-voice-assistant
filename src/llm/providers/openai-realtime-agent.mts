@@ -282,6 +282,15 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
             });
 
             this.ws.on("error", (err) => {
+                // Closing a socket that is still CONNECTING (e.g. restart() right
+                // after start(), as happens when a freshly paired device's zone
+                // resolves) makes `ws` emit this synthetic error. It's the expected
+                // outcome of our own close(), not a failure — don't page anyone.
+                if (this.isManuallyClosing
+                    && err?.message?.includes("closed before the connection was established")) {
+                    this.logger.info("WebSocket closed while still connecting (expected during restart)");
+                    return;
+                }
                 this.logger.error("WebSocket error", err);
                 this.emit("error", err);
             });
