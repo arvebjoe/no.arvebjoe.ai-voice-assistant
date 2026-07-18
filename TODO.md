@@ -69,31 +69,6 @@ Assistant ≥ 2.7 streams to the PE and TR directly over Sendspin.
 
 ---
 
-## Wi-Fi setup via Bluetooth (Improv BLE) — implemented 2026-07-16, live verification pending
-
-Fixes the miserable TR first-setup experience (previously: install HA in Docker + the HA phone
-app just to push Wi-Fi credentials). The pairing wizard now has a **"Set up Wi-Fi via
-Bluetooth"** path for the PE and TR drivers: Homey scans for Improv BLE devices, the user picks
-one, enters SSID + password, and the device joins the network, then flows into the normal mDNS
-`list_devices` view. Protocol/SDK reference: [`docs/wifi-provisioning-improv-ble.md`](./docs/wifi-provisioning-improv-ble.md).
-Code: `src/ble/improv-ble-client.mts` (protocol), `src/ble/improv-pair-handlers.mts` (pair
-socket wiring, unit-tested with fakes), `drivers/{pe,tr}/pair/{start,improv_setup}.html`
-(views — identical copies, keep in sync), `homey:wireless:ble` permission.
-
-**Live-verified on real hardware 2026-07-18/19** (factory-reset TR + PE, full context in
-[`COMPLETED.md` §8](./COMPLETED.md)): BLE long write ✓ (both devices provisioned), TR
-end-to-end ✓ (needs **no** authorization — connects already-Authorized), PE end-to-end ✓
-(center-button prompt shows — needed a fix: 'status' only fired on transitions), scan /
-advertisement cache ✓. The session also fixed TR mDNS discovery (`txt.platform`), added a
-per-driver BLE name filter (PE advertises `ha-voice-pe-XXXXXX`, NOT its mDNS name!) and a
-live-updating `list_devices` view. Wrong-password retry ✓ (clear "could not join" error;
-exposed a TR firmware quirk — it kills the BLE link after a failed join, fixed with a
-transparent reconnect+retry in `improv-pair-handlers`), mid-flow abandonment cleanup ✓, and
-notifications ✓ (confirmed carrying the state updates — the 500 ms polling backstop is idle).
-**Every item on this checklist is verified — nothing remains.**
-
----
-
 ## Feature ideas — 2026-07-10 brainstorm (owner-approved, not yet started)
 
 Ordered roughly by wow-per-effort. None are started; pick one and spec it before coding.

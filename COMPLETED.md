@@ -447,10 +447,21 @@ M6 npm-audit chains, M7 start() semantics, L1/L3/L4/L5) stay open in TODO.md.
 
 ## 8. TR + PE pairing live verification & fixes — 2026-07-18/19
 
-Live session with a factory-reset TR and PE. Verified the Improv BLE wizard end-to-end on both
-devices (TODO §Wi-Fi setup) — including wrong-password handling (clear "could not join the
-Wi-Fi" error, retry works) and mid-flow wizard abandonment (no dangling BLE connection) — and
-root-caused two long-standing pairing complaints.
+**Closes the "Wi-Fi setup via Bluetooth (Improv BLE)" TODO section — implemented 2026-07-16,
+now FULLY verified on real hardware.** The feature: the PE/TR pairing wizard's "Set up Wi-Fi
+via Bluetooth" path (fixes the miserable TR first-setup experience — previously HA-in-Docker +
+the HA phone app just to push Wi-Fi credentials). Code: `src/ble/improv-ble-client.mts`
+(protocol), `src/ble/improv-pair-handlers.mts` (pair socket wiring, unit-tested with fakes),
+`drivers/{pe,tr}/pair/{start,improv_setup}.html` (views — identical copies, keep in sync),
+`homey:wireless:ble` permission. Reference: `docs/wifi-provisioning-improv-ble.md`.
+
+Verified in a live session with a factory-reset TR and PE: BLE long write ✓ (the go/no-go —
+both devices provisioned), TR end-to-end ✓ (needs **no** authorization, connects
+already-Authorized), PE end-to-end ✓ (center-button prompt), wrong-password retry ✓, mid-flow
+abandonment cleanup ✓ (no dangling BLE connection), scan/advertisement-cache behavior ✓,
+notifications ✓ (carry the state updates on Homey Pro; the 500 ms polling backstop is idle).
+The session also root-caused two long-standing pairing complaints (TR mDNS discovery, the
+Firefox blank dialog) and fixed the bugs below.
 
 - [x] **TR invisible in "Find it on my network" — mDNS discovery condition.** The shared
   discovery config (`.homeycompose/discovery/esphome.json`) only accepted `txt.platform`
