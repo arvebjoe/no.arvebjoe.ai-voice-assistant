@@ -6,14 +6,60 @@
       before the next store release: List A is emulator-testable (real satellite on the
       LAN, no Homey), List B needs the app running on the Homey Pro (pairing UI, flow
       editor, settings webview, upgrade path, homey-log/Sentry, Homey-hosted audio).
-- [ ] **Live-verify the first-class Mistral provider (2026-07-12, needs a real Mistral key
-      + satellite):** `voice_provider: 'mistral-realtime'` — full spoken turn (streaming
-      Voxtral Realtime STT fed during speech via the new `ISttClient.createStream` seam,
-      chat with tool calls, Voxtral TTS reply), the batch fallback when the websocket drops
-      mid-utterance, the mirrored key/model inputs in the General settings section
-      (`MIRRORED_INPUTS` — must stay in sync with the Custom pipeline's fields), and the
-      Voxtral voice dropdown after saving the key. Unit tests cover all of it with fakes;
-      nothing has run against the live endpoints yet.
+- [x] **Live-verify the first-class Mistral provider — CORE VERIFIED 2026-07-19 on the
+      Homey Pro + PE:** full spoken turns on BOTH `voice_provider: 'mistral-realtime'`
+      and the Custom pipeline with all-Mistral stages (streaming Voxtral Realtime STT —
+      transcript ready ~200 ms after mic close, so the `createStream` live-feed works;
+      chat with real tool calls `get_local_time`/`get_current_weather`; Voxtral TTS reply;
+      mic-close→speaking ≈ 2.7 s). Still unverified: the batch fallback when the STT
+      websocket drops mid-utterance (hard to provoke), and an explicit check of the
+      mirrored key/model inputs (`MIRRORED_INPUTS`) + Voxtral voice dropdown contents.
+- [ ] **Mistral LLM replies contain markdown (`**bold**`) which is passed raw to TTS**
+      (observed live 2026-07-19; Voxtral TTS ignores the asterisks so it's inaudible, but
+      it pollutes transcripts/logs and other TTS engines may read them). Prompt it away in
+      the local-pipeline instructions and/or strip markdown before TTS.
+- [ ] **Bump `SettingsManager.EMIT_DEBOUNCE_MS` (300 ms) to ~1–2 s.** A real mobile-webview
+      save burst (~30 sequential `Homey.set` calls) spreads wider than 300 ms, causing
+      several redundant provider rebuilds + health probes per save (each a Sentry capture).
+      Observed live 2026-07-19: one save produced staggered rebuilds (mid-burst config
+      snapshots). Harmless but noisy.
+- [ ] **Settings webview one-off (2026-07-19, unreproduced):** one webview session where
+      Save silently persisted nothing (no error shown; reopening showed old values; later
+      sessions saved fine). Suspected dead webview bridge. Watch for recurrence before
+      blaming our page.
+- [ ] **Unhealthy local pipeline double-reports each failed probe** ("Pipeline health check
+      failed" + "Realtime agent error" both captureException, every few seconds while a
+      LAN box is off). Sentry throttling contains it, but consider single-report and/or
+      slower campaign cap before store release.
+- [ ] **TR mic level vs local VAD — FIXED 2026-07-19, refinements open:** the TR's
+      WebRTC-processed mic peaks only ~330–430 int16-RMS for close speech, so the local
+      VAD (adaptive threshold ~500) never detected speech and every turn timed out with
+      "Heard nothing" (wake worked; ~160 chunks/turn arrived fine — diagnosed with a
+      temp RMS logger). **Fix shipped and verified live:** `micGain` flag on
+      `VoiceAssistantDevice` (default 1), TR driver sets 4 — applied in-place to the
+      16 kHz chunks (int16 clamp) before resampler/provider so VAD *and* STT get the
+      boosted audio; full TR voice turn then worked end-to-end (peak RMS 1166, correct
+      transcript, spoken reply on the TR speaker). Refinements to consider: expose gain
+      as a device setting instead of a constant; evaluate the TR's own mic-gain /
+      noise-suppression entities (research doc) as a device-side remedy; check whether
+      4× gain hurts STT when someone shouts next to the TR (clipping).
+- [ ] **TR link stability — root-caused 2026-07-19, fix shipped, needs soak:** three
+      "Connection timeout - no ping received" disconnects at ~3 min idle cadence. Cause:
+      our health check was purely passive (device must talk within `PING_TIMEOUT` 120 s);
+      the PE chatters on its own but the TR's Linux firmware goes silent when idle, so
+      our own watchdog was killing a healthy link. Fix: the client now sends `PingRequest`
+      itself once the link is quiet (health-check tick, `esp-voice-assistant-client.mts`)
+      and the `PingResponse` refreshes liveness. _Verified 2026-07-19: 12+ min idle soak
+      with zero disconnects (old cadence was a drop every ~3 min), then a wake worked
+      instantly with no reconnect. Re-check the PE still behaves after this change
+      (it should — its own traffic keeps the link fresh and the extra pings are no-ops)._
+- [ ] **TR playback choppiness — RESOLVED ITSELF with the keepalive fix, keep watching:**
+      during the flaky-link period (pre-keepalive, 2026-07-19) each per-sentence FLAC's
+      last ~200–300 ms was audibly cut on the TR; after the active-ping fix the owner
+      reports playback is clean. Plausibly the watchdog's connect/destroy churn was
+      disturbing the announce sequencing. If it recurs on a stable link: candidate fixes
+      are tail-padding each segment with ~300 ms silence (device flag like `micGain`) or
+      finding an early-stop in the TR's mpv announce path.
 
 ## Code review 2 — remaining items (see [`docs/code_review_2.md`](./docs/code_review_2.md))
 

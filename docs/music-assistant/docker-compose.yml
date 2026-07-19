@@ -19,17 +19,11 @@ services:
     container_name: music-assistant-server
     restart: unless-stopped
 
-    # Host networking is REQUIRED: MA discovers players via mDNS/multicast and
-    # streams audio to them from its own ports — the web UI/API on TCP 8095
-    # (what this app talks to) and the audio stream server on TCP 8097/8098.
-    # Port mappings can't forward multicast, so a bridge network won't work.
-    #network_mode: host
-    ports:
-      - "8095:8095"
+    network_mode: host
     
     volumes:
       # All MA state (config, database, cache). Keep it next to this file.
-      - ./music-assistant-data:/data/
+      - /opt/music-assistant/data:/data/
       # Optional: expose a local music folder to MA's "Filesystem" provider.
       # - /path/to/your/music:/media/music:ro
 
