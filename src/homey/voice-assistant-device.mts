@@ -79,6 +79,12 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
   private readonly DEFAULT_FOLLOWUP_SKIP_MS: number = 150;
   abstract readonly needDelayedPlayback: boolean;
 
+  // Software mic gain applied to incoming 16 kHz PCM before VAD/STT. 1 = off.
+  // The TR's WebRTC-processed mic is far quieter than the PE's XMOS feed
+  // (close speech peaks ~330-430 int16 RMS vs the local VAD's ~500 speech
+  // threshold), so its driver subclass raises this.
+  readonly micGain: number = 1;
+
   // Captures raw mic input and serves it back as a playback URL for debugging.
   // Emulator-only: the `input_buffer_debug` setting is honored solely when the
   // process carries the HE_EMULATOR marker, so on a real Homey the flag can
@@ -312,6 +318,14 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
         return;
       }
 
+      // Boost quiet mics (see micGain) in place, with int16 clamping.
+      if (this.micGain !== 1) {
+        for (let i = 0; i + 1 < trimmed.length; i += 2) {
+          const v = trimmed.readInt16LE(i) * this.micGain;
+          trimmed.writeInt16LE(v > 32767 ? 32767 : (v < -32768 ? -32768 : v), i);
+        }
+      }
+
       // ESP client emits PCM16 mono 16 kHz. Resample to the provider's input rate
       // when it differs (e.g. OpenAI 24 kHz); otherwise pass the 16 kHz through.
       const frames: Buffer[] = this.reSampler ? (this.reSampler.push(trimmed) as Buffer[]) : [trimmed];
@@ -535,9 +549,11 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     // settings: a read-only list of what's on board, with the active one
     // marked, so the user knows what to type in the 'wake_word' text setting.
     this.esp.on('wake_words', (available, active) => {
+      // One comma-separated line of ids — the settings label collapses newlines,
+      // and the id is what the user must type into 'wake_word' anyway.
       const lines = available
-        .map(w => `${w.wakeWord} (${w.id})${active.includes(w.id) ? ' — active' : ''}`)
-        .join('\n');
+        .map(w => `${w.id}${active.includes(w.id) ? ' [ACTIVE]' : ''}`)
+        .join(', ');
       this.setSettings({ available_wake_words: lines }).catch(err => {
         this.logger.error('Failed to update available_wake_words setting', err);
       });

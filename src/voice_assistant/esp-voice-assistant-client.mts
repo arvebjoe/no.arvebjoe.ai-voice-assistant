@@ -272,14 +272,26 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
 
     this.healthCheckTimer = this.homey.setInterval(() => {
       const now = Date.now();
-      if (this.lastMessageReceivedTime > 0 && (now - this.lastMessageReceivedTime) > this.PING_TIMEOUT) {
+      const idleMs = this.lastMessageReceivedTime > 0 ? now - this.lastMessageReceivedTime : 0;
+      if (this.lastMessageReceivedTime > 0 && idleMs > this.PING_TIMEOUT) {
         this.logger.warn('Connection timeout - no ping received', {
-          lastPing: Math.round((now - this.lastMessageReceivedTime) / 1000) + 's ago'
+          lastPing: Math.round(idleMs / 1000) + 's ago'
         });
         this.handleDisconnect();
       }
       else if (this.lastMessageReceivedTime > 0) {
-        this.logger.info('Connection is healthy. Last ping received ' + Math.round((now - this.lastMessageReceivedTime) / 1000) + 's ago');
+        // The PE chatters on its own (pings, sensor updates), but the TR's Linux
+        // firmware goes silent when idle — a passive watchdog then kills a healthy
+        // link every PING_TIMEOUT. Ping the device once the link has been quiet;
+        // its PingResponse refreshes lastMessageReceivedTime.
+        if (idleMs > this.HEALTH_CHECK_INTERVAL / 2) {
+          try {
+            this.send('PingRequest', {});
+          } catch {
+            // A dead socket is caught by the timeout branch on the next tick.
+          }
+        }
+        this.logger.info('Connection is healthy. Last ping received ' + Math.round(idleMs / 1000) + 's ago');
       }
     }, this.HEALTH_CHECK_INTERVAL);
   }

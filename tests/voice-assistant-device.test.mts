@@ -164,8 +164,7 @@ describe('VoiceAssistantDevice (harness)', () => {
             h.esp.emit('wake_words', [nabu, homey], ['okay_nabu'], 1);
             await h.settle(0);
             const settings = (h.device as any).getSettings();
-            expect(settings.available_wake_words).toContain('Okay Nabu (okay_nabu) — active');
-            expect(settings.available_wake_words).toContain('Hey Homey (hey_homey)');
+            expect(settings.available_wake_words).toBe('okay_nabu [ACTIVE], hey_homey');
         });
     });
 
