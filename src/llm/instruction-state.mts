@@ -10,7 +10,21 @@ export type InstructionParams = {
     supportsTimers?: boolean;
     supportsShoppingList?: boolean;
     supportsMusic?: boolean;
+    /**
+     * The reply text is fed verbatim to a TTS engine (local pipeline / Mistral
+     * chat) — chat LLMs decorate with markdown unless told not to, and it
+     * pollutes transcripts and non-Voxtral TTS output. Speech-to-speech
+     * providers don't need this.
+     */
+    plainTextOutput?: boolean;
 };
+
+// Exported so feature-costs can include it in the local-pipeline base cost.
+export const PLAIN_TEXT_BLOCK = `
+
+Output format
+- Your reply is spoken aloud by a text-to-speech engine. Write plain conversational text only.
+- Never use markdown or other formatting: no **bold**, bullet points, headers, backticks or emoji.`;
 
 /**
  * Shared holder for the language-specific system prompt (Org 2).
@@ -67,6 +81,9 @@ export class InstructionState {
             // Same for the Music Assistant block.
             if (params.supportsMusic) {
                 text += getMusicInstructions(params.languageCode);
+            }
+            if (params.plainTextOutput) {
+                text += PLAIN_TEXT_BLOCK;
             }
             this.instructionText = text;
         } catch (error) {

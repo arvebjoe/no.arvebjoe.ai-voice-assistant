@@ -11,7 +11,7 @@ import { MockHomey } from './mocks/mock-homey.mjs';
 describe('SettingsManager pub/sub', () => {
     let homey: MockHomey;
 
-    const flushDebounce = () => vi.advanceTimersByTime(400);
+    const flushDebounce = () => vi.advanceTimersByTime(1_600);
 
     beforeEach(() => {
         vi.useFakeTimers();
@@ -94,9 +94,9 @@ describe('SettingsManager pub/sub', () => {
         sub.mockClear();
 
         homey.setMockSetting('selected_voice', 'verse');
-        vi.advanceTimersByTime(200); // inside the window
+        vi.advanceTimersByTime(1_000); // inside the window
         homey.setMockSetting('selected_voice', 'aria');
-        vi.advanceTimersByTime(200); // window restarted — still nothing
+        vi.advanceTimersByTime(1_000); // window restarted — still nothing
         expect(sub).not.toHaveBeenCalled();
 
         flushDebounce();

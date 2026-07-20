@@ -458,6 +458,9 @@ export class LocalPipelineProvider extends (EventEmitter as new () => TypedEmitt
             supportsTimers: this.options.supportsTimers,
             supportsShoppingList: this.options.supportsShoppingList,
             supportsMusic: this.options.supportsMusic,
+            // Chat-LLM replies go verbatim to TTS/transcripts; markdown leaks
+            // without this (observed live with Mistral 2026-07-19).
+            plainTextOutput: true,
         };
     }
 
@@ -513,9 +516,19 @@ export class LocalPipelineProvider extends (EventEmitter as new () => TypedEmitt
             if (wasReconnect) this.emit("reconnected");
             this.logger.info(`Pipeline healthy (${this.stt.describe()}, ${this.llm.describe()}, ${this.tts.describe()})`);
         } catch (e: any) {
-            this.logger.error('Pipeline health check failed', e);
+            const err = e instanceof Error ? e : new Error(String(e?.message ?? e));
+            // While a LAN box is off, the reconnect campaign re-probes every few
+            // seconds and each failure used to be reported TWICE (this error +
+            // the device's "Realtime agent error" handler, both captureException).
+            // Report the first failure of a campaign loudly; retries are expected
+            // and log as warnings without re-emitting "error".
+            if (this.reconnect.attemptCount === 0) {
+                this.logger.error('Pipeline health check failed', err);
+                this.emit("error", err);
+            } else {
+                this.logger.warn(`Pipeline health check failed (retry ${this.reconnect.attemptCount}): ${err.message}`);
+            }
             this.setConnected(false);
-            this.emit("error", e instanceof Error ? e : new Error(String(e?.message ?? e)));
             this.emit("Unhealthy");
             if (!this.manuallyClosing) this.reconnect.schedule();
         }

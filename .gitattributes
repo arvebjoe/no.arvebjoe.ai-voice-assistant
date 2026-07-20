@@ -1,0 +1,3 @@
+# Keep LF in the working tree regardless of core.autocrlf — eslint's
+# linebreak-style rule expects LF, and autocrlf=true checkouts were fighting it.
+* text=auto eol=lf

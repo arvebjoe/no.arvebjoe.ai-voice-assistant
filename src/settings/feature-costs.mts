@@ -1,4 +1,5 @@
 import { loadInstructionModule } from '../llm/agent-instructions.mjs';
+import { PLAIN_TEXT_BLOCK } from '../llm/instruction-state.mjs';
 import { getShoppingListInstructions } from '../llm/instructions/shopping-list-instructions.mjs';
 import { getMusicInstructions } from '../llm/instructions/music-instructions.mjs';
 import { ToolManager } from '../llm/tool-manager.mjs';
@@ -68,6 +69,9 @@ export async function computeFeatureCosts(
     const baseText = mod.getDefaultInstructions(languageName, null, false);
     const withTimersText = mod.getDefaultInstructions(languageName, null, true);
     const timersInstrChars = Math.max(0, withTimersText.length - baseText.length);
+    // The budget verdict applies to the local pipeline, which always appends
+    // the plain-text-output block — count it as part of the base.
+    const baseInstrChars = baseText.length + PLAIN_TEXT_BLOCK.length;
     const shoppingInstrChars = getShoppingListInstructions(languageCode).length;
     const musicInstrChars = getMusicInstructions(languageCode).length;
 
@@ -100,7 +104,7 @@ export async function computeFeatureCosts(
         language: languageCode,
         charsPerToken: CHARS_PER_TOKEN[languageCode] ?? 3.6,
         features: [
-            feature('smart', baseText.length),
+            feature('smart', baseInstrChars),
             feature('weather', 0),
             feature('timers', timersInstrChars),
             feature('shopping', shoppingInstrChars),

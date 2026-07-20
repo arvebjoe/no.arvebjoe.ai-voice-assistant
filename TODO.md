@@ -14,11 +14,15 @@
       mic-close→speaking ≈ 2.7 s). Still unverified: the batch fallback when the STT
       websocket drops mid-utterance (hard to provoke), and an explicit check of the
       mirrored key/model inputs (`MIRRORED_INPUTS`) + Voxtral voice dropdown contents.
-- [ ] **Mistral LLM replies contain markdown (`**bold**`) which is passed raw to TTS**
-      (observed live 2026-07-19; Voxtral TTS ignores the asterisks so it's inaudible, but
-      it pollutes transcripts/logs and other TTS engines may read them). Prompt it away in
-      the local-pipeline instructions and/or strip markdown before TTS.
-- [ ] **Bump `SettingsManager.EMIT_DEBOUNCE_MS` (300 ms) to ~1–2 s.** A real mobile-webview
+- [x] **Mistral LLM replies contain markdown — FIXED 2026-07-20 (prompt side; needs a live
+      spot-check):** TTS was already protected (`SentenceSpeaker.cleanForSpeech` strips
+      markdown since 2026-07-05) — the leak was in transcripts/logs/history. Fix: new
+      `plainTextOutput` flag on `InstructionParams` appends a short "spoken plain text
+      only, no markdown" block; the local pipeline (and therefore the Mistral provider)
+      sets it. The block is counted in the settings budget meter's base cost
+      (`feature-costs.mts`). Speech-to-speech providers unaffected.
+- [x] **Bump `SettingsManager.EMIT_DEBOUNCE_MS` (300 ms) to ~1–2 s — DONE 2026-07-20
+      (now 1.5 s, pubsub tests updated).** A real mobile-webview
       save burst (~30 sequential `Homey.set` calls) spreads wider than 300 ms, causing
       several redundant provider rebuilds + health probes per save (each a Sentry capture).
       Observed live 2026-07-19: one save produced staggered rebuilds (mid-burst config
@@ -27,10 +31,12 @@
       Save silently persisted nothing (no error shown; reopening showed old values; later
       sessions saved fine). Suspected dead webview bridge. Watch for recurrence before
       blaming our page.
-- [ ] **Unhealthy local pipeline double-reports each failed probe** ("Pipeline health check
-      failed" + "Realtime agent error" both captureException, every few seconds while a
-      LAN box is off). Sentry throttling contains it, but consider single-report and/or
-      slower campaign cap before store release.
+- [x] **Unhealthy local pipeline double-reports each failed probe — FIXED 2026-07-20:**
+      the `start()` health-check catch now reports loudly (logger.error → Sentry + the
+      "error" emit that triggers the device's second capture) only on the FIRST failure
+      of a reconnect campaign (`reconnect.attemptCount === 0`); retries log as warnings
+      (no Sentry, no "error" emit). "Unhealthy" still emits every time so device
+      availability stays correct; `idleHealthCheck` already single-reported.
 - [ ] **TR mic level vs local VAD — FIXED 2026-07-19, refinements open:** the TR's
       WebRTC-processed mic peaks only ~330–430 int16-RMS for close speech, so the local
       VAD (adaptive threshold ~500) never detected speech and every turn timed out with
@@ -43,7 +49,13 @@
       as a device setting instead of a constant; evaluate the TR's own mic-gain /
       noise-suppression entities (research doc) as a device-side remedy; check whether
       4× gain hurts STT when someone shouts next to the TR (clipping).
-- [ ] **TR link stability — root-caused 2026-07-19, fix shipped, needs soak:** three
+- [x] **TR link stability — root-caused 2026-07-19, fix shipped, SOAK PASSED 2026-07-20:**
+      overnight soak (~8+ h) with PE + TR both connected: zero disconnects, both answered a
+      voice command cleanly in the morning — so the PE re-check below also passed. App
+      memory stable at ~40–50 MB idle all night (~65–70 MB during active turns), CPU 0%
+      idle with a small ~10% blip every ~12 min (nothing of ours runs at that cadence —
+      our periodic work is 30–60 s ticks — so that's Homey platform housekeeping/GC,
+      not the app). Original context: three
       "Connection timeout - no ping received" disconnects at ~3 min idle cadence. Cause:
       our health check was purely passive (device must talk within `PING_TIMEOUT` 120 s);
       the PE chatters on its own but the TR's Linux firmware goes silent when idle, so
@@ -54,6 +66,8 @@
       instantly with no reconnect. Re-check the PE still behaves after this change
       (it should — its own traffic keeps the link fresh and the extra pings are no-ops)._
 - [ ] **TR playback choppiness — RESOLVED ITSELF with the keepalive fix, keep watching:**
+      _2026-07-20 update: after the overnight soak both devices played replies as expected —
+      no recurrence so far on the stable link._
       during the flaky-link period (pre-keepalive, 2026-07-19) each per-sentence FLAC's
       last ~200–300 ms was audibly cut on the TR; after the active-ping fix the owner
       reports playback is clean. Plausibly the watchdog's connect/destroy churn was

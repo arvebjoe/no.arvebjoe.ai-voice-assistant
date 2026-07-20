@@ -29,9 +29,11 @@ export class SettingsManager {
   // A settings-page Save writes ~20 keys back-to-back and Homey fires one 'set'
   // event per key. Emitting a snapshot per key made every subscriber (device
   // rebuild/restart, local pipeline health re-probe) run ~20 times concurrently
-  // (code_review_2 H1). Coalesce the burst into one emit instead.
+  // (code_review_2 H1). Coalesce the burst into one emit instead. 1.5 s because a
+  // real mobile-webview save burst has >300 ms gaps between keys (observed live
+  // 2026-07-19: one Save produced several staggered rebuilds at 300 ms).
   private emitTimer: ReturnType<typeof setTimeout> | null = null;
-  private static readonly EMIT_DEBOUNCE_MS = 300;
+  private static readonly EMIT_DEBOUNCE_MS = 1_500;
 
   private constructor() {
   }
