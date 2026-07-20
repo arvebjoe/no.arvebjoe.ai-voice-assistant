@@ -26,7 +26,10 @@ MA state lands in `./music-assistant-data/` next to the compose file. Update lat
 3. **Settings → Player Providers** — make sure **Sendspin** is enabled (it ships as a technical
    preview). The Voice PE (stock 26.x firmware) and the ThirdReality speaker are discovered on the
    LAN automatically and appear as players.
-4. In this Homey app's settings, enable **Music Assistant** and enter `<host-ip>` (port 8095).
+4. **MA 2.9+ requires an API token:** in the MA web UI, open your **profile** and create a
+   **long-lived token** (the WebSocket API rejects unauthenticated clients since API schema 28).
+5. In this Homey app's settings, enable **Music Assistant**, enter `<host-ip>` (port 8095) and
+   paste the token.
 
 Then just ask a speaker: *"play Abbey Road by the Beatles"*.
 

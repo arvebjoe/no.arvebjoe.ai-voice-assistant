@@ -231,3 +231,27 @@ export function getMusicInstructions(languageCode?: string | null): string {
     const code = (languageCode || 'en').toLowerCase();
     return MUSIC_BLOCK[code] ?? MUSIC_BLOCK.en;
 }
+
+// Spoken on the device while a slow play_music is still working: MA resolves a
+// first-played artist from the music provider BEFORE answering play_media
+// (~30 s observed live on MA 2.9.9), and without this the user gets silence.
+const PLAY_ACK: Record<string, string> = {
+    en: 'Putting on {name}, one moment.',
+    no: 'Setter på {name}, et øyeblikk.',
+    sv: 'Sätter på {name}, ett ögonblick.',
+    da: 'Sætter {name} på, et øjeblik.',
+    nl: 'Ik zet {name} op, momentje.',
+    de: 'Ich starte {name}, einen Moment.',
+    fr: 'Je lance {name}, un instant.',
+    it: 'Metto {name}, un attimo.',
+    es: 'Pongo {name}, un momento.',
+    pl: 'Włączam {name}, chwileczkę.',
+    ru: 'Включаю {name}, секундочку.',
+    ko: '{name} 재생을 준비하고 있어요, 잠시만요.',
+};
+
+/** "Putting on X, one moment." in the given language, English fallback. */
+export function getPlayAcknowledgement(languageCode: string | null | undefined, name: string): string {
+    const code = (languageCode || 'en').toLowerCase();
+    return (PLAY_ACK[code] ?? PLAY_ACK.en).replace('{name}', name);
+}

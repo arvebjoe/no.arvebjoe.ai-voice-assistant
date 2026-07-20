@@ -205,13 +205,20 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
     // Music Assistant: same gating contract, plus tell the music tools which
     // physical satellite this is so "play music" targets the speaker the user
-    // is talking to (matched against MA's player list by IP, then name/zone).
+    // is talking to (matched against MA's player list by MAC, then IP, then
+    // name/zone — MA 2.9 reports no IP for the satellites, only the MAC).
     this.providerOptions.supportsMusic = this.toolManager.isMusicActive();
     this.toolManager.setMusicPlayerHint(() => ({
+      mac: this.macAddress,
       address: this.getStoreValue('address'),
       deviceName: this.getName(),
       zone: this.currentZone,
     }));
+    // Slow-command acknowledgement ("Putting on X, one moment") — spoken on
+    // this satellite while a play_media is still resolving server-side.
+    this.toolManager.setInterimSpeak((text) => {
+      this.speakText(text).catch((err) => this.logger.error('Interim acknowledgement failed', err));
+    });
 
     // Initialize the voice/LLM provider (via the factory, selected by the
     // 'voice_provider' setting) - it uses the tool manager for function calls.

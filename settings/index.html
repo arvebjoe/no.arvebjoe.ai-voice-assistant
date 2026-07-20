@@ -1085,6 +1085,15 @@
                 <div class="help-text">The Music Assistant web interface port. Leave at 8095 unless you changed it.
                 </div>
               </div>
+              <div class="homey-form-group">
+                <label class="homey-form-label" for="music_assistant_token">API token</label>
+                <input type="password" class="homey-form-input" id="music_assistant_token" autocomplete="off"
+                  placeholder="Long-lived token" />
+                <div class="help-text">Required by Music Assistant 2.9 and newer: in the Music Assistant web
+                  interface, open your profile and create a long-lived token, then paste it here. Leave empty for
+                  older servers (2.7/2.8).
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -1722,6 +1731,10 @@
         if (err) return Homey.alert(err);
         document.getElementById("music_assistant_port").value = value || 8095;
       });
+      Homey.get("music_assistant_token", function (err, value) {
+        if (err) return Homey.alert(err);
+        if (value) document.getElementById("music_assistant_token").value = value;
+      });
 
       // Remote syslog logging (no token cost — not part of the budget meter).
       var remoteLogEnabledElement = document.getElementById("remote_log_enabled");
@@ -1890,6 +1903,7 @@
           ["music_assistant_enabled", musicAssistantEnabledElement.checked],
           ["music_assistant_host", document.getElementById("music_assistant_host").value.trim()],
           ["music_assistant_port", parseInt(document.getElementById("music_assistant_port").value, 10) || 8095],
+          ["music_assistant_token", document.getElementById("music_assistant_token").value.trim()],
           // Remote syslog logging
           ["remote_log_enabled", remoteLogEnabledElement.checked],
           ["remote_log_host", document.getElementById("remote_log_host").value.trim()],

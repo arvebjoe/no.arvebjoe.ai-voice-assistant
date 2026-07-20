@@ -249,13 +249,18 @@ Setup:
 2. Add your speakers to MA as **Sendspin players** — both the Voice PE (stock firmware) and the
    ThirdReality speaker have the Sendspin client built in, so MA discovers them on the LAN.
 3. In this app's settings, enable **Music Assistant** and enter the server's address
-   (default port 8095).
+   (default port 8095). On **Music Assistant 2.9 or newer** also paste an **API token**:
+   in the MA web UI, open your profile and create a *long-lived token* (older MA servers
+   need no token — leave the field empty).
 
 Notes:
 
-* *"Play …"* targets the speaker you're talking to (matched automatically by IP/name/zone). Name
-  another room to play elsewhere — **any** MA player works as a target (Sonos, AirPlay,
-  Chromecast, …), not just the voice satellites.
+* *"Play …"* targets the speaker you're talking to (matched automatically). Name another room
+  to play elsewhere — **any** MA player works as a target (Sonos, AirPlay, Chromecast, …), not
+  just the voice satellites. Tip: rename players in MA to short, speakable names ("Kitchen",
+  "Office") — the voice targeting matches whatever name MA reports.
+* Starting a brand-new artist/album can take MA ~30 seconds the first time (it resolves the
+  tracks from your music provider before answering) — the assistant replies once it's queued.
 * The queue lives in MA, so pause/next/previous also work on grouped/multi-room playback, and
   *"play music like X"* (radio mode) keeps the queue going with similar tracks.
 * Voice keeps working while music plays: announcements and replies duck the music on the device.
@@ -303,8 +308,9 @@ loaded at all: no tools, no prompt text, no cost.
   account's default list). Note: the account must have an e-mail + password login — accounts
   created with "Sign in with Apple/Google/Facebook" have no password and can't be used until you
   set one in the Bring! app.
-* **Music** *(opt-in)* — enter your Music Assistant server's address (default port 8095) to
-  enable the music tools (see [Playing music](#playing-music-music-assistant)).
+* **Music** *(opt-in)* — enter your Music Assistant server's address (default port 8095; MA 2.9+
+  also needs a long-lived API token from the MA web UI) to enable the music tools (see
+  [Playing music](#playing-music-music-assistant)).
 * **Web search** — **OpenAI web search** (uses your OpenAI key) or **Brave Search API** (its own
   free-tier key); switch the feature off to remove the tool entirely.
 

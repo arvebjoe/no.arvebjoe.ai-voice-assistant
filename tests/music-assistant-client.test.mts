@@ -5,17 +5,27 @@ import { MusicAssistantClient } from '../src/helpers/music-assistant-client.mjs'
 
 /**
  * Exercises the MA WebSocket client against a scripted in-process server:
- * server-info handshake, command/result correlation, partial-result
- * accumulation, error results, and the shape mapping of the high-level calls.
+ * server-info handshake, token auth (mandatory from API schema 28 / MA 2.9),
+ * command/result correlation, partial-result accumulation, error results, and
+ * the shape mapping of the high-level calls.
  */
 
 type CommandHandler = (msg: any, socket: WebSocket) => void;
 
+const TEST_TOKEN = 'test-token';
+
 class FakeMaServer {
     private wss!: WebSocketServer;
     port = 0;
+    /** Commands received AFTER auth (auth itself is recorded in authAttempts). */
     received: any[] = [];
+    authAttempts: any[] = [];
     onCommand: CommandHandler = () => { };
+
+    constructor(
+        private schema = 34,
+        private token: string | null = TEST_TOKEN,
+    ) { }
 
     async start(): Promise<void> {
         this.wss = new WebSocketServer({ port: 0 });
@@ -24,11 +34,26 @@ class FakeMaServer {
         this.wss.on('connection', (socket) => {
             // First frame: the server info message, like the real server.
             socket.send(JSON.stringify({
-                server_id: 'test', server_version: '2.7.0', schema_version: 34,
+                server_id: 'test', server_version: '2.9.9', schema_version: this.schema,
                 min_supported_schema_version: 24, base_url: `http://127.0.0.1:${this.port}`,
             }));
+            let authed = this.schema < 28; // pre-2.9 servers have no auth
             socket.on('message', (data) => {
                 const msg = JSON.parse(data.toString());
+                if (msg.command === 'auth') {
+                    this.authAttempts.push(msg);
+                    if (this.token !== null && msg.args?.token === this.token) {
+                        authed = true;
+                        socket.send(JSON.stringify({ message_id: msg.message_id, result: { username: 'test' } }));
+                    } else {
+                        socket.send(JSON.stringify({ message_id: msg.message_id, error_code: 21, details: 'Invalid token' }));
+                    }
+                    return;
+                }
+                if (!authed) {
+                    socket.send(JSON.stringify({ message_id: msg.message_id, error_code: 20, details: 'Authentication required. Please send auth command first.' }));
+                    return;
+                }
                 this.received.push(msg);
                 this.onCommand(msg, socket);
             });
@@ -48,7 +73,7 @@ describe('MusicAssistantClient', () => {
         server = new FakeMaServer();
         await server.start();
         client = new MusicAssistantClient();
-        client.configure('127.0.0.1', server.port);
+        client.configure('127.0.0.1', server.port, TEST_TOKEN);
     });
 
     afterEach(async () => {
@@ -68,6 +93,54 @@ describe('MusicAssistantClient', () => {
         const result = await client.sendCommand<any>('ping');
         expect(result).toEqual({ pong: true });
         expect(server.received[0].command).toBe('ping');
+    });
+
+    it('authenticates with the token before the first command (schema >= 28)', async () => {
+        server.onCommand = (msg, socket) => {
+            socket.send(JSON.stringify({ message_id: msg.message_id, result: 'ok' }));
+        };
+        await client.sendCommand('ping');
+        expect(server.authAttempts).toHaveLength(1);
+        expect(server.authAttempts[0].command).toBe('auth');
+        expect(server.authAttempts[0].args).toEqual({ token: TEST_TOKEN });
+    });
+
+    it('fails with a create-a-token hint when the server requires auth and no token is set', async () => {
+        const bare = new MusicAssistantClient();
+        bare.configure('127.0.0.1', server.port);
+        try {
+            await expect(bare.sendCommand('players/all')).rejects.toThrow(/long-lived token/i);
+            expect(server.authAttempts).toHaveLength(0);
+        } finally {
+            bare.disconnect();
+        }
+    });
+
+    it('fails with a clear error when the server rejects the token', async () => {
+        const wrong = new MusicAssistantClient();
+        wrong.configure('127.0.0.1', server.port, 'expired-token');
+        try {
+            await expect(wrong.sendCommand('players/all')).rejects.toThrow(/rejected the API token/i);
+        } finally {
+            wrong.disconnect();
+        }
+    });
+
+    it('skips auth entirely on pre-2.9 servers (schema < 28)', async () => {
+        const oldServer = new FakeMaServer(27, null);
+        await oldServer.start();
+        oldServer.onCommand = (msg, socket) => {
+            socket.send(JSON.stringify({ message_id: msg.message_id, result: 'legacy-ok' }));
+        };
+        const legacy = new MusicAssistantClient();
+        legacy.configure('127.0.0.1', oldServer.port); // no token needed
+        try {
+            await expect(legacy.sendCommand('ping')).resolves.toBe('legacy-ok');
+            expect(oldServer.authAttempts).toHaveLength(0);
+        } finally {
+            legacy.disconnect();
+            await oldServer.stop();
+        }
     });
 
     it('correlates concurrent commands by message_id', async () => {
@@ -129,7 +202,7 @@ describe('MusicAssistantClient', () => {
             }, 75);
         };
         try {
-            client.configure('127.0.0.1', server2.port);
+            client.configure('127.0.0.1', server2.port, TEST_TOKEN);
             await expect(client.sendCommand('ping')).resolves.toBe('ok2');
         } finally {
             client.disconnect();

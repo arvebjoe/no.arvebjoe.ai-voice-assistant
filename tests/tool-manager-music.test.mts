@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { ToolManager } from '../src/llm/tool-manager.mjs';
 import { MockHomey } from './mocks/mock-homey.mjs';
 import { MockDeviceManager } from './mocks/mock-device-manager.mjs';
@@ -28,11 +28,22 @@ class FakeMusicClient {
     queue: MaQueueState = { queueId: 'q1', active: true, state: 'playing', shuffleEnabled: false, repeatMode: 'off', nowPlaying: 'Song — Artist', itemsInQueue: 3 };
     calls: Array<{ method: string; args: any[] }> = [];
 
+    /** When set, playMedia resolves only after this many ms (real/fake timers). */
+    playMediaDelayMs = 0;
+    /** When set, playMedia rejects with this error (after any delay). */
+    playMediaError: Error | null = null;
+
     private rec(method: string, ...args: any[]) { this.calls.push({ method, args }); }
     async getPlayers() { this.rec('getPlayers'); return this.players; }
     async search(q: string, types?: string[], limit?: number) { this.rec('search', q, types, limit); return this.searchResults; }
     async getActiveQueue(playerId: string) { this.rec('getActiveQueue', playerId); return { ...this.queue }; }
-    async playMedia(queueId: string, media: any, option?: string, radioMode?: boolean) { this.rec('playMedia', queueId, media, option, radioMode); }
+    async playMedia(queueId: string, media: any, option?: string, radioMode?: boolean) {
+        this.rec('playMedia', queueId, media, option, radioMode);
+        if (this.playMediaDelayMs > 0) {
+            await new Promise<void>((resolve) => setTimeout(resolve, this.playMediaDelayMs));
+        }
+        if (this.playMediaError) throw this.playMediaError;
+    }
     async queueCommand(queueId: string, command: string) { this.rec('queueCommand', queueId, command); }
     async setShuffle(queueId: string, enabled: boolean) { this.rec('setShuffle', queueId, enabled); }
 }
@@ -131,6 +142,45 @@ describe('ToolManager music tool handlers', () => {
         expect(play.args).toEqual(['q1', 'library://artist/1', 'replace', false]);
     });
 
+    // MA 2.9 shapes observed live 2026-07-20: device_info.ip_address is null
+    // for the satellites; the PE carries its MAC in device_info.mac_address,
+    // the TR only embeds it in the player_id/name.
+    it('targets the PE by MAC hint when MA reports no IP (mac_address field)', async () => {
+        fake.players = [
+            player({ playerId: 'other', name: 'Bedroom', macAddress: 'AA:AA:AA:AA:AA:AA' }),
+            player({ playerId: 'up20f83b0908d1', name: 'Home Assistant Voice 0908d1', macAddress: '20:F8:3B:09:08:D1' }),
+        ];
+        tm.setMusicPlayerHint(() => ({ mac: '20f83b0908d1', address: '10.0.0.7', deviceName: 'Stua PE', zone: 'Stua' }));
+
+        const { output } = await tm.execute('music_control', { action: 'next' });
+        expect(output.ok).toBe(true);
+        expect(output.data.player).toBe('Home Assistant Voice 0908d1');
+    });
+
+    it('targets the TR by MAC embedded in the player id/name (no mac_address in MA)', async () => {
+        fake.players = [
+            player({ playerId: 'other', name: 'Bedroom' }),
+            player({ playerId: 'up3rspka8e29151dbad', name: '3RSPK-A8E29151DBAD' }),
+        ];
+        tm.setMusicPlayerHint(() => ({ mac: 'A8:E2:91:51:DB:AD', deviceName: 'TR speaker', zone: 'Kontor' }));
+
+        const { output } = await tm.execute('music_control', { action: 'next' });
+        expect(output.ok).toBe(true);
+        expect(output.data.player).toBe('3RSPK-A8E29151DBAD');
+    });
+
+    it('ignores a malformed MAC hint and falls through to the other hints', async () => {
+        fake.players = [
+            player({ playerId: 'a', name: 'Kitchen' }),
+            player({ playerId: 'b', name: 'Office speaker' }),
+        ];
+        tm.setMusicPlayerHint(() => ({ mac: 'not-a-mac', zone: 'Office' }));
+
+        const { output } = await tm.execute('music_control', { action: 'next' });
+        expect(output.ok).toBe(true);
+        expect(output.data.player).toBe('Office speaker');
+    });
+
     it('falls back to zone-name matching when the IP does not match', async () => {
         fake.players = [
             player({ playerId: 'a', name: 'Kitchen' }),
@@ -142,6 +192,96 @@ describe('ToolManager music tool handlers', () => {
         expect(output.ok).toBe(true);
         expect(output.data.player).toBe('Office speaker');
         expect(fake.calls.find(c => c.method === 'queueCommand')!.args).toEqual(['q1', 'next']);
+    });
+
+    describe('slow-play acknowledgement', () => {
+        afterEach(() => {
+            vi.useRealTimers();
+        });
+
+        it('speaks "putting on X" when play_media is still pending after the delay', async () => {
+            vi.useFakeTimers();
+            fake.players = [player({ playerId: 'mine', name: 'Office speaker' })];
+            fake.searchResults.artists = [item('Metallica', 'artist', 'library://artist/2')];
+            fake.playMediaDelayMs = 30_000; // a first-played artist on MA 2.9
+            const spoken: string[] = [];
+            tm.setMusicPlayerHint(() => ({ zone: 'Office' }));
+            tm.setInterimSpeak((text) => spoken.push(text));
+
+            const pending = tm.execute('play_music', { query: 'Metallica', media_type: 'artist' });
+            await vi.advanceTimersByTimeAsync(5_000); // past the 4s ack delay
+            expect(spoken).toEqual(['Putting on Metallica, one moment.']);
+
+            await vi.advanceTimersByTimeAsync(30_000);
+            const { output } = await pending;
+            expect(output.ok).toBe(true);
+            expect(spoken).toHaveLength(1); // spoken once, not repeated
+        });
+
+        it('stays silent when play_media answers quickly', async () => {
+            vi.useFakeTimers();
+            fake.players = [player({ playerId: 'mine', name: 'Office speaker' })];
+            fake.searchResults.artists = [item('Queen', 'artist', 'library://artist/1')];
+            const spoken: string[] = [];
+            tm.setMusicPlayerHint(() => ({ zone: 'Office' }));
+            tm.setInterimSpeak((text) => spoken.push(text));
+
+            const { output } = await tm.execute('play_music', { query: 'Queen', media_type: 'artist' });
+            expect(output.ok).toBe(true);
+            await vi.advanceTimersByTimeAsync(10_000); // ack timer must have been cancelled
+            expect(spoken).toEqual([]);
+        });
+
+        it('reports "preparing" (not failure) when play_media times out — MA finishes late', async () => {
+            fake.players = [player({ playerId: 'mine', name: 'Office speaker' })];
+            fake.searchResults.artists = [item('Rammstein', 'artist', 'library://artist/4')];
+            const timeout = new Error("Music Assistant did not answer 'player_queues/play_media' within 45s.");
+            (timeout as any).code = 'MA_TIMEOUT';
+            fake.playMediaError = timeout;
+            tm.setMusicPlayerHint(() => ({ zone: 'Office' }));
+
+            const { output } = await tm.execute('play_music', { query: 'Rammstein', media_type: 'artist' });
+            expect(output.ok).toBe(true);
+            expect(output.data.status).toBe('preparing');
+            expect(output.data.playing.name).toBe('Rammstein');
+            expect(output.data.note).toMatch(/start within a minute/i);
+        });
+
+        it('still fails on a real (non-timeout) play_media error', async () => {
+            fake.players = [player({ playerId: 'mine', name: 'Office speaker' })];
+            fake.searchResults.artists = [item('Queen', 'artist', 'library://artist/1')];
+            fake.playMediaError = new Error('Invalid media uri');
+            tm.setMusicPlayerHint(() => ({ zone: 'Office' }));
+
+            const { output } = await tm.execute('play_music', { query: 'Queen', media_type: 'artist' });
+            expect(output.ok).toBe(false);
+            expect(output.error.code).toBe('MUSIC_UNAVAILABLE');
+        });
+
+        it('speaks in the selected language', async () => {
+            vi.useFakeTimers();
+            const homey = new MockHomey();
+            homey.setMockSetting('music_assistant_enabled', true);
+            homey.setMockSetting('music_assistant_host', '192.168.1.50');
+            homey.setMockSetting('selected_language_code', 'no');
+            settingsManager.reset(); // re-prime from THIS homey (incl. the language)
+            const tmNo = await makeManager(homey);
+            const fakeNo = new FakeMusicClient();
+            (tmNo as any).musicClient = fakeNo;
+            (tmNo as any).musicPlayersCache = null;
+            fakeNo.players = [player({ playerId: 'mine', name: 'Office speaker' })];
+            fakeNo.searchResults.artists = [item('Heilung', 'artist', 'library://artist/3')];
+            fakeNo.playMediaDelayMs = 30_000;
+            const spoken: string[] = [];
+            tmNo.setMusicPlayerHint(() => ({ zone: 'Office' }));
+            tmNo.setInterimSpeak((text) => spoken.push(text));
+
+            const pending = tmNo.execute('play_music', { query: 'Heilung', media_type: 'artist' });
+            await vi.advanceTimersByTimeAsync(5_000);
+            expect(spoken).toEqual(['Setter på Heilung, et øyeblikk.']);
+            await vi.advanceTimersByTimeAsync(30_000);
+            await pending;
+        });
     });
 
     it('uses an explicitly named player over the hint', async () => {

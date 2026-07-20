@@ -9,6 +9,7 @@ import { TimerManager } from "../voice_assistant/timer-manager.mjs";
 import { openaiWebSearch, braveWebSearch } from "../helpers/web-search.mjs";
 import { BringClient } from "../helpers/bring-client.mjs";
 import { MusicAssistantClient, getMusicAssistantClient, MaPlayer, MaMediaItem, MaQueueCommand } from "../helpers/music-assistant-client.mjs";
+import { getPlayAcknowledgement } from "./instructions/music-instructions.mjs";
 
 type ToolHandler = (args: any) => Promise<any> | any;
 
@@ -54,11 +55,16 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
     // Identifies THIS satellite so "play music" without a room targets the
     // speaker the user is talking to (matched against the MA player list by
     // IP address, then name). Set by the device after construction.
-    private musicPlayerHint?: () => { address?: string; deviceName?: string; zone?: string };
+    private musicPlayerHint?: () => { mac?: string; address?: string; deviceName?: string; zone?: string };
     private musicPlayersCache: { players: MaPlayer[]; fetchedAt: number } | null = null;
     private static readonly MUSIC_TOOL_NAMES = [
         'search_music', 'play_music', 'music_control', 'get_music_state',
     ];
+    // Speaks a line on the satellite mid-tool-call. Registered by the device
+    // (routes to speakText); used so a slow play_media (~30 s for a first-played
+    // artist on MA 2.9) says "Putting on X, one moment" instead of dead air.
+    private interimSpeak?: (text: string) => void;
+    private static readonly PLAY_ACK_DELAY_MS = 4_000;
 
     // Weather / web search / timers are gated the same way (docs/cost-of-growth.md
     // rule 1: every optional feature has an on/off gate so disabled features cost
@@ -351,8 +357,29 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
      * to, so playback targets the speaker the user is talking to by default.
      * A callback (not a snapshot) because the device's IP and name can change.
      */
-    setMusicPlayerHint(hint: () => { address?: string; deviceName?: string; zone?: string }): void {
+    setMusicPlayerHint(hint: () => { mac?: string; address?: string; deviceName?: string; zone?: string }): void {
         this.musicPlayerHint = hint;
+    }
+
+    /** Register the device's speak path for mid-tool-call acknowledgements. */
+    setInterimSpeak(speak: (text: string) => void): void {
+        this.interimSpeak = speak;
+    }
+
+    /**
+     * Await `work`; if it is still pending after PLAY_ACK_DELAY_MS, speak the
+     * acknowledgement on the satellite so a slow command isn't silent.
+     */
+    private async withSlowAck<T>(work: Promise<T>, ackText: string): Promise<T> {
+        if (!this.interimSpeak) return work;
+        const timer = this.homey.setTimeout(() => {
+            try { this.interimSpeak?.(ackText); } catch { /* never fail the command */ }
+        }, ToolManager.PLAY_ACK_DELAY_MS);
+        try {
+            return await work;
+        } finally {
+            this.homey.clearTimeout(timer);
+        }
     }
 
     /**
@@ -366,11 +393,15 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
         const enabled = enabledSetting === true || enabledSetting === 'true';
         const host = (settingsManager.getGlobal<string>('music_assistant_host', '') || '').trim();
         const port = Number(settingsManager.getGlobal<any>('music_assistant_port', 8095)) || 8095;
+        // Required by MA 2.9+ (API schema 28): a long-lived token from the MA
+        // web UI. Left empty for older servers; the client only auths when the
+        // server demands it and returns a paste-a-token error if it's missing.
+        const token = (settingsManager.getGlobal<string>('music_assistant_token', '') || '').trim();
         const active = enabled && host.length > 0;
 
         if (active) {
             if (!this.musicClient) this.musicClient = getMusicAssistantClient();
-            this.musicClient.configure(host, port);
+            this.musicClient.configure(host, port, token);
         }
 
         if (active === this.musicActive) {
@@ -790,11 +821,23 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
         return players;
     }
 
+    /** Lowercase hex digits of a MAC, or '' when it doesn't look like one. */
+    private static normalizeMac(mac: string | undefined): string {
+        const hex = (mac || '').toLowerCase().replace(/[^0-9a-f]/g, '');
+        return hex.length === 12 ? hex : '';
+    }
+
     /**
      * Pick the MA player to act on. An explicit name from the user wins;
-     * otherwise the satellite the user is talking to (matched by IP, then by
-     * device name, then by zone name); otherwise a single available player.
+     * otherwise the satellite the user is talking to (matched by MAC, then IP,
+     * then device name, then zone name); otherwise a single available player.
      * Failure returns the list of available player names so the model can ask.
+     *
+     * MAC comes first because it's the only identifier MA 2.9 reliably carries
+     * for the satellites (verified live 2026-07-20): `device_info.ip_address`
+     * is null for both the PE and the TR there, but the MAC survives — as
+     * `device_info.mac_address` (PE) and embedded in the player_id/name
+     * (`up20f83b0908d1`, `3RSPK-A8E29151DBAD`), hence the contains-matching.
      */
     private async resolveMusicPlayer(explicitName?: string): Promise<{ player: MaPlayer } | { error: { code: string; message: string } }> {
         const all = await this.getMusicPlayers();
@@ -814,6 +857,13 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
 
         const hint = this.musicPlayerHint?.();
         if (hint) {
+            const mac = ToolManager.normalizeMac(hint.mac);
+            if (mac) {
+                const alnum = (s: string) => s.toLowerCase().replace(/[^0-9a-z]/g, '');
+                const byMac = players.find(p => ToolManager.normalizeMac(p.macAddress) === mac)
+                    ?? players.find(p => alnum(p.playerId).includes(mac) || alnum(p.name).includes(mac));
+                if (byMac) return { player: byMac };
+            }
             if (hint.address) {
                 const byIp = players.find(p => p.ipAddress && p.ipAddress === hint.address);
                 if (byIp) return { player: byIp };
@@ -945,9 +995,29 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
                     const queue = await this.musicClient!.getActiveQueue(resolved.player.playerId);
                     const option = mode === 'next' ? 'next' : mode === 'add' ? 'add' : 'replace';
 
+                    // A play_media that times out is almost always still WORKING
+                    // (MA answers only once the full queue is built — >45 s seen
+                    // live for a big artist catalog; the music then starts on its
+                    // own). Report that honestly instead of failing the turn.
+                    const stillPreparing = (data: Record<string, any>) => ({
+                        ok: true,
+                        data: {
+                            ...data,
+                            status: 'preparing',
+                            note: 'Music Assistant is still preparing the queue; playback should start within a minute. Tell the user it is on its way and may take a moment.',
+                        },
+                    });
+
                     if (uri && String(uri).trim()) {
-                        await this.musicClient!.playMedia(queue.queueId, String(uri).trim(), option, radio_mode === true);
-                        return { ok: true, data: { playing: String(uri).trim(), player: resolved.player.name, mode: option } };
+                        const media = String(uri).trim();
+                        try {
+                            await this.musicClient!.playMedia(queue.queueId, media, option, radio_mode === true);
+                        } catch (error: any) {
+                            if (error?.code !== 'MA_TIMEOUT') throw error;
+                            this.logger.warn(`play_media slow (uri) — reporting as preparing: ${error.message}`);
+                            return stillPreparing({ playing: media, player: resolved.player.name, mode: option });
+                        }
+                        return { ok: true, data: { playing: media, player: resolved.player.name, mode: option } };
                     }
 
                     const q = String(query ?? '').trim();
@@ -960,20 +1030,28 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
                     if (!item) {
                         return { ok: false, error: { code: "NO_MATCH", message: `Nothing found in Music Assistant for "${q}"${type ? ` (${type})` : ''}. Tell the user briefly.` } };
                     }
-                    await this.musicClient!.playMedia(queue.queueId, item.uri, option, radio_mode === true);
-                    return {
-                        ok: true,
-                        data: {
-                            playing: {
-                                name: item.name,
-                                ...(item.artists ? { artists: item.artists } : {}),
-                                ...(item.album ? { album: item.album } : {}),
-                                media_type: item.mediaType,
-                            },
-                            player: resolved.player.name,
-                            mode: option,
-                        }
+                    const playingData = {
+                        playing: {
+                            name: item.name,
+                            ...(item.artists ? { artists: item.artists } : {}),
+                            ...(item.album ? { album: item.album } : {}),
+                            media_type: item.mediaType,
+                        },
+                        player: resolved.player.name,
+                        mode: option,
                     };
+                    const languageCode = settingsManager.getGlobal<string>('selected_language_code', 'en');
+                    try {
+                        await this.withSlowAck(
+                            this.musicClient!.playMedia(queue.queueId, item.uri, option, radio_mode === true),
+                            getPlayAcknowledgement(languageCode, item.name),
+                        );
+                    } catch (error: any) {
+                        if (error?.code !== 'MA_TIMEOUT') throw error;
+                        this.logger.warn(`play_media slow for "${item.name}" — reporting as preparing: ${error.message}`);
+                        return stillPreparing(playingData);
+                    }
+                    return { ok: true, data: playingData };
                 } catch (error: any) {
                     this.logger.error('Error executing play_music', error);
                     return { ok: false, error: { code: "MUSIC_UNAVAILABLE", message: String(error?.message ?? error) } };

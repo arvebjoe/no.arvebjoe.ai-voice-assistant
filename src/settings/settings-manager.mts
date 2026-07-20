@@ -163,7 +163,7 @@ export class SettingsManager {
       'bring_enabled', 'bring_email', 'bring_password', 'bring_list_name',
       // Music Assistant integration (opt-in): enable flag + server address (control-plane
       // only — MA streams to the speakers itself via Sendspin)
-      'music_assistant_enabled', 'music_assistant_host', 'music_assistant_port',
+      'music_assistant_enabled', 'music_assistant_host', 'music_assistant_port', 'music_assistant_token',
       // Local pipeline endpoints + per-stage backend selection (Whisper/Voxtral,
       // Ollama/Mistral, Piper/Voxtral) and the shared Mistral credentials/models
       'local_stt_host', 'local_stt_port', 'local_llm_host', 'local_llm_port', 'local_llm_model', 'local_llm_num_ctx', 'local_tts_host', 'local_tts_port',

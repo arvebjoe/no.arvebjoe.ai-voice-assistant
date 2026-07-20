@@ -27,6 +27,18 @@ import { createLogger } from './logger.mjs';
 
 const CONNECT_TIMEOUT_MS = 10_000;
 const COMMAND_TIMEOUT_MS = 15_000;
+// play_media resolves the media server-side BEFORE answering (an artist's
+// full catalog is fetched from the streaming provider on first play) — 27-42s
+// observed on a real MA 2.9.9, and big catalogs exceed any sane wait. This is
+// therefore NOT a failure boundary but "how long we make the user wait":
+// on timeout the play_music tool reports status 'preparing' (the command
+// completes late server-side and the music starts by itself).
+const PLAY_MEDIA_TIMEOUT_MS = 30_000;
+// MA requires an `auth` command as the first message from API schema 28
+// (server 2.9+): https://github.com/music-assistant/client — the token is a
+// long-lived token created in the MA web UI (profile → long-lived tokens).
+// Older servers (2.7/2.8) have no auth command and are connected to directly.
+const AUTH_MIN_SCHEMA = 28;
 
 /** A queue transport action supported by `queueCommand`. */
 export type MaQueueCommand = 'pause' | 'play' | 'resume' | 'stop' | 'next' | 'previous';
@@ -124,6 +136,7 @@ export class MusicAssistantClient {
     private logger = createLogger('MusicAssistant', true);
     private host = '';
     private port = 8095;
+    private token = '';
     private ws: WebSocket | null = null;
     private connectPromise: Promise<void> | null = null;
     private messageId = 0;
@@ -131,17 +144,20 @@ export class MusicAssistantClient {
     private serverVersion = '';
 
     /**
-     * Update the server address. Closes any open connection when it actually
-     * changed so the next command reconnects to the new server.
+     * Update the server address/token. Closes any open connection when
+     * something actually changed so the next command reconnects (and
+     * re-authenticates) against the new config.
      */
-    configure(host: string, port: number): void {
+    configure(host: string, port: number, token = ''): void {
         const h = (host || '').trim();
         const p = Number(port) > 0 ? Number(port) : 8095;
-        if (h === this.host && p === this.port) {
+        const t = (token || '').trim();
+        if (h === this.host && p === this.port && t === this.token) {
             return;
         }
         this.host = h;
         this.port = p;
+        this.token = t;
         this.disconnect();
     }
 
@@ -196,11 +212,23 @@ export class MusicAssistantClient {
             };
 
             // Resolve on the ServerInfoMessage, not on 'open': the server is
-            // only ready for commands once it has sent its info frame.
+            // only ready for commands once it has sent its info frame — and on
+            // schema >= 28 only after our `auth` command was accepted.
             const timer = setTimeout(() => {
                 try { ws.close(); } catch { /* noop */ }
                 fail(new Error(`Music Assistant at ${this.host}:${this.port} did not answer within ${CONNECT_TIMEOUT_MS / 1000}s.`));
             }, CONNECT_TIMEOUT_MS);
+
+            const succeed = () => {
+                if (!settled) {
+                    settled = true;
+                    clearTimeout(timer);
+                    resolve();
+                }
+            };
+
+            let gotServerInfo = false;
+            let authMessageId = '';
 
             ws.on('message', (data: WebSocket.RawData) => {
                 let msg: any;
@@ -210,13 +238,36 @@ export class MusicAssistantClient {
                     this.logger.warn('Ignoring non-JSON frame from Music Assistant');
                     return;
                 }
-                if (!settled) {
+                if (!gotServerInfo) {
                     // First frame is the server info.
-                    settled = true;
-                    clearTimeout(timer);
+                    gotServerInfo = true;
                     this.serverVersion = String(msg?.server_version ?? '');
-                    this.logger.info(`Connected to Music Assistant ${this.serverVersion} (schema ${msg?.schema_version ?? '?'})`);
-                    resolve();
+                    const schema = Number(msg?.schema_version ?? 0);
+                    this.logger.info(`Connected to Music Assistant ${this.serverVersion} (schema ${schema || '?'})`);
+                    if (schema < AUTH_MIN_SCHEMA) {
+                        succeed();
+                        return;
+                    }
+                    if (!this.token) {
+                        try { ws.close(); } catch { /* noop */ }
+                        fail(new Error(`Music Assistant ${this.serverVersion} requires an API token — create a long-lived token in the MA web UI (your profile → long-lived tokens) and paste it into this app's Music Assistant settings.`));
+                        return;
+                    }
+                    authMessageId = String(++this.messageId);
+                    ws.send(JSON.stringify({ message_id: authMessageId, command: 'auth', args: { token: this.token } }));
+                    return;
+                }
+                if (!settled && authMessageId && String(msg?.message_id ?? '') === authMessageId) {
+                    // Auth verdict: an error result or a falsy result means the
+                    // token was rejected (matches the official python client).
+                    if ((msg.error_code !== undefined && msg.error_code !== null) || !msg.result) {
+                        const details = msg.details ? ` (${msg.details})` : '';
+                        try { ws.close(); } catch { /* noop */ }
+                        fail(new Error(`Music Assistant rejected the API token${details} — create a new long-lived token in the MA web UI and update the app settings.`));
+                        return;
+                    }
+                    this.logger.info('Authenticated with Music Assistant');
+                    succeed();
                     return;
                 }
                 this.handleMessage(msg);
@@ -286,7 +337,7 @@ export class MusicAssistantClient {
     }
 
     /** Send one command and await its result. */
-    async sendCommand<T = any>(command: string, args?: Record<string, any>): Promise<T> {
+    async sendCommand<T = any>(command: string, args?: Record<string, any>, timeoutMs = COMMAND_TIMEOUT_MS): Promise<T> {
         await this.ensureConnected();
         const ws = this.ws;
         if (!ws || ws.readyState !== WebSocket.OPEN) {
@@ -297,8 +348,13 @@ export class MusicAssistantClient {
         return new Promise<T>((resolve, reject) => {
             const timer = setTimeout(() => {
                 this.pending.delete(id);
-                reject(new Error(`Music Assistant did not answer '${command}' within ${COMMAND_TIMEOUT_MS / 1000}s.`));
-            }, COMMAND_TIMEOUT_MS);
+                const err = new Error(`Music Assistant did not answer '${command}' within ${timeoutMs / 1000}s.`);
+                // Distinguishable from a real error result: a timed-out command
+                // usually COMPLETES late server-side (play_media keeps building
+                // the queue), so callers may treat this as "still working".
+                (err as any).code = 'MA_TIMEOUT';
+                reject(err);
+            }, timeoutMs);
             this.pending.set(id, { resolve, reject, timer });
             const payload: Record<string, any> = { message_id: id, command };
             if (args && Object.keys(args).length > 0) {
@@ -374,7 +430,7 @@ export class MusicAssistantClient {
             media,
             option,
             radio_mode: radioMode,
-        });
+        }, PLAY_MEDIA_TIMEOUT_MS);
     }
 
     /** Transport control on a queue (pause/play/resume/stop/next/previous). */

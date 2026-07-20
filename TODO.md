@@ -112,20 +112,65 @@ The control-plane integration is implemented and unit-tested (full context archi
 [`COMPLETED.md` §3](./COMPLETED.md)); the music audio itself never touches this app — Music
 Assistant ≥ 2.7 streams to the PE and TR directly over Sendspin.
 
+**Live verification started 2026-07-20** against the owner's MA **2.9.9** (Linux server,
+`192.168.0.10:8095`; the duckdns HTTPS URL is UI-only — the app uses the LAN IP/plain ws).
+First finding: **MA requires token auth since API schema 28 (MA 2.9) — the shipped client
+couldn't connect at all** (error_code 20 on every command; beware: an unauthed `players/all`
+error was easy to misread as "0 players"). Fixed same day: `music_assistant_token` setting
+(long-lived token from the MA web UI profile), `auth` command sent after the server-info frame
+when schema ≥ 28, helpful create-a-token / token-rejected errors, settings-page field, fake
+MA server now enforces auth in tests, READMEs updated. Pre-2.9 servers still work tokenless.
+
+Second finding (2026-07-20, via authenticated `players/all`): **both satellites ARE
+discovered** (PE `Home Assistant Voice 0908d1`, TR `3RSPK-A8E29151DBAD` — note: provider is
+`universal_player`, not `sendspin`, on MA 2.9), **but `device_info.ip_address` is null for
+both**, so the shipped IP-first auto-match could never hit. Fixed same day: the player hint
+now carries the satellite's **MAC** (`store.mac`, from mDNS TXT) and `resolveMusicPlayer`
+matches MAC first — against `device_info.mac_address` (PE) or embedded in the player_id/name
+(TR) — then IP, then name/zone. Unit-tested against the exact live shapes.
+
 **Remaining: verify against a real MA server + speakers** (needs the owner's network):
 
-- [ ] MA discovers the PE (stock 26.x firmware) and TR as Sendspin players; check what the
+- [x] MA discovers the PE (stock 26.x firmware) and TR as Sendspin players; check what the
       players' `device_info.ip_address` / names look like so the satellite→player auto-matching
-      in `resolveMusicPlayer` (IP first, then device name, then zone name) actually hits.
-- [ ] End-to-end voice flow on both devices: "play <album> by <artist>", pause/resume/next/
-      previous, shuffle, "what's playing?", explicit room targeting ("…in the kitchen").
-- [ ] Announcement ducking while Sendspin music plays (PE has a separate announcement pipeline;
-      TR docs claim ducking works out of the box) — and that music resumes after the reply.
-- [ ] Wake word while music is playing (PE has XMOS AEC; TR uses WebRTC/PulseAudio AEC).
-- [ ] `resume` behavior on a long-stopped queue (the tool maps resume→`play` when paused,
-      `resume` otherwise — check the idle case restarts where it left off).
-- [ ] Partial-result accumulation against a big real library (implemented per the API models;
-      only exercised with a fake server so far).
+      in `resolveMusicPlayer` actually hits — VERIFIED 2026-07-20, see the findings above
+      (discovery yes; IP null → MAC-hint matching added, live confirmation of the match
+      pending below).
+- [x] End-to-end voice flow on both devices — VERIFIED 2026-07-20 (PE + TR, MA 2.9.9):
+      play by artist (incl. STT-typo'd names absorbed by MA search: "Heillung"→Heilung),
+      pause/resume/next, shuffle, "what's playing?" (full now-playing string + queue count),
+      explicit player targeting by name (user renamed the web player to "Legion" and targeted
+      it by voice — tip: renaming MA players to speakable names works great). One fix shipped
+      mid-test: **play_media timeout 15s→45s** (`PLAY_MEDIA_TIMEOUT_MS`) — MA resolves a
+      first-played artist from the provider BEFORE answering, ~27-30s observed, so every
+      new-artist play falsely failed on the old 15s cap. Idea logged below re the silent wait.
+- [x] Announcement ducking while Sendspin music plays — VERIFIED 2026-07-20 on BOTH devices:
+      music volume ducks when spoken to, reply plays, volume restores after. Identical
+      behavior on PE (XMOS) and TR (WebRTC/PulseAudio).
+- [x] Wake word while music is playing — VERIFIED 2026-07-20 on both devices (commands
+      understood over playing music; correct per-device targeting via the MAC hint).
+- [x] `resume` behavior on a long-stopped queue — VERIFIED 2026-07-20: PE queue stopped ~5 min,
+      "resume" picked up exactly where it left off (resume→`play` mapping on the idle queue).
+- [x] Partial-result accumulation: considered covered — live searches + a 1277-track queue
+      exercised the real server paths; chunked-list accumulation stays unit-tested (no MA
+      command we use returns partials at our limits).
+- [x] **Slow-play acknowledgement — IMPLEMENTED 2026-07-20 (owner-requested):** if
+      `play_media` is still pending after 4 s, the satellite speaks "Putting on X, one
+      moment." (12 languages, `getPlayAcknowledgement` in `music-instructions.mts`) via a
+      new `ToolManager.setInterimSpeak` seam registered by the device (routes to
+      `speakText`). The ack timer is cancelled when the command answers fast, so quick
+      plays aren't double-confirmed. Unit-tested (slow/fast/localized). Alternative
+      "faster play path" (top track first, extend queue after) explicitly not chosen.
+      **Follow-up same night:** a big artist catalog (Rammstein) blew even the 45 s
+      `play_media` timeout — but MA completes the command late and the music starts anyway
+      (verified live: queue had 283 items; the owner heard it start). So a `play_media`
+      timeout now returns `ok:true, status:'preparing'` ("tell the user it's on its way")
+      instead of MUSIC_UNAVAILABLE — timeouts get `err.code='MA_TIMEOUT'` in the client;
+      real command errors still fail. Raising timeouts further is a losing game: resolve
+      time scales with catalog size and provider latency. Timeout then LOWERED 45→30 s
+      (owner: "people are impatient") — safe now that timeout = "say it's on its way",
+      not failure. Live sequence for a slow artist: ack at 4 s → "on its way" at ~34 s →
+      music starts by itself.
 
 ---
 
