@@ -549,6 +549,18 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       // the handshake is complete and the device renders the ring. No-op on the
       // initial connect (no timer running yet).
       this.timerManager?.reissue();
+
+      // First successful connection after pairing: greet the user so they know
+      // the device is now linked to Homey. Played here (not on 'Healthy') for the
+      // same reason as the ring above — the announce needs the completed handshake
+      // to actually play. One-shot: clear the flag so it never replays on a
+      // reconnect or app restart.
+      if (this.getStoreValue('justPaired')) {
+        this.setStoreValue('justPaired', false).catch((err) =>
+          this.logger.error('Failed to clear justPaired flag', err));
+        this.convo.info('Paired device connected — playing welcome sound', 'INIT');
+        this.playUrl(SOUND_URLS.device_connected);
+      }
     });
 
     // The satellite reported its wake-word configuration (fires on every
@@ -1354,6 +1366,13 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
    */
   async onAdded(): Promise<void> {
     this.logger.info('Device has been added');
+    // Mark the device as freshly paired so the FIRST successful ESP handshake
+    // greets the user with the "connected to Homey" sound (played in the
+    // 'capabilities' handler, then cleared — see there). Stored, not in-memory,
+    // so it survives the onInit that runs before this and any app restart in
+    // between pairing and the device first coming online.
+    await this.setStoreValue('justPaired', true).catch((err) =>
+      this.logger.error('Failed to set justPaired flag', err));
   }
 
   /**

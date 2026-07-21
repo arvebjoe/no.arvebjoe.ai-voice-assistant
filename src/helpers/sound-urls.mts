@@ -14,6 +14,9 @@ const SOUND_BASE = "https://github.com/arvebjoe/no.arvebjoe.ai-voice-assistant/r
 export const SOUND_URLS = {
   // Wake word detected — start-of-turn chime.
   wake_word_triggered: `${SOUND_BASE}/wake_word_triggered.flac`,
+  // Played once when the satellite first connects after successful pairing, so
+  // the user hears that it is now linked to Homey.
+  device_connected: `${SOUND_BASE}/device_connected.flac`,
   // No API key configured for the selected engine (generic, not OpenAI-specific).
   api_key_missing: `${SOUND_BASE}/api_key_missing.flac`,
   // Voice service unreachable (network down / service unavailable).

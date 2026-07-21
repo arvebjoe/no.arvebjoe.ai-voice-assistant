@@ -80,13 +80,16 @@
       which is wrong now that Gemini/Mistral/local are supported. Reworked `.sounds/` into a
       provider-agnostic set (`src/helpers/sound-urls.mts` + `.sounds/README.md`):
       `wake_word_triggered`, `api_key_missing` (generic, replaces the OpenAI clip),
-      `agent_not_connected`, and a NEW `error` clip. The device now plays `error.flac` on a
+      `agent_not_connected`, a NEW `error` clip, and a NEW `device_connected` clip. The device
+      plays `device_connected.flac` **once** on the first successful ESP handshake after pairing
+      (gated by a `justPaired` store flag set in `onAdded`, cleared in the `capabilities`
+      handler) so the user hears the satellite is now linked to Homey. The device now plays `error.flac` on a
       genuine **mid-turn** failure (agent `error`/`Unhealthy`/`close` while a turn is in flight)
       via `abortCurrentTurn(reason, playError)` — previously the user got total silence when a
       reply died in flight. Silent by design when no turn was active (idle reconnect) or the ESP
       link itself dropped (can't play anyway) or on an expected teardown (provider switch).
-      **`api_key_missing.flac` and `error.flac` are placeholders (copies of
-      `wake_word_triggered.flac`) — re-record them with real speech** (suggested lines in
+      **`device_connected.flac`, `api_key_missing.flac` and `error.flac` are placeholders (copies
+      of `wake_word_triggered.flac`) — re-record them with real speech** (suggested lines in
       `.sounds/README.md`) before the store release.
 
 ## Code review 2 — remaining items (see [`docs/code_review_2.md`](./docs/code_review_2.md))
