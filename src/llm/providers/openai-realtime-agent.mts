@@ -78,8 +78,8 @@ const OPENAI_VOICE_VALUES = new Set(OPENAI_VOICES.map((v) => v.value));
  * (the device forces a restart when the setting changes).
  */
 const OPENAI_REALTIME_MODELS: Record<string, string> = {
-    full: 'gpt-realtime-2025-08-28',
-    mini: 'gpt-realtime-mini',
+    full: 'gpt-realtime-2.1',
+    mini: 'gpt-realtime-2.1-mini',
 };
 
 /**

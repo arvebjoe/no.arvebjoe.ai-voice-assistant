@@ -84,7 +84,7 @@ describe('OpenAIRealtimeProvider (fake WebSocket harness)', () => {
         provider = new OpenAIRealtimeProvider(homey as any, tm as any, { ...baseOpts });
 
         const ws = await connect();
-        expect(ws.url).toContain('model=gpt-realtime-2025-08-28');
+        expect(ws.url).toContain('model=gpt-realtime-2.1');
 
         const update = ws.parsedSent().find(m => m.type === 'session.update');
         const transcription = update.session.audio.input.transcription;
