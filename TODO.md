@@ -75,6 +75,20 @@
       are tail-padding each segment with ~300 ms silence (device flag like `micGain`) or
       finding an early-stop in the TR's mpv announce path.
 
+- [ ] **Feedback sounds made generic + error feedback added — CODE DONE 2026-07-21, needs real
+      recordings before release:** the old `please_set_api_key.flac` named OpenAI specifically,
+      which is wrong now that Gemini/Mistral/local are supported. Reworked `.sounds/` into a
+      provider-agnostic set (`src/helpers/sound-urls.mts` + `.sounds/README.md`):
+      `wake_word_triggered`, `api_key_missing` (generic, replaces the OpenAI clip),
+      `agent_not_connected`, and a NEW `error` clip. The device now plays `error.flac` on a
+      genuine **mid-turn** failure (agent `error`/`Unhealthy`/`close` while a turn is in flight)
+      via `abortCurrentTurn(reason, playError)` — previously the user got total silence when a
+      reply died in flight. Silent by design when no turn was active (idle reconnect) or the ESP
+      link itself dropped (can't play anyway) or on an expected teardown (provider switch).
+      **`api_key_missing.flac` and `error.flac` are placeholders (copies of
+      `wake_word_triggered.flac`) — re-record them with real speech** (suggested lines in
+      `.sounds/README.md`) before the store release.
+
 ## Code review 2 — remaining items (see [`docs/code_review_2.md`](./docs/code_review_2.md))
 
 External review of `main` @ `0a64afa` (ChatGPT 5.6 Sol). **Fixed 2026-07-12 with regression

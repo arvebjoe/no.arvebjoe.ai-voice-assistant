@@ -264,7 +264,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
         this.convo.warn(hasKey
           ? 'Wake ignored — agent not connected, playing error sound'
           : 'Wake ignored — API key missing, playing error sound');
-        const url = hasKey ? SOUND_URLS.agent_not_connected : SOUND_URLS.missing_api_key;
+        const url = hasKey ? SOUND_URLS.agent_not_connected : SOUND_URLS.api_key_missing;
         this.esp.run_start();
         this.esp.pipeline_error('agent-not-connected', hasKey ? 'Voice agent is not connected.' : 'API key is missing.');
         this.esp.run_end();
@@ -746,7 +746,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
     this.provider.on('error', (error: Error) => {
       this.logger.error("Realtime agent error:", error);
-      this.abortCurrentTurn(`agent error: ${error.message || 'unknown error'}`);
+      this.abortCurrentTurn(`agent error: ${error.message || 'unknown error'}`, true);
     });
 
     // The agent websocket closed (idle timeout, network drop, or restart). This
@@ -755,7 +755,9 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     // provider auto-reconnects; the in-flight turn cannot survive it, so end it
     // cleanly.
     this.provider.on('close', () => {
-      this.abortCurrentTurn('agent connection closed');
+      // abortCurrentTurn only plays the sound when a turn was actually in flight,
+      // so an idle-timeout close (no active turn) stays silent.
+      this.abortCurrentTurn('agent connection closed', true);
     });
 
     // This will toggle the device in homey available or not
@@ -768,7 +770,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     this.provider.on('Unhealthy', () => {
       this.logger.info('Agent connection unhealthy');
       this.isAgentHealthy = false;
-      this.abortCurrentTurn('agent connection lost');
+      this.abortCurrentTurn('agent connection lost', true);
       this.updateAvailable();
     });
   }
@@ -815,7 +817,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
    * duplicate-wake guard — the "wake-death" that previously required a PE
    * power-cycle to recover. Idempotent and safe to call when idle.
    */
-  private abortCurrentTurn(reason: string): void {
+  private abortCurrentTurn(reason: string, playError: boolean = false): void {
     // ONE reset each: the machine clears every turn/session flag, the pipeline
     // invalidates queued and in-flight segment work (generation bump) and drops
     // its buffers. Both report whether anything was actually in flight.
@@ -832,6 +834,16 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
         this.esp.run_end();
       } catch (e) {
         this.logger.error('Failed to notify device of turn abort', e);
+      }
+
+      // Give the user audible feedback that the turn failed — otherwise they are
+      // left waiting for a reply that will never come. Only when the caller asked
+      // for it (a genuine mid-turn failure, not an expected teardown like a
+      // provider switch) AND the satellite is still reachable to play it: if the
+      // ESP link itself dropped, the sound can't play anyway.
+      if (playError && this.isEspClientHealthy) {
+        this.convo.warn('Playing error sound', 'END');
+        this.playUrl(SOUND_URLS.error);
       }
     }
 
