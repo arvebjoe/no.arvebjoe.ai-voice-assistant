@@ -1,0 +1,33 @@
+# Self-hosted syslog server for the AI Voice Assistant's remote logging.
+#
+# VictoriaLogs (https://docs.victoriametrics.com/victorialogs/) — free and
+# open source (Apache-2.0), a single small container, accepts RFC 5424 syslog
+# over both UDP and TCP, and has a built-in web UI for querying.
+#
+#   docker compose up -d
+#   Web UI:  http://<docker-host>:9428/select/vmui/
+#
+# See ../remote-logging.md for how to point the Homey app at it and how to
+# query the logs.
+
+services:
+  victorialogs:
+    image: docker.io/victoriametrics/victoria-logs:latest
+    container_name: victorialogs
+    restart: unless-stopped
+    command:
+      - -storageDataPath=/victoria-logs-data
+      - -retentionPeriod=30d          # how long to keep logs
+      - -syslog.listenAddr.tcp=:514   # RFC 5424 over TCP (newline-framed)
+      - -syslog.listenAddr.udp=:514   # RFC 5424 over UDP
+    ports:
+      - "9428:9428"     # web UI + HTTP API
+      - "514:514/tcp"   # syslog over TCP
+      - "514:514/udp"   # syslog over UDP
+      # If port 514 is already taken on the host (an existing syslog daemon),
+      # remap it — e.g. "1514:514/tcp" and "1514:514/udp" — and enter 1514 as
+      # the port in the app's settings instead.
+    volumes:
+      - /opt/victoria/logs-data:/victoria-logs-data
+
+

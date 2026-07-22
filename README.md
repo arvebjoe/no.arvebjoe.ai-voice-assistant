@@ -325,7 +325,9 @@ connection, AI provider, tools, webserver, …) — which are normally not writt
 log at all — go out at **DEBUG**, so a collector can capture everything without making the
 in-app log noisy. Warnings and errors are always included, every line is tagged with its
 subsystem name for filtering, and secret-looking values are masked before they leave the app.
-A **Send test message** button verifies the address before you save.
+A **Send test message** button verifies the address before you save. Don't have a syslog
+server? [docs/remote-logging.md](docs/remote-logging.md) has a one-command Docker Compose
+setup (VictoriaLogs, free and open source, with a web UI) plus ready-made queries.
 
 Settings changes apply on the fly — no app restart needed.
 
