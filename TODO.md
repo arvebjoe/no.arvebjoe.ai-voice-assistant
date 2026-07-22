@@ -75,8 +75,8 @@
       are tail-padding each segment with ~300 ms silence (device flag like `micGain`) or
       finding an early-stop in the TR's mpv announce path.
 
-- [ ] **Feedback sounds made generic + error feedback added — CODE DONE 2026-07-21, needs real
-      recordings before release:** the old `please_set_api_key.flac` named OpenAI specifically,
+- [x] **Feedback sounds made generic + error feedback added — DONE, real recordings pushed
+      2026-07-23:** the old `please_set_api_key.flac` named OpenAI specifically,
       which is wrong now that Gemini/Mistral/local are supported. Reworked `.sounds/` into a
       provider-agnostic set (`src/helpers/sound-urls.mts` + `.sounds/README.md`):
       `wake_word_triggered`, `api_key_missing` (generic, replaces the OpenAI clip),
@@ -88,9 +88,14 @@
       via `abortCurrentTurn(reason, playError)` — previously the user got total silence when a
       reply died in flight. Silent by design when no turn was active (idle reconnect) or the ESP
       link itself dropped (can't play anyway) or on an expected teardown (provider switch).
-      **`device_connected.flac`, `api_key_missing.flac` and `error.flac` are placeholders (copies
-      of `wake_word_triggered.flac`) — re-record them with real speech** (suggested lines in
-      `.sounds/README.md`) before the store release.
+      Real recordings for `device_connected`, `api_key_missing`, `agent_not_connected` and
+      `error` were recorded, pushed to main and live-verified on the PE 2026-07-23 (the
+      welcome-sound path confirmed end-to-end via VictoriaLogs). `wake_word_triggered.flac`
+      was deliberately left as-is — the app never plays it (the wake chime comes from device
+      firmware; the only code reference is a comment in `esp-voice-assistant-client.mts`).
+      Gotcha for future sound updates: `SOUND_BASE` serves from raw GitHub `main` behind
+      Fastly (`max-age=300`, per-encoding cache variants), so the satellite can play a stale
+      clip for up to ~5 min after a push — wait it out, a device reboot won't help.
 
 ## Code review 2 — remaining items (see [`docs/code_review_2.md`](./docs/code_review_2.md))
 
