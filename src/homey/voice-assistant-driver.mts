@@ -248,6 +248,89 @@ export default abstract class VoiceAssistantDriver extends Homey.Driver {
     }
 
     /**
+     * Probe a manually-entered IP/port (mDNS-free path). Connects directly, waits
+     * for the capabilities handshake, and — if the device answers as this
+     * driver's model — builds a PairDevice from the handshake identity
+     * (DeviceInfoResponse), deriving a stable id from the MAC so it matches the
+     * mDNS discovery id ({{txt.mac}}) and DHCP moves are still tracked if the
+     * device later appears over mDNS. Returns null (with a reason) when the host
+     * is unreachable or is not a matching voice device.
+     *
+     * NOTE: this is the plaintext native-API path only. Devices with an ESPHome
+     * API encryption key set cannot be added yet — the client is plaintext-only
+     * (Noise handshake not implemented). A key field can slot into the manual
+     * form once Noise support lands; see docs and the pair view's TODO.
+     */
+    private async probeManualEntry(address: string, port: number, timeoutMs = 8000): Promise<{ device: PairDevice | null; reason: string }> {
+        let client: EspVoiceAssistantClient | null = null;
+        let done = false;
+
+        return new Promise<{ device: PairDevice | null; reason: string }>((resolve) => {
+            const finish = async (device: PairDevice | null, reason: string) => {
+                if (done) return;
+                done = true;
+                try {
+                    client?.off?.('capabilities', onCapabilities as any);
+                    client?.off?.('Unhealthy', onUnhealthy as any);
+                } catch { }
+                try {
+                    if (client) await client.disconnect();
+                } catch { }
+                client = null;
+                resolve({ device, reason });
+            };
+
+            const onCapabilities = async (mediaPlayersCount: number, subscribeVoiceAssistantCount: number, voiceAssistantConfigurationCount: number, deviceType: string | null) => {
+                const isMatch = this.thisAssistantType === deviceType
+                    && mediaPlayersCount > 0
+                    && subscribeVoiceAssistantCount > 0
+                    && voiceAssistantConfigurationCount > 0;
+
+                if (!isMatch) {
+                    this.pairLogger.info(`Manual entry ${address}:${port} answered but is not a matching device`, undefined, { deviceType });
+                    await finish(null, 'not_a_match');
+                    return;
+                }
+
+                const mac = client?.getMacAddress() || '';
+                const friendly = client?.getFriendlyName() || '';
+                const device: PairDevice = {
+                    name: friendly || `ESPHome ${address}`,
+                    // Prefer the MAC so the id matches the mDNS discovery id; fall
+                    // back to host:port only when the device withheld its MAC.
+                    data: { id: mac || `${address}:${port}` },
+                    store: {
+                        address,
+                        port,
+                        mac: mac || undefined,
+                        deviceType,
+                    },
+                };
+                this.pairLogger.info(`Manual entry ${address}:${port} matched: ${device.name} (${device.data.id})`);
+                await finish(device, 'ok');
+            };
+
+            const onUnhealthy = async () => {
+                await finish(null, 'unreachable');
+            };
+
+            try {
+                client = new EspVoiceAssistantClient(this.homey, {
+                    host: address,
+                    apiPort: port,
+                    discoveryMode: true,
+                });
+                client.on('capabilities', onCapabilities as any);
+                client.on?.('Unhealthy', onUnhealthy as any);
+                client.start().catch(() => { finish(null, 'unreachable'); });
+                this.homey.setTimeout(() => { if (!done) finish(null, 'timeout'); }, timeoutMs).unref?.();
+            } catch {
+                finish(null, 'unreachable');
+            }
+        });
+    }
+
+    /**
      * Limit concurrency so we don't open too many sockets at once.
      */
     private async filterByVoiceCapabilities(devices: PairDevice[], { timeoutMs = 5000, concurrency = 4 } = {}): Promise<{ capable: PairDevice[]; rejectedIds: string[] }> {
@@ -374,6 +457,34 @@ export default abstract class VoiceAssistantDriver extends Homey.Driver {
 
             if (devices.length) scheduleListPoll();
             return devices;
+        });
+
+        // Manual IP entry: fallback for networks where mDNS multicast does not
+        // reach the Homey (e.g. Wi-Fi-only Homey Pro). The manual_entry pair view
+        // collects host + port and asks us to verify + add the device directly,
+        // bypassing discovery entirely. Returns a small result object the view
+        // renders as a success/error message.
+        session.setHandler('manual_probe', async (payload: { address?: string; port?: number }) => {
+            const address = (payload?.address ?? '').trim();
+            const port = Number(payload?.port) || 6053;
+
+            if (!address) {
+                return { ok: false, reason: 'no_address' };
+            }
+
+            // A manual add is a deliberate action — stop background list polling
+            // so the two paths don't race for the device's single API slot.
+            stopListPolling();
+
+            this.pairLogger.info(`Manual probe requested for ${address}:${port}`);
+            const { device, reason } = await this.probeManualEntry(address, port);
+
+            if (!device) {
+                this.pairLogger.info(`Manual probe for ${address}:${port} failed: ${reason}`);
+                return { ok: false, reason };
+            }
+
+            return { ok: true, device };
         });
 
         const improv = registerImprovPairHandlers({

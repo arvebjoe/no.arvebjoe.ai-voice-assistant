@@ -19,6 +19,8 @@ Supported devices:
 
 New device that is not on your Wi-Fi yet? The pairing wizard can set it up for you: choose "Set up Wi-Fi via Bluetooth", Homey finds the device over Bluetooth and sends it your network name and password — no other apps or cables needed (Voice PE and ThirdReality; place the device near your Homey during setup).
 
+Network scan can't find a device that is already on Wi-Fi? Some networks don't pass mDNS/multicast through to the Homey (for example a Wi-Fi-only Homey Pro). Choose "Enter IP address manually" in the pairing wizard and type the device's IP address to add it directly.
+
 Requirements:
     - A compatible ESPHome voice device with microphone and speaker
     - An API key for your chosen cloud engine (OpenAI, Google Gemini or Mistral), or your own local AI services
