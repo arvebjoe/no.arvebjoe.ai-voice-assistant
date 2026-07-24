@@ -458,7 +458,16 @@ M6 npm-audit chains, M7 start() semantics, L1/L3/L4/L5) stay open in TODO.md.
   write could be deleted mid-startup (valid URL → 404 on the satellite). Now awaited before any
   device comes online.
 
-## 8. TR + PE pairing live verification & fixes — 2026-07-18/19
+- [x] **L3 — pairing probe polled every 10 ms and leaked the 5 s timeout (fixed 2026-07-25).**
+  `checkVoiceCapabilities` (voice-assistant-driver.mts) resolved its promise via a 10 ms
+  `setTimeout` poll loop watching a `done` flag, and never cleared the 5 s timeout timer (only
+  `.unref?.()`'d it). Restructured to the pattern `probeManualEntry` already used: `finish()`
+  resolves the promise directly (after listener detach + disconnect, so resolution now waits for
+  cleanup like the manual path does), the timeout handle is stored and cleared in `finish()`,
+  and a throw from `client.start()` now routes through `finish()` too — the old catch resolved
+  without cleanup and leaked a half-constructed client's listeners. Behavior-preserving
+  refactor; no unit tests exist for the driver probe — verified with a live pairing scan on the
+  real Homey right after the change (2026-07-25, owner-confirmed working).
 
 **Closes the "Wi-Fi setup via Bluetooth (Improv BLE)" TODO section — implemented 2026-07-16,
 now FULLY verified on real hardware.** The feature: the PE/TR pairing wizard's "Set up Wi-Fi

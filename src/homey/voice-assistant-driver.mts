@@ -206,97 +206,95 @@ export default abstract class VoiceAssistantDriver extends Homey.Driver {
         let client: EspVoiceAssistantClient | null = null;
         let done = false;
         let intentionalDisconnect = false;
-        let resultToReturn: { device: PairDevice | null; definitive: boolean } = { device: null, definitive: false };
+        let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
 
-        const finish = async (result: PairDevice | null, definitive: boolean) => {
-            if (done) return;
-            done = true;
-            resultToReturn = { device: result, definitive };
+        return new Promise<{ device: PairDevice | null; definitive: boolean }>((resolve) => {
+            const finish = async (result: PairDevice | null, definitive: boolean) => {
+                if (done) return;
+                done = true;
 
-            // stop further handlers from flipping the result
-            try {
-                intentionalDisconnect = true;
-                // Detach listeners first (if your client supports it)
-                client?.off?.('capabilities', onCapabilities as any);
-                client?.off?.('Unhealthy', onDisconnected as any);
-                client?.off?.('requires_encryption', onRequiresEncryption as any);
+                if (timeoutHandle !== null) {
+                    this.homey.clearTimeout(timeoutHandle);
+                    timeoutHandle = null;
+                }
 
-            } catch { }
+                // stop further handlers from flipping the result
+                try {
+                    intentionalDisconnect = true;
+                    client?.off?.('capabilities', onCapabilities as any);
+                    client?.off?.('Unhealthy', onDisconnected as any);
+                    client?.off?.('requires_encryption', onRequiresEncryption as any);
+                } catch { }
 
-            try {
-                if (client) await client.disconnect();
-            } catch { }
-            client = null;
+                try {
+                    if (client) await client.disconnect();
+                } catch { }
+                client = null;
 
-            return result;
-        };
+                resolve({ device: result, definitive });
+            };
 
-        const onCapabilities = async (mediaPlayersCount: number, subscribeVoiceAssistantCount: number, voiceAssistantConfigurationCount: number, deviceType: string | null) => {
+            const onCapabilities = async (mediaPlayersCount: number, subscribeVoiceAssistantCount: number, voiceAssistantConfigurationCount: number, deviceType: string | null) => {
 
-            this.logger.info(`Capabilities from ${device.name}`, undefined, {
-                mediaPlayersCount,
-                subscribeVoiceAssistantCount,
-                voiceAssistantConfigurationCount,
-                deviceType,
-            });        
-
-            if (this.thisAssistantType == deviceType && mediaPlayersCount > 0 && subscribeVoiceAssistantCount > 0 && voiceAssistantConfigurationCount > 0) {
-                this.logger.info(`Found matching device: ${deviceType}`);
-                device.store.deviceType = deviceType;
-                await finish(device, true);
-                return;
-            } else {
-                // Explicitly reject devices that don't match our type
-                await finish(null, true);
-                return;
-            }
-        };
-
-        const onDisconnected = async () => {
-            // Ignore if *we* initiated the disconnect after success/finish
-            if (!intentionalDisconnect && !done) {
-                await finish(null, false);
-            }
-        };
-
-        // The device refuses plaintext (it has an API encryption key set), so
-        // its identity can't be probed. Where the pair flow can collect a key
-        // (PE/TR), list it anyway — selecting it routes to manual entry with
-        // the address prefilled. Otherwise it's a definitive reject.
-        const onRequiresEncryption = async () => {
-            if (this.supportsEncryptedPairing && this.encryptedResultMatchesDriver(device)) {
-                this.pairLogger.info(`${device.name} has API encryption enabled — listing it; selection routes to manual entry`);
-                await finish(this.markRequiresEncryption(device), true);
-                return;
-            }
-            this.pairLogger.info(`${device.name} has API encryption enabled — add it via manual IP entry with its encryption key`);
-            await finish(null, true);
-        };
-
-        return new Promise<{ device: PairDevice | null; definitive: boolean }>(async (resolve) => {
-            try {
-                client = new EspVoiceAssistantClient(this.homey, {
-                    host: device.store.address,
-                    apiPort: device.store.port,
-                    discoveryMode: true,
+                this.logger.info(`Capabilities from ${device.name}`, undefined, {
+                    mediaPlayersCount,
+                    subscribeVoiceAssistantCount,
+                    voiceAssistantConfigurationCount,
+                    deviceType,
                 });
 
-                client.on('capabilities', onCapabilities as any);
-                client.on?.('Unhealthy', onDisconnected as any);
-                client.on?.('requires_encryption', onRequiresEncryption as any);
+                if (this.thisAssistantType == deviceType && mediaPlayersCount > 0 && subscribeVoiceAssistantCount > 0 && voiceAssistantConfigurationCount > 0) {
+                    this.logger.info(`Found matching device: ${deviceType}`);
+                    device.store.deviceType = deviceType;
+                    await finish(device, true);
+                } else {
+                    // Explicitly reject devices that don't match our type
+                    await finish(null, true);
+                }
+            };
 
-                await client.start();
+            const onDisconnected = async () => {
+                // Ignore if *we* initiated the disconnect after success/finish
+                if (!intentionalDisconnect && !done) {
+                    await finish(null, false);
+                }
+            };
 
-                this.homey.setTimeout(async () => {
-                    if (!done) await finish(null, false);
-                }, timeoutMs).unref?.();
+            // The device refuses plaintext (it has an API encryption key set), so
+            // its identity can't be probed. Where the pair flow can collect a key
+            // (PE/TR), list it anyway — selecting it routes to manual entry with
+            // the address prefilled. Otherwise it's a definitive reject.
+            const onRequiresEncryption = async () => {
+                if (this.supportsEncryptedPairing && this.encryptedResultMatchesDriver(device)) {
+                    this.pairLogger.info(`${device.name} has API encryption enabled — listing it; selection routes to manual entry`);
+                    await finish(this.markRequiresEncryption(device), true);
+                    return;
+                }
+                this.pairLogger.info(`${device.name} has API encryption enabled — add it via manual IP entry with its encryption key`);
+                await finish(null, true);
+            };
 
-                // Resolve when finish() completes with the stored result
-                const poll = () => done ? resolve(resultToReturn) : this.homey.setTimeout(poll, 10);
-                poll();
-            } catch {
-                resolve({ device: null, definitive: false });
-            }
+            (async () => {
+                try {
+                    client = new EspVoiceAssistantClient(this.homey, {
+                        host: device.store.address,
+                        apiPort: device.store.port,
+                        discoveryMode: true,
+                    });
+
+                    client.on('capabilities', onCapabilities as any);
+                    client.on?.('Unhealthy', onDisconnected as any);
+                    client.on?.('requires_encryption', onRequiresEncryption as any);
+
+                    await client.start();
+
+                    timeoutHandle = this.homey.setTimeout(() => { void finish(null, false); }, timeoutMs);
+                } catch {
+                    // finish() also tears down a half-constructed client (the old
+                    // code resolved here without cleanup and leaked it).
+                    await finish(null, false);
+                }
+            })();
         });
     }
 

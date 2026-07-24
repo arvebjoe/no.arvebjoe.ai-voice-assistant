@@ -15,8 +15,11 @@ and the test-firmware note are archived in [`COMPLETED.md` §11](./COMPLETED.md)
        (`UNLOCK_DISABLED` until enabled; single-device cap still applies after). Toggle lives in
        the Smart home control settings card; READMEs updated; tests green. Details in
        [`COMPLETED.md` §7](./COMPLETED.md) (H4 entry).
-2. [ ] **L3 — pairing probe polls every 10 ms and leaks the 5 s timeout**
-       (`voice-assistant-driver.mts:212-231`). Resolve directly from `finish()`.
+2. [x] **L3 — pairing probe polls every 10 ms and leaks the 5 s timeout** DONE 2026-07-25:
+       `checkVoiceCapabilities` restructured to the `probeManualEntry` pattern — `finish()`
+       resolves the promise directly (no 10 ms poll loop), the timeout handle is cleared in
+       `finish()`, and a `client.start()` throw now also runs cleanup (was a leak). Details in
+       [`COMPLETED.md` §7](./COMPLETED.md).
 3. [ ] **L4 — dead `preStart` variable in `pcm-segmenter.mts:134`** — implement the documented
        pre-pad windowing or remove the dead code/comment.
 4. [ ] **L5 — no teardown for process/SDK listeners** (`app.mts:81-102`, GeoHelper,
