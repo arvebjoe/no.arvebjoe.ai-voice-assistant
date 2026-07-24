@@ -1,6 +1,7 @@
 import Homey from 'homey';
 import { WebServer } from '../helpers/webserver.mjs';
 import { EspVoiceAssistantClient } from '../voice_assistant/esp-voice-assistant-client.mjs';
+import { NoiseFrameCodec } from '../voice_assistant/noise-frame-codec.mjs';
 import { TimerManager, TimerSummary } from '../voice_assistant/timer-manager.mjs';
 import { DeviceManager } from '../helpers/device-manager.mjs';
 import { settingsManager } from '../settings/settings-manager.mjs';
@@ -173,9 +174,13 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
     // Initialize ESP voice client - Uses stored address and port.
     // Created before the tool manager because the timer tools drive it.
+    // Encryption key: the user-editable setting wins, the pair-time store
+    // value is the fallback (so manual-entry pairing with a key just works).
     this.esp = new EspVoiceAssistantClient(this.homey, {
       host: store.address,
-      apiPort: store.port
+      apiPort: store.port,
+      encryptionKey: (settings.encryption_key as string)?.trim() || store.encryptionKey,
+      expectedMac: store.mac,
     });
 
     // Owns the authoritative countdown for set_timer/cancel_timer; sends timer
@@ -1414,6 +1419,21 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       if (wanted) {
         return this.applyWakeWord(wanted);
       }
+    }
+
+    // Encryption-key change: validate, then reconnect with the new key. An
+    // empty value falls back to the pair-time store key (if any) — same
+    // precedence as onInit.
+    if (changedKeys.includes('encryption_key')) {
+      const typed = String(newSettings.encryption_key ?? '').trim();
+      if (typed && !NoiseFrameCodec.decodePsk(typed)) {
+        throw new Error('The key should be the 32-byte base64 string from your ESPHome configuration.');
+      }
+      const key = typed || (this.getStoreValue('encryptionKey') as string) || undefined;
+      this.esp.setEncryptionKey(key);
+      this.logger.info(`API encryption key ${key ? 'changed' : 'removed'} — reconnecting to the device`);
+      await this.esp.disconnect();
+      await this.esp.start();
     }
   }
 
