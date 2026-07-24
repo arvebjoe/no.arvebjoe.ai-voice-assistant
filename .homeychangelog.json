@@ -22,5 +22,8 @@
   },
   "1.4.1": {
     "en": "New device: ThirdReality Voice & Music Assistant. New voice engines: Mistral, plus a fully local pipeline (Whisper, Ollama, Piper and more) that keeps your voice in your home. Set up a new device's Wi-Fi over Bluetooth right from pairing. The assistant can now play music (Music Assistant), manage your Bring! shopping list, and search the web. Redesigned settings page and many stability fixes."
+  },
+  "1.4.2": {
+    "en": "You can now add a device by entering its IP address manually if it isn't found automatically during pairing."
   }
 }
