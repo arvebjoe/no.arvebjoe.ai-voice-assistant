@@ -114,7 +114,10 @@ api:
     - script.execute: control_leds
   on_client_disconnected:
     - script.execute: control_leds
-  encryption:   # Uses key set by Home Assistant
+  #encryption:
+    # Noise encryption test key (generated 2026-07-24 for the feature/noise-encryption
+    # branch). Paste this same key into the Homey app when adding the device.
+    #key: "X6+AddYourOwnKeyHereDoNotUseThisKey+Nice+0g="
 
 ota:
   - platform: esphome
