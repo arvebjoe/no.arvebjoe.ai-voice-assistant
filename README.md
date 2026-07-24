@@ -58,6 +58,8 @@ Norwegian, Spanish, Danish, Russian, Polish and Korean** — pick yours in the a
 4. **Add the device** in Homey — it's discovered automatically on your LAN. Not on Wi-Fi yet?
    Pick **Set up Wi-Fi via Bluetooth** in the pairing wizard and Homey will put it on your
    network (see [Bluetooth Wi-Fi setup](#getting-a-device-onto-wi-fi-bluetooth-setup)).
+   Scan can't find a device that *is* on Wi-Fi? Use **Enter IP address manually**
+   (see [Adding a device by IP address](#adding-a-device-by-ip-address-manual-entry)).
 5. **Say the wake word** and ask something — or test from a Flow with the
    *Ask the assistant* / *Say* cards.
 
@@ -90,6 +92,24 @@ apps or USB cables needed.
   active).
 * A device that is already connected to Wi-Fi switches its Bluetooth setup off — use the
   normal network search instead.
+
+### Adding a device by IP address (manual entry)
+
+The normal network search relies on **mDNS** (multicast) to discover devices. On some
+setups that multicast never reaches the Homey — most commonly a **Wi-Fi-only Homey Pro**,
+or a network where multicast isn't forwarded between the Homey and the device. The device
+is fully reachable, but the scan finds nothing and ends with a timeout.
+
+For these cases the pairing wizard offers **Enter IP address manually**. Type the device's
+**IP address** (and port, default **6053**); the app connects straight to its ESPHome native
+API, verifies it's a compatible voice device, and adds it — no discovery involved. If the
+device is also visible over mDNS later, Homey still tracks its IP across DHCP changes, because
+the manually-added device is keyed by the same MAC-based id discovery would have used.
+
+> **API encryption keys are not supported yet** — with either discovery or manual entry. The
+> app connects in plaintext, so a device with an ESPHome API **encryption key** set can't be
+> added by any method today (remove the key from its ESPHome config first). A key field is
+> planned for the manual-entry form once encrypted (Noise) connections are implemented.
 
 ### 1) Home Assistant Voice: Preview Edition (PE)
 
@@ -411,6 +431,10 @@ entirely on the engine you pick — with the local pipeline, nothing does.
 
 * **Device not found during pairing:** make sure it's powered, on the same LAN/subnet as Homey,
   and has no ESPHome API **encryption key** set (see the note under Hardware setup).
+* **Scan times out even though the device is reachable:** discovery uses mDNS/multicast, which
+  doesn't always reach the Homey (e.g. a Wi-Fi-only Homey Pro, or multicast not forwarded on
+  your network). Use **Enter IP address manually** in the pairing wizard to add it directly by
+  IP (see [Adding a device by IP address](#adding-a-device-by-ip-address-manual-entry)).
 * **Bluetooth Wi-Fi setup finds nothing:** the device only advertises while it is *not*
   connected to Wi-Fi — and it must be within Bluetooth range of your **Homey** (not your
   phone). Power-cycle the device, move it next to Homey and scan again. If another app

@@ -104,6 +104,12 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
   // any further reconnect scheduling, even from a late socket error/close event.
   private closed: boolean = false;
   private deviceType: string | null;
+  // Identity captured from DeviceInfoResponse during a probe. Used by the
+  // manual-IP pair flow to build a stable device id (MAC, normalized to the
+  // same colon-free lowercase form mDNS reports in txt.mac) and a display name
+  // when there is no mDNS record to read them from.
+  private macAddress: string = '';
+  private friendlyName: string = '';
   private logger = createLogger('ESP', true);
   // The device's OWN ESPHome firmware logs, streamed over the native API
   // (SubscribeLogsRequest) and printed under [PE] so the device-side view of the
@@ -218,6 +224,18 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
 
   setHost(address: any) {
     this.host = address;
+  }
+
+  // MAC captured from DeviceInfoResponse, colon-free lowercase (matches the mDNS
+  // txt.mac form). Empty until DeviceInfoResponse has been received.
+  getMacAddress(): string {
+    return this.macAddress;
+  }
+
+  // Friendly name captured from DeviceInfoResponse (falls back to the device
+  // name). Empty until DeviceInfoResponse has been received.
+  getFriendlyName(): string {
+    return this.friendlyName;
   }
 
   scheduleReconnect(): void {
@@ -583,6 +601,17 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
 
     else if (name === 'DeviceInfoResponse') {
       this.subscribeVoiceAssistantCount++;
+
+      // Capture identity for the manual-IP pair flow. mac_address arrives as
+      // "AC:BC:32:89:0E:A9"; normalize to colon-free lowercase so it matches the
+      // mDNS discovery id ({{txt.mac}}) and lets onDiscoveryResult still track
+      // the device if it later shows up over mDNS.
+      if (message?.macAddress) {
+        this.macAddress = String(message.macAddress).replace(/:/g, '').toLowerCase();
+      }
+      if (message?.friendlyName || message?.name) {
+        this.friendlyName = message.friendlyName || message.name;
+      }
 
       // Parse the voice-assistant feature flags so we know whether the device
       // supports timers. TIMERS = 1 << 3 = 8 (aioesphomeapi VoiceAssistantFeature).

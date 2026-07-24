@@ -34,6 +34,12 @@
       }
     },
     {
+      "id": "manual_entry",
+      "navigation": {
+        "prev": "start"
+      }
+    },
+    {
       "id": "list_devices",
       "template": "list_devices",
       "navigation": {

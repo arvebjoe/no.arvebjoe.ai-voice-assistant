@@ -1,0 +1,157 @@
+<!-- Shared pair view: identical copy exists in the other voice-assistant driver's
+     pair/ folder (Homey requires pair views inside each driver directory).
+     Keep both copies in sync when editing.
+
+     Manual IP entry — fallback for when mDNS discovery doesn't reach the Homey
+     (Wi-Fi-only Homey Pro, networks that don't propagate multicast). Connects
+     directly to the device's ESPHome native API by IP:port, bypassing discovery.
+
+     TODO (encryption): add an "API encryption key" field here once the ESP
+     client supports the Noise handshake (Noise_NNpsk0_25519_ChaChaPoly_SHA256).
+     Today the client is plaintext-only, so a key field would be non-functional.
+     The key is a connection-time concern (needed regardless of how the device
+     was found), so when added it should live next to host/port here. -->
+<style>
+  .va-manual {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 16px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+  .va-manual p.lead {
+    margin: 4px 0 4px;
+    text-align: center;
+    font-size: 15px;
+  }
+  .va-manual label {
+    display: block;
+    font-size: 13px;
+    opacity: 0.75;
+    margin-bottom: 4px;
+  }
+  .va-manual .row {
+    display: flex;
+    gap: 10px;
+  }
+  .va-manual .row .host { flex: 3; }
+  .va-manual .row .port { flex: 1; }
+  .va-manual input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 12px 14px;
+    border-radius: 10px;
+    border: 1px solid rgba(128, 128, 128, 0.35);
+    background: rgba(128, 128, 128, 0.08);
+    color: inherit;
+    font: inherit;
+  }
+  .va-manual button.primary {
+    display: block;
+    width: 100%;
+    padding: 14px 16px;
+    border-radius: 12px;
+    border: none;
+    background: #2f7de1;
+    color: #fff;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .va-manual button.primary:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+  .va-manual .hint {
+    font-size: 12px;
+    opacity: 0.6;
+    text-align: center;
+    margin-top: 2px;
+  }
+  .va-manual .status {
+    font-size: 13px;
+    text-align: center;
+    min-height: 18px;
+    margin: 2px 0;
+  }
+  .va-manual .status.error { color: #e05555; }
+  .va-manual .status.ok { color: #37a862; }
+</style>
+
+<div class="va-manual">
+  <p class="lead">Enter the device's IP address</p>
+  <p class="hint">Use this if the network scan can't find your device (e.g. mDNS
+    isn't reaching your Homey). The device must already be on your Wi-Fi.</p>
+
+  <div>
+    <div class="row">
+      <div class="host">
+        <label for="va-host">IP address or hostname</label>
+        <input type="text" id="va-host" inputmode="decimal" autocomplete="off"
+               autocapitalize="off" spellcheck="false" placeholder="192.168.1.42" />
+      </div>
+      <div class="port">
+        <label for="va-port">Port</label>
+        <input type="text" id="va-port" inputmode="numeric" autocomplete="off"
+               placeholder="6053" value="6053" />
+      </div>
+    </div>
+  </div>
+
+  <div class="status" id="va-status"></div>
+
+  <button type="button" class="primary" id="va-add">Find &amp; add device</button>
+</div>
+
+<script type="application/javascript">
+  var hostEl = document.getElementById('va-host');
+  var portEl = document.getElementById('va-port');
+  var btn = document.getElementById('va-add');
+  var statusEl = document.getElementById('va-status');
+
+  function setStatus(text, kind) {
+    statusEl.textContent = text || '';
+    statusEl.className = 'status' + (kind ? ' ' + kind : '');
+  }
+
+  function reasonToMessage(reason) {
+    switch (reason) {
+      case 'no_address': return 'Please enter an IP address.';
+      case 'timeout':
+      case 'unreachable':
+        return "Couldn't reach a device at that address. Check the IP and port, and that the device is powered on and on your Wi-Fi.";
+      case 'not_a_match':
+        return 'A device answered, but it is not a compatible voice assistant for this driver.';
+      default: return 'Could not add the device. Please try again.';
+    }
+  }
+
+  btn.addEventListener('click', function () {
+    var address = (hostEl.value || '').trim();
+    var port = parseInt((portEl.value || '').trim(), 10) || 6053;
+
+    if (!address) {
+      setStatus(reasonToMessage('no_address'), 'error');
+      return;
+    }
+
+    btn.disabled = true;
+    setStatus('Connecting to ' + address + ':' + port + '…');
+
+    Homey.emit('manual_probe', { address: address, port: port })
+      .then(function (res) {
+        if (!res || !res.ok) {
+          setStatus(reasonToMessage(res && res.reason), 'error');
+          btn.disabled = false;
+          return;
+        }
+        setStatus('Found "' + res.device.name + '". Adding…', 'ok');
+        return Homey.createDevice(res.device)
+          .then(function () { Homey.done(); });
+      })
+      .catch(function (err) {
+        setStatus(String((err && err.message) || err || 'Something went wrong.'), 'error');
+        btn.disabled = false;
+      });
+  });
+</script>

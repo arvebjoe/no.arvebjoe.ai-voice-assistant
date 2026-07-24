@@ -132,6 +132,15 @@ image analysis — see [`COMPLETED.md` §6](./COMPLETED.md)).
       client fails entirely against them). Owner decision 2026-07-23: NOT for this release —
       ship as a documented limitation instead (README note, punch-list item 9). Background:
       CLAUDE.md "ESPHome firmware compatibility", COMPLETED.md §6, `docs/code_review_2.md` M2.
+      **Research + implementation plan: [`docs/esphome-noise-encryption.md`](./docs/esphome-noise-encryption.md)**
+      (wire format, handshake, node:crypto mapping, codec design, testing strategy — written 2026-07-23).
+      When this lands, surface the key as an **"API encryption key" field in the manual-IP pair
+      view** (`pair/manual_entry.html`, both drivers — there's a marked `TODO (encryption)` spot),
+      threaded through the `manual_probe` handler → `probeManualEntry()` → `EspVoiceClientOptions`.
+      The key is connection-time, not discovery-specific, so discovered devices need it too —
+      ideally a per-device setting the client reads for every connection, not just manual adds.
+      (Manual IP entry itself shipped 2026-07-23 as the plaintext fallback for mDNS-less
+      networks; see COMPLETED.md.)
 
 **Suggested first picks:** intercom/broadcast, memory, and reminders — they change how the
 product feels day-to-day. Moods and presence are cheap enough to bundle into any of them.

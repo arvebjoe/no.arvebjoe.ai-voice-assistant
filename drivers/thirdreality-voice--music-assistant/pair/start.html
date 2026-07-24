@@ -57,6 +57,11 @@
     <span>New device that is not on your Wi-Fi yet</span>
   </button>
 
+  <button type="button" class="choice" id="va-choice-manual">
+    <b>Enter IP address manually</b>
+    <span>The scan can't find it (e.g. mDNS isn't reaching your Homey)</span>
+  </button>
+
   <p class="hint">Bluetooth setup uses your Homey's Bluetooth radio &mdash; place the device near your Homey first.</p>
 </div>
 
@@ -66,5 +71,8 @@
   });
   document.getElementById('va-choice-ble').addEventListener('click', function () {
     Homey.showView('improv_setup');
+  });
+  document.getElementById('va-choice-manual').addEventListener('click', function () {
+    Homey.showView('manual_entry');
   });
 </script>
