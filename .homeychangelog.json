@@ -25,5 +25,8 @@
   },
   "1.4.2": {
     "en": "You can now add a device by entering its IP address manually if it isn't found automatically during pairing."
+  },
+  "1.4.3": {
+    "en": "Devices with API encryption enabled (the default once adopted by Home Assistant) now work — enter the device's encryption key during pairing or in the device settings, and the connection is fully encrypted. Encrypted devices are detected automatically when you add them."
   }
 }
