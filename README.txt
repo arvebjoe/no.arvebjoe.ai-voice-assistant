@@ -21,6 +21,8 @@ New device that is not on your Wi-Fi yet? The pairing wizard can set it up for y
 
 Network scan can't find a device that is already on Wi-Fi? Some networks don't pass mDNS/multicast through to the Homey (for example a Wi-Fi-only Homey Pro). Choose "Enter IP address manually" in the pairing wizard and type the device's IP address to add it directly.
 
+Devices with an ESPHome API encryption key (common when a device was previously set up with Home Assistant) are supported too: the network scan shows them marked "needs encryption key", and selecting one takes you to the manual entry page with the address already filled in — just paste the key from the device's ESPHome configuration and the connection is fully encrypted. You can also change the key later in the device's settings.
+
 Requirements:
     - A compatible ESPHome voice device with microphone and speaker
     - An API key for your chosen cloud engine (OpenAI, Google Gemini or Mistral), or your own local AI services

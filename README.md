@@ -71,9 +71,12 @@ The app talks to any supported device over your LAN using the ESPHome native API
 no Home Assistant installation is needed, and nothing extra runs on the device beyond its
 standard ESPHome firmware.
 
-> **Note:** the app connects to the ESPHome API in plaintext. If your device has an API
-> **encryption key** configured (common when a device was previously adopted by Home Assistant),
-> remove the key from its ESPHome config — encrypted connections are not supported yet.
+> **Note:** devices with an API **encryption key** configured (common when a device was
+> previously adopted by Home Assistant) are supported: the network scan still finds them
+> (marked *needs encryption key*) and the wizard forwards you to
+> [manual IP entry](#adding-a-device-by-ip-address-manual-entry) with the address prefilled —
+> just paste the key. The key can also be set later in the device's settings
+> (**API encryption key**). Devices without a key connect in plaintext as before.
 
 ### Getting a device onto Wi-Fi (Bluetooth setup)
 
@@ -106,10 +109,14 @@ API, verifies it's a compatible voice device, and adds it — no discovery invol
 device is also visible over mDNS later, Homey still tracks its IP across DHCP changes, because
 the manually-added device is keyed by the same MAC-based id discovery would have used.
 
-> **API encryption keys are not supported yet** — with either discovery or manual entry. The
-> app connects in plaintext, so a device with an ESPHome API **encryption key** set can't be
-> added by any method today (remove the key from its ESPHome config first). A key field is
-> planned for the manual-entry form once encrypted (Noise) connections are implemented.
+> **Devices with an API encryption key** (`api: encryption: key:` in the ESPHome config —
+> set automatically when a device is adopted by Home Assistant) refuse unencrypted
+> connections, so their identity can't be verified during the scan. They still show up in
+> the list marked **needs encryption key** — selecting one brings you to this manual-entry
+> form with the address already filled in. Paste the **32-byte base64 key** from the
+> device's ESPHome YAML (or the ESPHome dashboard) into the **API encryption key** field
+> and the app connects encrypted (`Noise_NNpsk0_25519_ChaChaPoly_SHA256`). The key is
+> saved with the device and can be changed later in its settings.
 
 ### 1) Home Assistant Voice: Preview Edition (PE)
 
@@ -429,8 +436,11 @@ entirely on the engine you pick — with the local pipeline, nothing does.
 
 ## Troubleshooting
 
-* **Device not found during pairing:** make sure it's powered, on the same LAN/subnet as Homey,
-  and has no ESPHome API **encryption key** set (see the note under Hardware setup).
+* **Device not found during pairing:** make sure it's powered and on the same LAN/subnet as
+  Homey. A device with an ESPHome API **encryption key** set shows up marked
+  **needs encryption key** and forwards to manual entry for the key when selected; if it
+  doesn't appear at all, add it via **Enter IP address manually** and paste the key there
+  (see [Adding a device by IP address](#adding-a-device-by-ip-address-manual-entry)).
 * **Scan times out even though the device is reachable:** discovery uses mDNS/multicast, which
   doesn't always reach the Homey (e.g. a Wi-Fi-only Homey Pro, or multicast not forwarded on
   your network). Use **Enter IP address manually** in the pairing wizard to add it directly by
