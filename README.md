@@ -198,8 +198,8 @@ latency. Get an API key:
 2. Go to **API keys** and **Create new secret key**.
 3. Paste it into the app settings in Homey (keep it secret).
 
-A **Model quality** setting picks between **Full** (`gpt-realtime-2.1`, best quality) and **Mini**
-(`gpt-realtime-2.1-mini`, a fraction of the cost and a bit faster). If your OpenAI quota runs low,
+A **Model quality** setting picks between **Full** (`gpt-realtime`, best quality) and **Mini**
+(`gpt-realtime-mini`, a fraction of the cost and a bit faster). If your OpenAI quota runs low,
 the app warns you with a Homey notification before requests start failing.
 
 > If your OpenAI account is new, you may need to add billing to enable API usage.

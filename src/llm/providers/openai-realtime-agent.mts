@@ -76,10 +76,17 @@ const OPENAI_VOICE_VALUES = new Set(OPENAI_VOICES.map((v) => v.value));
  * 'full' is the flagship (best quality), 'mini' is cheaper and faster.
  * The model rides in the websocket URL, so changing it requires a reconnect
  * (the device forces a restart when the setting changes).
+ *
+ * Pinned to the 2025 generation: gpt-realtime-2.1 has an open language-drift
+ * bug — it speaks non-English languages (incl. Norwegian) with a heavy English
+ * accent or drifts into English entirely, and prompting does not reliably fix
+ * it (https://community.openai.com/t/gpt-realtime-2-1-exhibits-language-drift/1386953).
+ * These IDs shut off Jan 20, 2027 — re-attempt the 2.1 migration before then,
+ * once OpenAI fixes the drift (verify with a Norwegian turn on a real device).
  */
 const OPENAI_REALTIME_MODELS: Record<string, string> = {
-    full: 'gpt-realtime-2.1',
-    mini: 'gpt-realtime-2.1-mini',
+    full: 'gpt-realtime-2025-08-28',
+    mini: 'gpt-realtime-mini',
 };
 
 /**

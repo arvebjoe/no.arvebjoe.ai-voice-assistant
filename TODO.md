@@ -66,6 +66,18 @@ and the test-firmware note are archived in [`COMPLETED.md` §11](./COMPLETED.md)
 12. [ ] **L1 — split oversized classes / reduce `any` at trust boundaries.** Long-term, NOT a
        release gate — only touch opportunistically if items above already open those files.
 
+## Deferred with a deadline
+
+- [ ] **Re-attempt the gpt-realtime-2.1 migration (deadline: before Jan 20, 2027).** The
+  2.1 move (commit `1af0f56`) was reverted 2026-07-25: `gpt-realtime-2.1` has an open
+  language-drift bug — it speaks non-English languages with a heavy English accent or
+  drifts into English entirely, and prompting doesn't reliably fix it
+  (<https://community.openai.com/t/gpt-realtime-2-1-exhibits-language-drift/1386953>).
+  Symptom on the PE: Norwegian replies sounded "like a non-Norwegian trying to speak
+  Norwegian". We're pinned to `gpt-realtime-2025-08-28` / `gpt-realtime-mini`, which
+  OpenAI shuts off **Jan 20, 2027**. Before re-migrating (to 2.1 or newer): check the
+  thread/changelog for a fix, then verify with a few Norwegian turns on the real PE.
+
 ## Watch items (no action unless they recur)
 
 - **Settings webview one-off (2026-07-19, unreproduced):** one webview session where Save
