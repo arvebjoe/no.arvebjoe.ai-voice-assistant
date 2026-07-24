@@ -414,4 +414,51 @@ describe('VoiceAssistantDevice (harness)', () => {
             expect(createdProviders.length).toBe(1);
         });
     });
+
+    describe('settings save clears stale conversation context', () => {
+        // The snapshot every save delivers when nothing provider-affecting changed
+        // (matches the harness defaults, so needRestart stays false).
+        const unchangedSnapshot = {
+            openai_api_key: 'test-key',
+            selected_voice: 'alloy',
+            selected_language_code: 'en',
+            selected_language_name: 'English',
+            ai_instructions: '',
+            voice_provider: 'openai-realtime',
+        };
+
+        // The very first save after init reconciles timer support against the
+        // mock ESP and restarts; prime with one call so the assertions below
+        // see a steady-state save.
+        async function primedHarness() {
+            const h = await createHarness();
+            await (h.device as any).handleSettingsChange(unchangedSnapshot);
+            h.provider.calls.length = 0;
+            return h;
+        }
+
+        it('resets the conversation when a save changes nothing that restarts the provider', async () => {
+            // e.g. flipping allow_unlock_via_voice: read at tool-call time, no
+            // restart — but a cached UNLOCK_DISABLED tool result must not survive.
+            const h = await primedHarness();
+            await (h.device as any).handleSettingsChange(unchangedSnapshot);
+            expect(h.provider.calls).toContain('resetConversation');
+            expect(h.provider.calls).not.toContain('restart');
+        });
+
+        it('does not double-clear when the save already restarts the provider', async () => {
+            const h = await primedHarness();
+            await (h.device as any).handleSettingsChange({ ...unchangedSnapshot, selected_voice: 'marin' });
+            expect(h.provider.calls).toContain('restart');
+            expect(h.provider.calls).not.toContain('resetConversation');
+        });
+
+        it('does not yank context out from under a live turn', async () => {
+            const h = await primedHarness();
+            startTurn(h); // mic streaming — turn state is not idle
+            await (h.device as any).handleSettingsChange(unchangedSnapshot);
+            expect(h.provider.calls).not.toContain('resetConversation');
+            expect(h.provider.calls).not.toContain('restart');
+        });
+    });
 });

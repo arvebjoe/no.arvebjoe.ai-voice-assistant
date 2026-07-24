@@ -1313,13 +1313,22 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
                     return { ok: false, error: { code: "CONFIRMATION_REQUIRED", message: `Refusing to change ${deduped} devices without explicit confirmation.` } };
                 }
 
-                // S3: unlocking is physical security — allow it for exactly ONE
-                // device per call, so "unlock all doors" (or a prompt-injected
-                // equivalent) can't happen in a single write. Locking in bulk
-                // stays allowed. Deliberately NOT a confirmation prompt (that
-                // guard was removed on purpose).
-                if (capabilityId === "locked" && value === false && deduped > 1) {
-                    return { ok: false, error: { code: "UNLOCK_SINGLE_DEVICE_ONLY", message: `Refusing to unlock ${deduped} devices at once. Unlock only the specific lock the user named, one call per device.` } };
+                // S3/H4: unlocking is physical security. Two code-enforced rules
+                // (deliberately NOT a confirmation prompt — that guard was
+                // removed on purpose; locking is never restricted):
+                //  1. Unlocking must be explicitly enabled in the app settings
+                //     (default off).
+                //  2. Even then, exactly ONE device per call, so "unlock all
+                //     doors" (or a prompt-injected equivalent) can't happen in
+                //     a single write.
+                if (capabilityId === "locked" && value === false) {
+                    const allowUnlock = settingsManager.getGlobal<any>('allow_unlock_via_voice', false);
+                    if (allowUnlock !== true && allowUnlock !== 'true') {
+                        return { ok: false, error: { code: "UNLOCK_DISABLED", message: "Unlocking by voice is disabled. The user must enable 'Allow unlocking by voice' in the app's settings first. Locking is still allowed." } };
+                    }
+                    if (deduped > 1) {
+                        return { ok: false, error: { code: "UNLOCK_SINGLE_DEVICE_ONLY", message: `Refusing to unlock ${deduped} devices at once. Unlock only the specific lock the user named, one call per device.` } };
+                    }
                 }
 
                 this.logger.info('set_device_capability_bulk', 'TOOL', `devices=${deduped}/${originalCount}, cap=${capabilityId}, value=${value}, zone=${expected_zone}, type=${expected_type}, xzoneBlocked=${crossZoneBlocked}`);

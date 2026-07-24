@@ -8,6 +8,8 @@ You choose the AI engine:
 
 The assistant can also search the web for current information (opening hours, departures, what's on at the cinema) using OpenAI web search or the Brave Search API, and it can tell you what it is able to do when you ask for help.
 
+Smart locks: locking by voice always works, but unlocking is off by default — anyone within earshot can talk to the device, so you must first enable "Allow unlocking by voice" in the app settings. Even then only one lock can be unlocked per command.
+
 If you use Bring!, you can turn on the optional shopping-list feature in settings and enter your Bring! account details. Then just say "what's on the shopping list?", "add milk" or "take bread off the list". If an item is already there, the assistant asks whether to increase the amount.
 
 Music, too: if you run a Music Assistant server on your network, enable the music feature in settings and point it at the server. Then ask for any artist, album, track, playlist or radio station — "play Abbey Road by the Beatles", "pause", "next song", "what's playing?". The music streams from your server straight to the speaker; asking on a speaker plays it right there, or name another room.

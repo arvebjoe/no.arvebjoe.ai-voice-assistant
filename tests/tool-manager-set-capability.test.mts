@@ -11,6 +11,7 @@ import { settingsManager } from '../src/settings/settings-manager.mjs';
 describe('ToolManager set_device_capability safety gates', () => {
     let toolManager: ToolManager;
     let deviceManager: MockDeviceManager;
+    let mockHomey: MockHomey;
     let setCapability: (args: any) => Promise<any>;
 
     // Reads the capability value the mock recorded for a device, e.g. 'onoff=true'.
@@ -22,7 +23,7 @@ describe('ToolManager set_device_capability safety gates', () => {
 
     beforeEach(async () => {
         settingsManager.reset();
-        const mockHomey = new MockHomey();
+        mockHomey = new MockHomey();
         deviceManager = new MockDeviceManager();
         const mockGeoHelper = new MockGeoHelper();
         const mockWeatherHelper = new MockWeatherHelper();
@@ -107,9 +108,26 @@ describe('ToolManager set_device_capability safety gates', () => {
         expect(capOf('device-12', 'onoff')).toBe('onoff=true');  // Office ID filtered by narrowing
     });
 
-    /* ---------- S3: unlock is single-target ---------- */
+    /* ---------- H4: unlocking is gated behind a default-off setting ---------- */
+
+    it('H4 — refuses to unlock while allow_unlock_via_voice is unset (default off)', async () => {
+        const res = await setCapability({ deviceIds: ['device-12'], capabilityId: 'locked', newValue: false });
+        expect(res.ok).toBe(false);
+        expect(res.error.code).toBe('UNLOCK_DISABLED');
+        expect(capOf('device-12', 'locked')).toBeUndefined(); // nothing written
+    });
+
+    it('H4 — bulk LOCKING stays allowed even with the gate off (securing, not exposing)', async () => {
+        const res = await setCapability({ deviceIds: ['device-12', 'device-14'], capabilityId: 'locked', newValue: true });
+        expect(res.ok).toBe(true);
+        expect(capOf('device-12', 'locked')).toBe('locked=true');
+        expect(capOf('device-14', 'locked')).toBe('locked=true');
+    });
+
+    /* ---------- S3: unlock is single-target (gate enabled) ---------- */
 
     it('S3 — refuses to unlock more than one device per call', async () => {
+        mockHomey.settings.set('allow_unlock_via_voice', true);
         // device-12 and device-14 are both in Office, so cross-zone doesn't interfere.
         const res = await setCapability({ deviceIds: ['device-12', 'device-14'], capabilityId: 'locked', newValue: false });
         expect(res.ok).toBe(false);
@@ -117,16 +135,11 @@ describe('ToolManager set_device_capability safety gates', () => {
         expect(capOf('device-12', 'locked')).toBeUndefined(); // nothing written
     });
 
-    it('S3 — unlocking a single device works, and bulk LOCKING stays allowed', async () => {
-        let res = await setCapability({ deviceIds: ['device-12'], capabilityId: 'locked', newValue: false });
+    it('S3 — unlocking a single device works once the setting is enabled', async () => {
+        mockHomey.settings.set('allow_unlock_via_voice', true);
+        const res = await setCapability({ deviceIds: ['device-12'], capabilityId: 'locked', newValue: false });
         expect(res.ok).toBe(true);
         expect(capOf('device-12', 'locked')).toBe('locked=false');
-
-        // Locking many at once is fine (securing, not exposing).
-        res = await setCapability({ deviceIds: ['device-12', 'device-14'], capabilityId: 'locked', newValue: true });
-        expect(res.ok).toBe(true);
-        expect(capOf('device-12', 'locked')).toBe('locked=true');
-        expect(capOf('device-14', 'locked')).toBe('locked=true');
     });
 
     /* ---------- existing gate, previously untested ---------- */

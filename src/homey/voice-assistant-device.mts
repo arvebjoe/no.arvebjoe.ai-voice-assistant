@@ -995,6 +995,16 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
       if (needRestart) {
         await this.provider.restart();
+      } else if (this.turn.state === 'idle') {
+        // A settings save can invalidate tool results already sitting in the
+        // open conversation — e.g. flipping "Allow unlocking by voice": the
+        // model keeps trusting its earlier UNLOCK_DISABLED refusal instead of
+        // retrying the tool. A restart starts fresh anyway; otherwise drop the
+        // context so the next turn sees the new settings. Skipped mid-turn so
+        // a save can't yank conversation items out from under a live response
+        // (the context-TTL idle clear covers that case shortly after).
+        this.convo.info('Settings saved — context cleared, next turn starts fresh', 'MIC');
+        this.provider.resetConversation();
       }
 
 

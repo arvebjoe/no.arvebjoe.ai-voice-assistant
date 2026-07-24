@@ -953,6 +953,17 @@
           <div class="note">The core of the assistant: zones, device types, reading states and setting on/off,
             brightness, temperature and locks. Always enabled — this is the base cost every configuration pays. It
             includes the assistant's behavior rules, the current time, and the "what can you do?" helper.</div>
+          <div class="feature-head" style="margin-top: 16px; margin-bottom: 0;">
+            <div>
+              <div class="feature-title" style="font-size: 14.5px;">Allow unlocking by voice</div>
+              <div class="feature-sub">Off (default): the assistant can lock doors but never unlock them. Anyone
+                within earshot of a device can talk to it — only enable this if you accept that.</div>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="allow_unlock_via_voice" aria-label="Allow unlocking by voice" />
+              <span class="knob"></span>
+            </label>
+          </div>
         </div>
       </section>
 
@@ -1676,6 +1687,8 @@
       }
       loadBoolSetting("weather_enabled", true);
       loadBoolSetting("timers_enabled", true);
+      // Security gate, default OFF: unlocking by voice must be opted into.
+      loadBoolSetting("allow_unlock_via_voice", false);
 
       var webSearchEnabledElement = document.getElementById("web_search_enabled");
       var webSearchSelectElement = document.getElementById("web_search_provider");
@@ -1894,6 +1907,8 @@
           // Weather + timers feature gates
           ["weather_enabled", document.getElementById("weather_enabled").checked],
           ["timers_enabled", document.getElementById("timers_enabled").checked],
+          // Security gate: unlocking by voice (default off)
+          ["allow_unlock_via_voice", document.getElementById("allow_unlock_via_voice").checked],
           // Bring! shopping-list settings (enable flag + credentials + optional list)
           ["bring_enabled", bringEnabledElement.checked],
           ["bring_email", document.getElementById("bring_email").value.trim()],

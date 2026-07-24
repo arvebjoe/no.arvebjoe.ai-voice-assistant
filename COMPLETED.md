@@ -423,8 +423,21 @@ M6 npm-audit chains, M7 start() semantics, L1/L3/L4/L5) stay open in TODO.md.
   so), and the tool description repeats the rule. Chosen over per-language prompt blocks because
   it appears at the moment the model consumes the data, works in every language, and costs no
   context when search is off. The one-device unlock cap stays the code-enforced backstop
-  (deliberately not a confirmation prompt — see the S3 comment in tool-manager.mts); an
-  `allow_unlock_via_voice` setting remains an open product question in TODO.md.
+  (deliberately not a confirmation prompt — see the S3 comment in tool-manager.mts).
+  **Closed 2026-07-25 (owner decision: yes):** `allow_unlock_via_voice` global setting added,
+  default OFF — `set_device_capability` refuses `locked=false` with `UNLOCK_DISABLED` until the
+  user enables "Allow unlocking by voice" (toggle in the Smart home control settings card; key in
+  `settingsManager.knownKeys`; read live at call time so no provider restart, no prompt-token
+  cost). The single-device cap still applies once enabled. Locking is never restricted. Tests in
+  `tool-manager-set-capability.test.mts` (H4 default-off, bulk lock allowed, S3 tests now enable
+  the gate); README.md (features + settings + privacy) and README.txt updated.
+  **Follow-up (live test, same day):** after flipping the setting ON, an immediate retry still got
+  refused — the model trusted the earlier `UNLOCK_DISABLED` tool result sitting in the open
+  conversation and answered from memory without calling the tool again (worked once the 10 s
+  context TTL cleared it). Fix: `handleSettingsChange` now calls `provider.resetConversation()`
+  after any settings save that didn't already restart the provider, skipped while a turn is live
+  (`turn.state !== 'idle'`) so a save can't yank items from under a streaming response. Tests in
+  `voice-assistant-device.test.mts` ("settings save clears stale conversation context").
 
 - [x] **M1 — Wyoming framing/queue unbounded.** `drainBuffer` trusted `data_length`/
   `payload_length` verbatim (huge frame → unbounded buffering; negative/fractional/non-numeric →

@@ -23,7 +23,10 @@ just speak naturally:
 
 * **Control devices** — turn lights, plugs and other devices on/off, dim lights, set thermostat
   temperatures, in any room/zone.
-* **Lock & unlock doors** — control supported smart locks.
+* **Lock & unlock doors** — control supported smart locks. Locking always works; *unlocking* by
+  voice is off by default (anyone within earshot can talk to the device) — enable *Allow unlocking
+  by voice* in the app settings if you want it, and even then only one lock can be unlocked per
+  command.
 * **Ask about the weather** — current conditions and forecasts for your location.
 * **Ask the time & date** — answered from your Homey's local time and timezone.
 * **Set timers & alarms** — *"set a 10 minute timer"*, *"wake me at 7"*. The device counts down on
@@ -326,7 +329,9 @@ length you configured when loading the model).
 **Features** — each has an on/off switch and shows its token cost. Disabled features aren't
 loaded at all: no tools, no prompt text, no cost.
 
-* **Smart home control** — always on; this is the base cost.
+* **Smart home control** — always on; this is the base cost. Includes the **Allow unlocking by
+  voice** switch (off by default): until you enable it, the assistant will lock doors but refuse
+  to unlock them.
 * **Weather** — current weather, forecast, rain and outside-light questions (on by default).
 * **Timers & alarms** — countdown timers/alarms on devices whose firmware supports them
   (on by default).
@@ -469,6 +474,9 @@ entirely on the engine you pick — with the local pipeline, nothing does.
   (whichever you selected — as the provider or for a Custom pipeline stage) to fulfil your
   requests. Don't use those engines if that's not acceptable for your environment.
 * With a fully **local** pipeline, audio and text stay on your own network.
+* **Smart locks:** unlocking by voice is disabled by default (enable *Allow unlocking by voice*
+  in settings to allow it), and the app never unlocks more than one lock per command — a voice
+  request (or a malicious phrase smuggled into web content) can't open every door at once.
 
 ---
 

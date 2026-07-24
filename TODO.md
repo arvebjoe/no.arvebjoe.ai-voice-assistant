@@ -10,10 +10,11 @@ fully live-verified 2026-07-24 on branch `feature/noise-encryption` (all pairing
 permutations: PE/TR × scan/BT wizard/manual IP × encrypted/plain). Full context, gotchas
 and the test-firmware note are archived in [`COMPLETED.md` §11](./COMPLETED.md).
 
-1. [ ] **H4 product decision — `allow_unlock_via_voice` setting?** Ask the owner at session
-       start: the untrusted-content envelope + one-device unlock cap already shipped; the
-       remaining option is a code-enforced gate on `locked=false` behind a default-off setting.
-       Decide yes/no, implement or close.
+1. [x] **H4 product decision — `allow_unlock_via_voice` setting?** DONE 2026-07-25 (owner said
+       yes): default-off global setting gates `locked=false` in `set_device_capability`
+       (`UNLOCK_DISABLED` until enabled; single-device cap still applies after). Toggle lives in
+       the Smart home control settings card; READMEs updated; tests green. Details in
+       [`COMPLETED.md` §7](./COMPLETED.md) (H4 entry).
 2. [ ] **L3 — pairing probe polls every 10 ms and leaks the 5 s timeout**
        (`voice-assistant-driver.mts:212-231`). Resolve directly from `finish()`.
 3. [ ] **L4 — dead `preStart` variable in `pcm-segmenter.mts:134`** — implement the documented
