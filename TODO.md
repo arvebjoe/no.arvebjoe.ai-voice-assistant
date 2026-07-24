@@ -5,9 +5,10 @@
 **Goal: clear all the remaining small items before the store release.** Work top to bottom;
 mark each `[x]` when done/verified, `[~]` when in progress. Code-review item context is in
 [`docs/code_review_2.md`](./docs/code_review_2.md); fixed review items are archived in
-[`COMPLETED.md` §7](./COMPLETED.md). **M2 (Noise encryption) is explicitly NOT in this list** —
-owner decision 2026-07-23: don't implement it for this release; it moved to Feature ideas
-below. Ship plaintext-only as a documented limitation (make sure README mentions it, item 9).
+[`COMPLETED.md` §7](./COMPLETED.md). **M2 (Noise encryption) is DONE** — implemented and
+fully live-verified 2026-07-24 on branch `feature/noise-encryption` (all pairing
+permutations: PE/TR × scan/BT wizard/manual IP × encrypted/plain). Full context, gotchas
+and the test-firmware note are archived in [`COMPLETED.md` §11](./COMPLETED.md).
 
 1. [ ] **H4 product decision — `allow_unlock_via_voice` setting?** Ask the owner at session
        start: the untrusted-content envelope + one-device unlock cap already shipped; the
@@ -32,8 +33,9 @@ below. Ship plaintext-only as a documented limitation (make sure README mentions
        below and COMPLETED.md.)
 9. [ ] **README/store-listing polish:** retake the stale settings screenshots
        (`.resources/settings.jpg`, predate the settings redesign — needs the owner's Homey);
-       add the plaintext-only/no-Noise limitation note (M2 deferral) to README.md; spot-check
-       README.txt still matches.
+       ~~add the plaintext-only/no-Noise limitation note~~ (superseded — Noise encryption is
+       now implemented and README.md/README.txt describe it); spot-check README.txt still
+       matches.
 10. [ ] **Release-testing checklist pass** ([`docs/release-testing-since-1.4.0.md`](./docs/release-testing-since-1.4.0.md)):
        tick off everything the 2026-07-19→23 live sessions already proved (pairing/BLE, Mistral,
        music, TR end-to-end, soak); then run what genuinely remains — upgrade path 1.4.0→1.4.1
@@ -126,21 +128,9 @@ image analysis — see [`COMPLETED.md` §6](./COMPLETED.md)).
 
 ### Deferred technical work
 
-- [ ] **Noise encryption for the ESPHome link (was code-review M2)** — support
-      `Noise_NNpsk0_25519_ChaChaPoly_SHA256` plus a per-device encryption-key setting so
-      satellites with an ESPHome API encryption key can connect (today the plaintext-only
-      client fails entirely against them). Owner decision 2026-07-23: NOT for this release —
-      ship as a documented limitation instead (README note, punch-list item 9). Background:
-      CLAUDE.md "ESPHome firmware compatibility", COMPLETED.md §6, `docs/code_review_2.md` M2.
-      **Research + implementation plan: [`docs/esphome-noise-encryption.md`](./docs/esphome-noise-encryption.md)**
-      (wire format, handshake, node:crypto mapping, codec design, testing strategy — written 2026-07-23).
-      When this lands, surface the key as an **"API encryption key" field in the manual-IP pair
-      view** (`pair/manual_entry.html`, both drivers — there's a marked `TODO (encryption)` spot),
-      threaded through the `manual_probe` handler → `probeManualEntry()` → `EspVoiceClientOptions`.
-      The key is connection-time, not discovery-specific, so discovered devices need it too —
-      ideally a per-device setting the client reads for every connection, not just manual adds.
-      (Manual IP entry itself shipped 2026-07-23 as the plaintext fallback for mDNS-less
-      networks; see COMPLETED.md.)
+*(empty — the last item here, Noise encryption / code-review M2, was implemented and fully
+live-verified 2026-07-24 and is archived with full context in
+[`COMPLETED.md` §11](./COMPLETED.md).)*
 
 **Suggested first picks:** intercom/broadcast, memory, and reminders — they change how the
 product feels day-to-day. Moods and presence are cheap enough to bundle into any of them.

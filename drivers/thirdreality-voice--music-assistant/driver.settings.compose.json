@@ -52,5 +52,16 @@
         "units": {
             "en": "ms"
         }
+    },
+    {
+        "id": "encryption_key",
+        "type": "password",
+        "label": {
+            "en": "API encryption key"
+        },
+        "value": "",
+        "hint": {
+            "en": "The device's ESPHome API encryption key (the 32-byte base64 string from its YAML configuration). Required when the device has API encryption enabled — e.g. after being adopted by Home Assistant. Leave empty for unencrypted devices (or to keep using the key entered during pairing)."
+        }
     }
 ]

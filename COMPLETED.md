@@ -655,3 +655,78 @@ matches MAC first — against `device_info.mac_address` (PE) or embedded in the 
       (owner: "people are impatient") — safe now that timeout = "say it's on its way",
       not failure. Live sequence for a slow artist: ack at 4 s → "on its way" at ~34 s →
       music starts by itself.
+
+---
+
+## 11. Noise encryption for the ESPHome link (code-review M2) — 2026-07-24 (branch `feature/noise-encryption`)
+
+Closes the "Noise encryption" deferred-work item. The plaintext-only client used to fail
+entirely against any satellite with an ESPHome API encryption key (`api: encryption: key:`
+— the default once a device has been adopted by Home Assistant); users were told to remove
+the key. Now the app speaks `Noise_NNpsk0_25519_ChaChaPoly_SHA256` and the whole pairing UX
+routes around the key. Research + design doc (wire format, handshake crypto, node:crypto
+mapping, error taxonomy): [`docs/esphome-noise-encryption.md`](./docs/esphome-noise-encryption.md).
+
+**What shipped:**
+
+- [x] **Codec** — `src/voice_assistant/noise-frame-codec.mts`: self-contained NNpsk0
+      handshake + transport (CipherState/SymmetricState/HandshakeState), **node:crypto only**
+      (no new dependencies; state-machine approach ported from hjdhjd/esphome-client's
+      `crypto-noise.ts`, ISC). Outer frame `[0x01][u16 BE len][payload]`; inner message
+      `[u16 BE type][u16 BE len][protobuf]`. Role-aware handshake so the unit tests run a
+      real responder. Strict PSK validation (`decodePsk`: base64 → exactly 32 bytes;
+      `Buffer.from(str,'base64')` alone is too lenient — it silently drops bad chars).
+- [x] **Client seam** — `esp-voice-assistant-client.mts` options `encryptionKey`/`expectedMac`.
+      Fresh codec per connect (ephemeral keys are single-use), client-hello + handshake msg 1
+      in one write, `HelloRequest` held until `ready`. Plaintext path byte-for-byte unchanged
+      when no key is set. A plaintext connect answered with indicator `0x01` emits
+      `requires_encryption` (previously: silent hang until the health check gave up). Noise
+      failures emit `encryption_error` with codes `wrong_key` / `plaintext_device` /
+      `mac_mismatch` / `invalid_key` / `protocol_error`. Shared body decode via
+      `decodeBody`/`encodeBody` in `esp-messages.mts` — one protobuf path for both framings.
+- [x] **Key storage** — per-device `encryption_key` setting (PE + TR
+      `driver.settings.compose.json`, type `password`); fallback: pair-time
+      `store.encryptionKey`. `onSettings` validates (32-byte base64) and reconnects.
+- [x] **Pairing, manual entry** — optional "API encryption key" field in
+      `pair/manual_entry.html` (both drivers, identical copies), client-side pre-validation,
+      full error-message taxonomy (wrong key / plaintext device / requires key / malformed /
+      MAC mismatch), key threaded `manual_probe` → `probeManualEntry()` → client options and
+      saved to both store and setting on success.
+- [x] **Pairing, network scan detour** — encrypted devices (mDNS `txt.api_encryption`, or a
+      probe hitting the Noise indicator) are listed marked **"(needs encryption key)"**
+      without identity probing; `list_devices` navigates to a new `encryption_check` view
+      (system *loading* template) whose server-side `showView` handler routes encrypted
+      selections to `manual_entry` with the address prefilled (`manual_get_prefill`
+      handler), everything else on to `add_devices`. The loading-view hop is the documented
+      SDK pattern and avoids the race where the system add-view would add the device
+      without a key. Gated by `supportsEncryptedPairing` (true for PE/TR, **false for
+      XiaoZhi** — its pair flow has no manual_entry view, so encrypted devices stay hidden
+      there). `improv-pair-handlers.mts`'s `onShowView` callback is awaited now (it owns the
+      session's single `showView` handler; the router needs async navigation).
+- [x] **Tests** — `tests/noise-frame-codec.test.mts`: 20 tests running a full loopback
+      handshake against a responder built from the same primitives, byte-by-byte TCP
+      chunking, both transport directions with advancing nonces, the whole error taxonomy,
+      PSK validation, and the client seam (deferred encrypted HelloRequest, wrong-key event).
+
+**Live verification — ALL PASSED 2026-07-24** on the owner's real hardware
+(`homey app run`), full pairing permutation matrix: **PE and TR × network scan / Bluetooth
+Wi-Fi wizard (factory reset) / manual IP × with and without encryption — every combination
+works.** This also settles the §4.1 unknown: **chacha20-poly1305 is available in Homey's
+Node build** (the zero-dependency route holds; the `@noble/ciphers` fallback was never
+needed). Test firmware: `.esp_home/home-assistant-voice.yaml` has a key baked in since
+2026-07-24 (see the `api: encryption:` block) — remember the owner's PE runs encrypted now;
+remove/change the key there if a plaintext test target is ever needed again.
+
+**Gotchas for future work:**
+
+- Noise frames are fixed 3-byte header + u16 **big-endian** length — do not reuse the
+  plaintext varint framing code. The inner length field on RX is deliberately ignored
+  (decrypted buffer size is authoritative), same as aioesphomeapi.
+- Nonce: 12 bytes = 4 zeros + u64 counter **little-endian**, per direction, +1 per frame;
+  frames must be decrypted in order.
+- The canonical wrong-key signal is the server's literal `"Handshake MAC failure"` text
+  (or a local tag failure on message 2) — keep mapping it to a precise "wrong key" message.
+- Encrypted devices can't be identity-sniffed at scan time, so driver filtering uses the
+  mDNS `platform` TXT record: ThirdReality announces `platform=ThirdReality`; PE and
+  XiaoZhi both announce `esp32` and are indistinguishable until the keyed manual probe
+  runs its authoritative deviceType check.

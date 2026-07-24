@@ -107,17 +107,25 @@ interface DecodeResult {
 }
 
 // ---------- encode ------------------------------------------------------------
-function encodeFrame(name: string, payload: EncodePayload = {}): Buffer {
+
+/**
+ * Protobuf-encode a message body without any framing. Shared by the plaintext
+ * framing below and the Noise codec path (which frames + encrypts it itself).
+ */
+function encodeBody(name: string, payload: EncodePayload = {}): { id: number; body: Buffer } {
     const entry = TYPES[name];
     if (!entry) {
         throw new Error(`unknown message: ${name}`);
     }
+    return { id: entry.id, body: Buffer.from(entry.type.encode(payload).finish()) };
+}
 
-    const body = entry.type.encode(payload).finish();     // protobuf bytes
+function encodeFrame(name: string, payload: EncodePayload = {}): Buffer {
+    const { id, body } = encodeBody(name, payload);
     const header = Buffer.concat([
         Buffer.from([PLAINTEXT]),
         Buffer.from(varint.encode(body.length)),              // payload size
-        Buffer.from(varint.encode(entry.id))                  // message id
+        Buffer.from(varint.encode(id))                        // message id
     ]);
     return Buffer.concat([header, body]);
 }
@@ -158,6 +166,18 @@ function decodeFrame(buf: Buffer): DecodeResult | null {
 
     const payloadBuf = buf.subarray(off, off + payloadLen);
 
+    return {
+        ...decodeBody(msgId, payloadBuf),
+        bytes: frameLen          // ← how many bytes we consumed
+    };
+}
+
+/**
+ * Decode a protobuf message body by type id, without framing. Shared by the
+ * plaintext framing above and the Noise codec path (which strips its own
+ * framing + encryption before handing the body here).
+ */
+function decodeBody(msgId: number, payloadBuf: Buffer): Omit<DecodeResult, 'bytes'> {
     const entry = Object.values(TYPES).find((e) => e.id === msgId);
     const decoded = entry ? entry.type.decode(payloadBuf) : null;
 
@@ -166,8 +186,7 @@ function decodeFrame(buf: Buffer): DecodeResult | null {
         id: msgId,
         message: decoded,
         payload: payloadBuf,
-        bytes: frameLen          // ← how many bytes we consumed
     };
 }
 
-export { VA_EVENT, encodeFrame, decodeFrame };
+export { VA_EVENT, encodeFrame, decodeFrame, encodeBody, decodeBody };

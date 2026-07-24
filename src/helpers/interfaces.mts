@@ -95,7 +95,16 @@ export type PairDevice = {
         platform?: string;
         serviceName?: string;
         deviceType?: string | null; // 'pe' | 'xiaozhi' | null
+        // ESPHome API encryption key (base64, 32 bytes) captured at pair time.
+        encryptionKey?: string;
+        // Pair-list only (never persisted on a real device): the device refuses
+        // plaintext (mDNS txt.api_encryption, or the probe hit the Noise
+        // indicator). Selecting it routes to manual entry to collect the key.
+        requiresEncryption?: boolean;
     };
+    // Initial device settings (Homey merges these into the settings store on
+    // createDevice) — used to pre-fill the user-editable encryption_key field.
+    settings?: { [key: string]: any };
 };
 
 

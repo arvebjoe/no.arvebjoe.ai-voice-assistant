@@ -10,6 +10,9 @@ export default class HomeAssistantVoicePreviewEditionDriver extends VoiceAssista
     // name "home-assistant-voice-XXXXXX" (possibly truncated). Match both
     // families by their stable prefixes.
     protected improvNameFilter: RegExp | null = /home[-\s]?assistan|ha[-\s]?voice/i;
+    // This driver's pair flow has the manual_entry + encryption_check views,
+    // so encrypted devices are listed and route there for their key.
+    protected supportsEncryptedPairing = true;
 
     constructor(...args: any[]) {
         super(...args);

@@ -1,7 +1,8 @@
 import EventEmitter from 'node:events';
 import net from 'node:net';
 import { TypedEmitter } from "tiny-typed-emitter";
-import { encodeFrame, decodeFrame, VA_EVENT } from './esp-messages.mjs';
+import { encodeFrame, decodeFrame, encodeBody, decodeBody, VA_EVENT } from './esp-messages.mjs';
+import { NoiseFrameCodec } from './noise-frame-codec.mjs';
 import { createLogger } from '../helpers/logger.mjs';
 
 
@@ -14,6 +15,14 @@ interface EspVoiceClientOptions {
   // a LogLevel name ('DEBUG') or number (0-7). Defaults to the ESP_LOG_LEVEL env
   // var so it can be toggled for emulator debugging without a code change.
   logLevel?: string | number;
+  // The device's ESPHome API encryption key (base64, 32 bytes decoded). When
+  // set, every connection runs the Noise_NNpsk0 handshake and all traffic is
+  // encrypted; when unset, the plaintext protocol is used unchanged.
+  encryptionKey?: string;
+  // MAC to verify against the Noise server hello (any format). Guards against
+  // reaching a different device after a DHCP reshuffle. Only used when
+  // encryptionKey is set; older firmware that omits the MAC skips the check.
+  expectedMac?: string;
 }
 
 // ESPHome LogLevel enum (api.proto). Used to drive SubscribeLogsRequest.
@@ -57,6 +66,14 @@ type EspVoiceEvents = {
   // e.g. the ThirdReality's physical top button. Carries the entity's object_id
   // and the event type string the firmware sent (e.g. 'single_press').
   entity_event: (objectId: string, eventType: string) => void;
+  // The device answered our plaintext frames with the Noise indicator (0x01):
+  // it has an API encryption key configured and refuses plaintext. The user
+  // must supply the key (device setting / manual-entry pair field).
+  requires_encryption: () => void;
+  // The Noise path failed. Codes: 'invalid_key' (key is not base64/32 bytes),
+  // 'wrong_key' (PSK rejected), 'plaintext_device' (key given but the device
+  // has none set), 'mac_mismatch', 'protocol_error'.
+  encryption_error: (code: string, message: string) => void;
 }
 
 
@@ -110,6 +127,12 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
   // when there is no mDNS record to read them from.
   private macAddress: string = '';
   private friendlyName: string = '';
+  // Noise encryption: the device's API encryption key (undefined = plaintext)
+  // and the codec for the CURRENT connection. A codec is single-use (fresh
+  // ephemeral keys per handshake), so start() builds a new one every connect.
+  private encryptionKey: string | undefined;
+  private readonly expectedMac: string | undefined;
+  private noise: NoiseFrameCodec | null = null;
   private logger = createLogger('ESP', true);
   // The device's OWN ESPHome firmware logs, streamed over the native API
   // (SubscribeLogsRequest) and printed under [PE] so the device-side view of the
@@ -138,12 +161,14 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
   private maxActiveWakeWords: number = 0;
 
 
-  constructor(homey: any, { host, apiPort = 6053, discoveryMode = false, logLevel }: EspVoiceClientOptions) {
+  constructor(homey: any, { host, apiPort = 6053, discoveryMode = false, logLevel, encryptionKey, expectedMac }: EspVoiceClientOptions) {
     super();
 
     this.homey = homey;
     this.host = host;
     this.apiPort = apiPort;
+    this.encryptionKey = encryptionKey?.trim() || undefined;
+    this.expectedMac = expectedMac;
     this.discoveryMode = discoveryMode;
     this.isDiscoveryProbe = discoveryMode;
     // Opt-in via the option or the ESP_LOG_LEVEL env var (e.g. ESP_LOG_LEVEL=DEBUG).
@@ -196,7 +221,21 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
     // desync the parser so no frame ever decodes again.
     this.rxBuf = Buffer.alloc(0);
 
-    this.logger.info(`Connecting to ${this.host}:${this.apiPort}`);
+    // Encrypted link: a codec is one-connection-only (fresh ephemeral keys),
+    // so build a new one for every connect/reconnect. A malformed key can
+    // never succeed — report once and stay down rather than retry-looping.
+    this.noise = null;
+    if (this.encryptionKey) {
+      try {
+        this.noise = new NoiseFrameCodec({ psk: this.encryptionKey, expectedMac: this.expectedMac });
+      } catch (err: any) {
+        this.logger.error('Invalid API encryption key — not connecting', err);
+        this.emit('encryption_error', 'invalid_key', err?.message ?? 'invalid encryption key');
+        return;
+      }
+    }
+
+    this.logger.info(`Connecting to ${this.host}:${this.apiPort}${this.noise ? ' (encrypted)' : ''}`);
     this.tcp = net.createConnection(this.apiPort, this.host, () => this.onConnect());
     this.tcp.setKeepAlive(true, 1000);
     this.tcp.on('connect', () => {
@@ -273,6 +312,19 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
     this.lastMessageReceivedTime = Date.now();
     this.startHealthCheck();
 
+    if (this.noise) {
+      // Client hello + Noise handshake message 1 in one write; HelloRequest is
+      // held back until the codec reports the handshake complete (see
+      // onNoiseData). If the handshake never completes, the health-check
+      // timeout tears the connection down like any other silent peer.
+      this.tcp?.write(this.noise.startHandshake());
+      return;
+    }
+
+    this.sendHello();
+  }
+
+  private sendHello(): void {
     this.send('HelloRequest',
       {
         clientInfo: 'ai-voice-assistant',
@@ -401,7 +453,26 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
   }
 
   async onTcpData(data: Buffer): Promise<void> {
+    // Encrypted link: the Noise codec owns buffering, framing and decryption;
+    // decrypted messages re-join the shared handleFrame path below.
+    if (this.noise) {
+      await this.onNoiseData(data);
+      return;
+    }
+
     this.rxBuf = Buffer.concat([this.rxBuf, data]);
+
+    // An encrypted server answers our plaintext frames with the Noise
+    // indicator byte (0x01). Without this check the frames just never decode
+    // and we look hung until the health check gives up — surface it as the
+    // precise "device requires an encryption key" condition instead.
+    if (this.rxBuf.length && this.rxBuf[0] === 0x01) {
+      this.logger.error('Device requires an API encryption key — it refuses the plaintext protocol');
+      this.emit('requires_encryption');
+      this.rxBuf = Buffer.alloc(0);
+      this.handleDisconnect();
+      return;
+    }
 
     // Guard against a hostile/desynced peer buffering unboundedly: if we have
     // accumulated far more than any legitimate frame without decoding one, the
@@ -431,45 +502,82 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
         break;
       }
 
-      // Identity sniff: ONLY the two identity-bearing messages count (S6). The
-      // device name is in HelloResponse (serverInfo/name); manufacturer/model/
-      // project/friendly name are in DeviceInfoResponse — both arrive during a
-      // probe. Matching every frame let any string field anywhere (an entity
-      // named "xiaozhi", a log line) "validate" a device's identity.
-      if (this.discoveryMode && !this.deviceType && frame.message
-        && (frame.name === 'HelloResponse' || frame.name === 'DeviceInfoResponse')) {
-        const rawMessage = JSON.stringify(frame.message).toLocaleLowerCase();
-        // Factory PE firmware reports "Nabu Casa" / "Home Assistant Voice PE".
-        // Self-compiled firmware from the stock home-assistant-voice.yaml has no
-        // project block and identifies only via its device name
-        // ("home-assistant-voice-xxxxxx") / friendly name ("Home Assistant Voice"),
-        // so match the hyphenated and PE-less forms too.
-        if (rawMessage.includes('nabu casa')
-          || rawMessage.includes('nabucasa')
-          || rawMessage.includes('home assistant voice')
-          || rawMessage.includes('home-assistant-voice')) {
-          this.deviceType = 'pe';
-          this.discoveryMode = false;
-        } else if (rawMessage.includes('thirdreality')
-          || rawMessage.includes('3rspk')) {
-          // ThirdReality Voice & Music Assistant: DeviceInfoResponse reports
-          // manufacturer "ThirdReality" / project "ThirdReality.Linux Voice
-          // Assistant (C++)"; HelloResponse name is "3RSPK…". Pairs through its
-          // own driver (see docs/thirdreality-voice-and-music/README.md).
-          this.deviceType = 'tr';
-          this.discoveryMode = false;
-        } else if (rawMessage.includes('xiaozhi')) {
-          this.deviceType = 'xiaozhi';
-          this.discoveryMode = false;
-        }
-      }
-
-      this.lastMessageReceivedTime = Date.now();
-      this.logRx(frame);
-      await this.dispatch({name: frame.name ?? '', message: frame.message});
+      await this.handleFrame(frame);
 
       this.rxBuf = this.rxBuf.subarray(frame.bytes);
     }
+  }
+
+  /**
+   * RX for an encrypted connection: feed the codec, act on its events. The
+   * handshake failure taxonomy (wrong key / plaintext device / MAC mismatch)
+   * is surfaced as 'encryption_error' so pairing and the device UI can show a
+   * precise message instead of a generic connection failure.
+   */
+  private async onNoiseData(data: Buffer): Promise<void> {
+    if (!this.noise) {
+      return;
+    }
+    for (const ev of this.noise.feed(data)) {
+      if (ev.kind === 'ready') {
+        this.logger.info(`Encrypted link established with '${ev.serverName}'${ev.serverMac ? ` (${ev.serverMac})` : ''}`);
+        this.sendHello();
+      } else if (ev.kind === 'message') {
+        await this.handleFrame(decodeBody(ev.type, ev.payload));
+      } else {
+        // Map the codec's protocol-level codes to the user-facing taxonomy.
+        const code = ev.code === 'wrong_psk' ? 'wrong_key'
+          : ev.code === 'plaintext_server' ? 'plaintext_device'
+            : ev.code;
+        this.logger.error(`Encryption error (${code}): ${ev.message}`);
+        this.emit('encryption_error', code, ev.message);
+        this.handleDisconnect();
+        return;
+      }
+    }
+  }
+
+  /**
+   * One decoded API message, framing-agnostic (plaintext and Noise both land
+   * here): identity sniff for discovery probes, then dispatch.
+   */
+  private async handleFrame(frame: { name: string | null; id: number; message: any; payload: Buffer }): Promise<void> {
+    // Identity sniff: ONLY the two identity-bearing messages count (S6). The
+    // device name is in HelloResponse (serverInfo/name); manufacturer/model/
+    // project/friendly name are in DeviceInfoResponse — both arrive during a
+    // probe. Matching every frame let any string field anywhere (an entity
+    // named "xiaozhi", a log line) "validate" a device's identity.
+    if (this.discoveryMode && !this.deviceType && frame.message
+      && (frame.name === 'HelloResponse' || frame.name === 'DeviceInfoResponse')) {
+      const rawMessage = JSON.stringify(frame.message).toLocaleLowerCase();
+      // Factory PE firmware reports "Nabu Casa" / "Home Assistant Voice PE".
+      // Self-compiled firmware from the stock home-assistant-voice.yaml has no
+      // project block and identifies only via its device name
+      // ("home-assistant-voice-xxxxxx") / friendly name ("Home Assistant Voice"),
+      // so match the hyphenated and PE-less forms too.
+      if (rawMessage.includes('nabu casa')
+        || rawMessage.includes('nabucasa')
+        || rawMessage.includes('home assistant voice')
+        || rawMessage.includes('home-assistant-voice')) {
+        this.deviceType = 'pe';
+        this.discoveryMode = false;
+      } else if (rawMessage.includes('thirdreality')
+        || rawMessage.includes('3rspk')) {
+        // ThirdReality Voice & Music Assistant: DeviceInfoResponse reports
+        // manufacturer "ThirdReality" / project "ThirdReality.Linux Voice
+        // Assistant (C++)"; HelloResponse name is "3RSPK…". Pairs through its
+        // own driver (see docs/thirdreality-voice-and-music/README.md).
+        this.deviceType = 'tr';
+        this.discoveryMode = false;
+      } else if (rawMessage.includes('xiaozhi')) {
+        this.deviceType = 'xiaozhi';
+        this.discoveryMode = false;
+      }
+    }
+
+    this.lastMessageReceivedTime = Date.now();
+    this.logRx(frame);
+    await this.dispatch({ name: frame.name ?? '', message: frame.message });
   }
 
   async dispatch({ name, message }: { name: string; message: any }): Promise<void> {
@@ -1095,7 +1203,28 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
     if (doLog) {
       this.logger.info(name, 'TX', payload);
     }
+    if (this.noise) {
+      if (!this.noise.isReady) {
+        // Nothing legitimate is sent before HelloRequest, which is itself held
+        // back until the handshake completes — anything landing here is a
+        // late/stray call during connection setup.
+        this.logger.warn(`Dropping '${name}' — encrypted link not established yet`);
+        return;
+      }
+      const { id, body } = encodeBody(name, payload);
+      this.tcp?.write(this.noise.encodeMessage(id, body));
+      return;
+    }
     this.tcp?.write(encodeFrame(name, payload));
+  }
+
+  /**
+   * Change the API encryption key for FUTURE connections (undefined/empty =
+   * plaintext). Takes effect on the next start(); callers changing the key on
+   * a live device should disconnect() + start() to apply it.
+   */
+  setEncryptionKey(key: string | undefined): void {
+    this.encryptionKey = key?.trim() || undefined;
   }
 
   logRx(f: any): void {

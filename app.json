@@ -598,9 +598,13 @@
           "id": "list_devices",
           "template": "list_devices",
           "navigation": {
-            "next": "add_devices",
+            "next": "encryption_check",
             "prev": "start"
           }
+        },
+        {
+          "id": "encryption_check",
+          "template": "loading"
         },
         {
           "id": "add_devices",
@@ -662,6 +666,17 @@
           "units": {
             "en": "ms"
           }
+        },
+        {
+          "id": "encryption_key",
+          "type": "password",
+          "label": {
+            "en": "API encryption key"
+          },
+          "value": "",
+          "hint": {
+            "en": "The device's ESPHome API encryption key (the 32-byte base64 string from its YAML configuration). Required when the device has API encryption enabled — e.g. after being adopted by Home Assistant. Leave empty for unencrypted devices (or to keep using the key entered during pairing)."
+          }
         }
       ]
     },
@@ -707,9 +722,13 @@
           "id": "list_devices",
           "template": "list_devices",
           "navigation": {
-            "next": "add_devices",
+            "next": "encryption_check",
             "prev": "start"
           }
+        },
+        {
+          "id": "encryption_check",
+          "template": "loading"
         },
         {
           "id": "add_devices",
@@ -770,6 +789,17 @@
           "max": 2000,
           "units": {
             "en": "ms"
+          }
+        },
+        {
+          "id": "encryption_key",
+          "type": "password",
+          "label": {
+            "en": "API encryption key"
+          },
+          "value": "",
+          "hint": {
+            "en": "The device's ESPHome API encryption key (the 32-byte base64 string from its YAML configuration). Required when the device has API encryption enabled — e.g. after being adopted by Home Assistant. Leave empty for unencrypted devices (or to keep using the key entered during pairing)."
           }
         }
       ]

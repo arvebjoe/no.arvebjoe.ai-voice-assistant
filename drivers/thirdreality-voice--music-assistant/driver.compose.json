@@ -40,9 +40,13 @@
       "id": "list_devices",
       "template": "list_devices",
       "navigation": {
-        "next": "add_devices",
+        "next": "encryption_check",
         "prev": "start"
       }
+    },
+    {
+      "id": "encryption_check",
+      "template": "loading"
     },
     {
       "id": "add_devices",

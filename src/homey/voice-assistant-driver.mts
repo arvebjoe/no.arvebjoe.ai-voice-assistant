@@ -1,5 +1,6 @@
 import Homey from 'homey';
 import { EspVoiceAssistantClient } from '../voice_assistant/esp-voice-assistant-client.mjs';
+import { NoiseFrameCodec } from '../voice_assistant/noise-frame-codec.mjs';
 import { PairDevice } from '../helpers/interfaces.mjs';
 import VoiceAssistantDevice from './voice-assistant-device.mjs';
 import { createLogger } from '../helpers/logger.mjs';
@@ -12,6 +13,14 @@ export default abstract class VoiceAssistantDriver extends Homey.Driver {
     // driver's pair dialog only lists its own model (see ImprovPairOptions.
     // deviceNameFilter). Null = list every Improv device.
     protected improvNameFilter: RegExp | null = null;
+    // Whether this driver's pair flow can collect an API encryption key: it
+    // must have the manual_entry and encryption_check views (PE + TR do).
+    // When true, devices that refuse plaintext are still listed in the network
+    // scan and selecting one routes to manual entry with the address prefilled.
+    // When false (XiaoZhi), they stay hidden — its system add_devices flow
+    // would otherwise add them without a key, creating a device that can
+    // never connect.
+    protected supportsEncryptedPairing = false;
     private logger = createLogger('Voice_Assistant_Driver', true);
     // Always-on logger for pair-session lifecycle (the main driver logger is
     // quieted; pairing problems are rare and need visible breadcrumbs).
@@ -152,8 +161,36 @@ export default abstract class VoiceAssistantDriver extends Homey.Driver {
                 platform: r.txt?.platform,
                 serviceName: r.name,
                 deviceType: null,
+                // ESPHome advertises txt.api_encryption when an API encryption
+                // key is configured — plaintext (and thus the capability probe)
+                // is refused, so this is known before ever touching the device.
+                requiresEncryption: !!r.txt?.api_encryption,
             },
         };
+    }
+
+    /**
+     * Flag a pair-list entry as needing an encryption key and make that visible
+     * in the device list (selecting it routes to manual entry, not add_devices).
+     */
+    private markRequiresEncryption(device: PairDevice): PairDevice {
+        device.store.requiresEncryption = true;
+        if (!device.name.includes('encryption key')) {
+            device.name = `${device.name} (needs encryption key)`;
+        }
+        return device;
+    }
+
+    /**
+     * Whether an encrypted (un-probeable) discovery result plausibly belongs to
+     * this driver. Without a key the identity handshake can't run, so the mDNS
+     * platform TXT record is the only signal: ThirdReality announces
+     * platform=ThirdReality; PE/XiaoZhi both announce esp32 and can't be told
+     * apart here — the keyed manual probe does the authoritative check later.
+     */
+    private encryptedResultMatchesDriver(device: PairDevice): boolean {
+        const isThirdReality = /thirdreality/i.test(device.store.platform ?? '');
+        return this.thisAssistantType === 'tr' ? isThirdReality : !isThirdReality;
     }
 
     /**
@@ -182,6 +219,7 @@ export default abstract class VoiceAssistantDriver extends Homey.Driver {
                 // Detach listeners first (if your client supports it)
                 client?.off?.('capabilities', onCapabilities as any);
                 client?.off?.('Unhealthy', onDisconnected as any);
+                client?.off?.('requires_encryption', onRequiresEncryption as any);
 
             } catch { }
 
@@ -221,6 +259,20 @@ export default abstract class VoiceAssistantDriver extends Homey.Driver {
             }
         };
 
+        // The device refuses plaintext (it has an API encryption key set), so
+        // its identity can't be probed. Where the pair flow can collect a key
+        // (PE/TR), list it anyway — selecting it routes to manual entry with
+        // the address prefilled. Otherwise it's a definitive reject.
+        const onRequiresEncryption = async () => {
+            if (this.supportsEncryptedPairing && this.encryptedResultMatchesDriver(device)) {
+                this.pairLogger.info(`${device.name} has API encryption enabled — listing it; selection routes to manual entry`);
+                await finish(this.markRequiresEncryption(device), true);
+                return;
+            }
+            this.pairLogger.info(`${device.name} has API encryption enabled — add it via manual IP entry with its encryption key`);
+            await finish(null, true);
+        };
+
         return new Promise<{ device: PairDevice | null; definitive: boolean }>(async (resolve) => {
             try {
                 client = new EspVoiceAssistantClient(this.homey, {
@@ -231,6 +283,7 @@ export default abstract class VoiceAssistantDriver extends Homey.Driver {
 
                 client.on('capabilities', onCapabilities as any);
                 client.on?.('Unhealthy', onDisconnected as any);
+                client.on?.('requires_encryption', onRequiresEncryption as any);
 
                 await client.start();
 
@@ -256,12 +309,11 @@ export default abstract class VoiceAssistantDriver extends Homey.Driver {
      * device later appears over mDNS. Returns null (with a reason) when the host
      * is unreachable or is not a matching voice device.
      *
-     * NOTE: this is the plaintext native-API path only. Devices with an ESPHome
-     * API encryption key set cannot be added yet — the client is plaintext-only
-     * (Noise handshake not implemented). A key field can slot into the manual
-     * form once Noise support lands; see docs and the pair view's TODO.
+     * An optional ESPHome API encryption key runs the connection over the
+     * Noise handshake; key problems come back as precise reasons (wrong_key,
+     * plaintext_device, requires_encryption, invalid_key) for the pair view.
      */
-    private async probeManualEntry(address: string, port: number, timeoutMs = 8000): Promise<{ device: PairDevice | null; reason: string }> {
+    private async probeManualEntry(address: string, port: number, encryptionKey?: string, timeoutMs = 8000): Promise<{ device: PairDevice | null; reason: string }> {
         let client: EspVoiceAssistantClient | null = null;
         let done = false;
 
@@ -272,6 +324,8 @@ export default abstract class VoiceAssistantDriver extends Homey.Driver {
                 try {
                     client?.off?.('capabilities', onCapabilities as any);
                     client?.off?.('Unhealthy', onUnhealthy as any);
+                    client?.off?.('requires_encryption', onRequiresEncryption as any);
+                    client?.off?.('encryption_error', onEncryptionError as any);
                 } catch { }
                 try {
                     if (client) await client.disconnect();
@@ -304,9 +358,15 @@ export default abstract class VoiceAssistantDriver extends Homey.Driver {
                         port,
                         mac: mac || undefined,
                         deviceType,
+                        // The key the probe just succeeded with — every future
+                        // connection to this device needs it.
+                        encryptionKey: encryptionKey || undefined,
                     },
+                    // Mirror it into the user-editable device setting so it is
+                    // visible/fixable without re-pairing.
+                    settings: encryptionKey ? { encryption_key: encryptionKey } : undefined,
                 };
-                this.pairLogger.info(`Manual entry ${address}:${port} matched: ${device.name} (${device.data.id})`);
+                this.pairLogger.info(`Manual entry ${address}:${port} matched: ${device.name} (${device.data.id})${encryptionKey ? ' [encrypted]' : ''}`);
                 await finish(device, 'ok');
             };
 
@@ -314,14 +374,30 @@ export default abstract class VoiceAssistantDriver extends Homey.Driver {
                 await finish(null, 'unreachable');
             };
 
+            // Plaintext probe against an encrypted device: the key is missing.
+            const onRequiresEncryption = async () => {
+                await finish(null, 'requires_encryption');
+            };
+
+            // Noise-path failures map straight to pair-view reasons:
+            // wrong_key / plaintext_device / mac_mismatch / invalid_key /
+            // protocol_error (see EspVoiceEvents.encryption_error).
+            const onEncryptionError = async (code: string) => {
+                this.pairLogger.info(`Manual probe ${address}:${port} encryption error: ${code}`);
+                await finish(null, code);
+            };
+
             try {
                 client = new EspVoiceAssistantClient(this.homey, {
                     host: address,
                     apiPort: port,
                     discoveryMode: true,
+                    encryptionKey: encryptionKey || undefined,
                 });
                 client.on('capabilities', onCapabilities as any);
                 client.on?.('Unhealthy', onUnhealthy as any);
+                client.on?.('requires_encryption', onRequiresEncryption as any);
+                client.on?.('encryption_error', onEncryptionError as any);
                 client.start().catch(() => { finish(null, 'unreachable'); });
                 this.homey.setTimeout(() => { if (!done) finish(null, 'timeout'); }, timeoutMs).unref?.();
             } catch {
@@ -395,8 +471,25 @@ export default abstract class VoiceAssistantDriver extends Homey.Driver {
             const candidates = Object.values(strategy.getDiscoveryResults())
                 .map((r: any) => this.resultToDevice(r))
                 .filter((d) => !probed.has(String(d.data.id)));
-            if (candidates.length) {
-                const { capable, rejectedIds } = await this.filterByVoiceCapabilities(candidates, { timeoutMs: 5_000, concurrency: 4 });
+
+            // Devices whose mDNS TXT record announces api_encryption refuse
+            // plaintext, so the capability probe can never succeed — skip it.
+            // Where the pair flow can collect a key (PE/TR), list them so
+            // selection routes to manual entry; otherwise hide them as before.
+            const probeable: PairDevice[] = [];
+            for (const d of candidates) {
+                if (!d.store.requiresEncryption) {
+                    probeable.push(d);
+                } else if (this.supportsEncryptedPairing && this.encryptedResultMatchesDriver(d)) {
+                    this.pairLogger.info(`${d.name} (${d.store.address}) advertises api_encryption — listing without probing`);
+                    probed.set(String(d.data.id), this.markRequiresEncryption(d));
+                } else {
+                    probed.set(String(d.data.id), null);
+                }
+            }
+
+            if (probeable.length) {
+                const { capable, rejectedIds } = await this.filterByVoiceCapabilities(probeable, { timeoutMs: 5_000, concurrency: 4 });
                 for (const d of capable) probed.set(String(d.data.id), d);
                 for (const id of rejectedIds) probed.set(id, null);
             }
@@ -464,20 +557,27 @@ export default abstract class VoiceAssistantDriver extends Homey.Driver {
         // collects host + port and asks us to verify + add the device directly,
         // bypassing discovery entirely. Returns a small result object the view
         // renders as a success/error message.
-        session.setHandler('manual_probe', async (payload: { address?: string; port?: number }) => {
+        session.setHandler('manual_probe', async (payload: { address?: string; port?: number; encryptionKey?: string }) => {
             const address = (payload?.address ?? '').trim();
             const port = Number(payload?.port) || 6053;
+            const encryptionKey = (payload?.encryptionKey ?? '').trim();
 
             if (!address) {
                 return { ok: false, reason: 'no_address' };
+            }
+
+            // Reject a malformed key before ever touching the network (the pair
+            // view validates too; this is the authoritative check).
+            if (encryptionKey && !NoiseFrameCodec.decodePsk(encryptionKey)) {
+                return { ok: false, reason: 'invalid_key' };
             }
 
             // A manual add is a deliberate action — stop background list polling
             // so the two paths don't race for the device's single API slot.
             stopListPolling();
 
-            this.pairLogger.info(`Manual probe requested for ${address}:${port}`);
-            const { device, reason } = await this.probeManualEntry(address, port);
+            this.pairLogger.info(`Manual probe requested for ${address}:${port}${encryptionKey ? ' (with encryption key)' : ''}`);
+            const { device, reason } = await this.probeManualEntry(address, port, encryptionKey || undefined);
 
             if (!device) {
                 this.pairLogger.info(`Manual probe for ${address}:${port} failed: ${reason}`);
@@ -487,14 +587,46 @@ export default abstract class VoiceAssistantDriver extends Homey.Driver {
             return { ok: true, device };
         });
 
+        // Encrypted-device detour: list_devices navigates to encryption_check
+        // (a loading-template view) instead of straight to add_devices. The
+        // showView handler below inspects the selection there — encrypted
+        // devices can't be added by the system flow (no key yet), so they
+        // route to manual entry with the address prefilled; everything else
+        // continues to add_devices unchanged. (XiaoZhi keeps the direct
+        // list_devices → add_devices navigation and never hits this.)
+        let selectedDevices: PairDevice[] = [];
+        session.setHandler('list_devices_selection', async (devices: PairDevice[]) => {
+            selectedDevices = devices ?? [];
+        });
+
+        // Prefill for the manual-entry view; set when an encrypted device is
+        // redirected there, read by the view on load (manual_get_prefill).
+        let manualPrefill: { address: string; port: number } | null = null;
+        session.setHandler('manual_get_prefill', async () => manualPrefill);
+
+        const routeEncryptionCheck = async () => {
+            const encrypted = selectedDevices.find((d) => d?.store?.requiresEncryption);
+            if (!encrypted) {
+                await session.showView('add_devices');
+                return;
+            }
+            manualPrefill = { address: encrypted.store.address, port: encrypted.store.port ?? 6053 };
+            if (selectedDevices.length > 1) {
+                this.pairLogger.info('Selection mixed encrypted and plain devices — detouring to manual entry; add the others in a new pair session');
+            }
+            this.pairLogger.info(`${encrypted.name} requires an encryption key — redirecting to manual entry (${encrypted.store.address})`);
+            await session.showView('manual_entry');
+        };
+
         const improv = registerImprovPairHandlers({
             session,
             ble: this.homey.ble,
             deviceNameFilter: this.improvNameFilter ?? undefined,
             // Stop background re-scanning once the user navigates away from
             // the device list (e.g. on to add_devices).
-            onShowView: (viewId) => {
+            onShowView: async (viewId) => {
                 if (viewId !== 'list_devices') stopListPolling();
+                if (viewId === 'encryption_check') await routeEncryptionCheck();
             },
         });
 
