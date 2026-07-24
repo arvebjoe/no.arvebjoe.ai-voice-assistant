@@ -49,9 +49,10 @@ export interface ImprovPairOptions {
     /**
      * Notified on every pair-view change (this module owns the session's single
      * 'showView' handler; the driver uses this to stop its background device
-     * list re-scan when the user leaves the list view).
+     * list re-scan when the user leaves the list view, and to route the
+     * encryption_check view). Awaited, so it may navigate via session.showView.
      */
-    onShowView?: (viewId: string) => void;
+    onShowView?: (viewId: string) => void | Promise<void>;
 }
 
 export type ImprovFailureCode =
@@ -327,7 +328,7 @@ export function registerImprovPairHandlers(options: ImprovPairOptions): ImprovPa
             firstViewTimer = null;
         }
         try {
-            options.onShowView?.(viewId);
+            await options.onShowView?.(viewId);
         } catch { }
         if (viewId !== improvViewId) {
             await closeActiveSession();

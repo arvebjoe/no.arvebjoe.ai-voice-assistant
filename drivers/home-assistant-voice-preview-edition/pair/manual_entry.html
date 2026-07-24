@@ -6,11 +6,10 @@
      (Wi-Fi-only Homey Pro, networks that don't propagate multicast). Connects
      directly to the device's ESPHome native API by IP:port, bypassing discovery.
 
-     TODO (encryption): add an "API encryption key" field here once the ESP
-     client supports the Noise handshake (Noise_NNpsk0_25519_ChaChaPoly_SHA256).
-     Today the client is plaintext-only, so a key field would be non-functional.
-     The key is a connection-time concern (needed regardless of how the device
-     was found), so when added it should live next to host/port here. -->
+     The optional "API encryption key" field enables the Noise handshake
+     (Noise_NNpsk0_25519_ChaChaPoly_SHA256) for devices with ESPHome API
+     encryption configured — required e.g. for devices previously adopted by
+     Home Assistant. Leave it empty for unencrypted devices. -->
 <style>
   .va-manual {
     display: flex;
@@ -98,6 +97,16 @@
     </div>
   </div>
 
+  <div>
+    <label for="va-key">API encryption key (optional)</label>
+    <input type="text" id="va-key" autocomplete="off" autocapitalize="off"
+           spellcheck="false" placeholder="Leave empty unless the device uses API encryption" />
+    <p class="hint" style="text-align: left; margin: 4px 0 0;">Only needed when the
+      device's ESPHome configuration has an <code>api: encryption:</code> key set
+      (e.g. after being adopted by Home Assistant). It's the 32-byte base64 string
+      from the device's YAML or the ESPHome dashboard.</p>
+  </div>
+
   <div class="status" id="va-status"></div>
 
   <button type="button" class="primary" id="va-add">Find &amp; add device</button>
@@ -106,12 +115,34 @@
 <script type="application/javascript">
   var hostEl = document.getElementById('va-host');
   var portEl = document.getElementById('va-port');
+  var keyEl = document.getElementById('va-key');
   var btn = document.getElementById('va-add');
   var statusEl = document.getElementById('va-status');
 
   function setStatus(text, kind) {
     statusEl.textContent = text || '';
     statusEl.className = 'status' + (kind ? ' ' + kind : '');
+  }
+
+  // When an encrypted device was selected in the network scan, the driver
+  // redirects here with its address stashed — prefill it so the user only
+  // has to paste the key. Opening this view directly returns null: no-op.
+  Homey.emit('manual_get_prefill')
+    .then(function (pre) {
+      if (!pre || !pre.address) return;
+      hostEl.value = pre.address;
+      if (pre.port) portEl.value = String(pre.port);
+      setStatus('This device requires an API encryption key — paste it below to add the device.');
+      keyEl.focus();
+    })
+    .catch(function () { /* prefill is best-effort */ });
+
+  // The ESPHome API encryption key is base64 for exactly 32 bytes. Validate
+  // here for instant feedback; the app re-validates authoritatively.
+  function isValidKey(key) {
+    if (!key) return true;
+    if (!/^[A-Za-z0-9+/]+={0,2}$/.test(key)) return false;
+    try { return atob(key).length === 32; } catch (e) { return false; }
   }
 
   function reasonToMessage(reason) {
@@ -122,6 +153,16 @@
         return "Couldn't reach a device at that address. Check the IP and port, and that the device is powered on and on your Wi-Fi.";
       case 'not_a_match':
         return 'A device answered, but it is not a compatible voice assistant for this driver.';
+      case 'invalid_key':
+        return 'The key should be the 32-byte base64 string from your ESPHome configuration.';
+      case 'wrong_key':
+        return 'The encryption key is incorrect for this device.';
+      case 'plaintext_device':
+        return 'This device has no encryption key set — leave the key field empty.';
+      case 'requires_encryption':
+        return 'This device requires an API encryption key. Enter the key from its ESPHome configuration.';
+      case 'mac_mismatch':
+        return 'A different device answered at that address. Check the IP.';
       default: return 'Could not add the device. Please try again.';
     }
   }
@@ -129,16 +170,22 @@
   btn.addEventListener('click', function () {
     var address = (hostEl.value || '').trim();
     var port = parseInt((portEl.value || '').trim(), 10) || 6053;
+    var encryptionKey = (keyEl.value || '').replace(/\s+/g, '');
 
     if (!address) {
       setStatus(reasonToMessage('no_address'), 'error');
       return;
     }
 
+    if (!isValidKey(encryptionKey)) {
+      setStatus(reasonToMessage('invalid_key'), 'error');
+      return;
+    }
+
     btn.disabled = true;
     setStatus('Connecting to ' + address + ':' + port + '…');
 
-    Homey.emit('manual_probe', { address: address, port: port })
+    Homey.emit('manual_probe', { address: address, port: port, encryptionKey: encryptionKey })
       .then(function (res) {
         if (!res || !res.ok) {
           setStatus(reasonToMessage(res && res.reason), 'error');
