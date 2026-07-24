@@ -6,7 +6,7 @@ import { ToolManager } from '../tool-manager.mjs';
 import { IVoiceProvider, VoiceProviderEvents, VoiceProviderOptions } from '../voice-provider.mjs';
 import { InstructionState } from '../instruction-state.mjs';
 import { ReconnectPolicy } from '../reconnect-policy.mjs';
-import { isBlankOrHallucinatedTranscript } from '../transcript-hallucinations.mjs';
+import { isBlankOrHallucinatedTranscript, isVocabularyEchoTranscript } from '../transcript-hallucinations.mjs';
 import { settingsManager } from '../../settings/settings-manager.mjs';
 
 /**
@@ -142,6 +142,10 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
     // Throttle for the low-quota Homey notification (one per hour, not per turn —
     // rate_limits.updated arrives after every response).
     private lastQuotaNotificationAt = 0;
+
+    // Names actually sent in the transcription vocabulary prompt (in prompt
+    // order), kept to detect prompt-echo hallucinations on silent turns.
+    private sttPromptNames: string[] = [];
 
     constructor(homey: any, toolManager: ToolManager, opts: RealtimeOptions) {
         super();
@@ -739,11 +743,21 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
             }
 
             case "conversation.item.input_audio_transcription.completed": {
+                const transcript = (msg.transcript ?? "").trim();
+                // Prompt-echo hallucination: on a silent/noise-only turn the prompted
+                // transcriber can regurgitate a slice of the vocabulary prompt (real
+                // device names, comma-joined, in prompt order). Report it downstream
+                // as silence so the device takes its normal empty-turn path instead
+                // of acting on device names the user never said.
+                if (isVocabularyEchoTranscript(transcript, this.sttPromptNames)) {
+                    this.logger.warn(`Discarding vocabulary-echo transcript: "${transcript}"`);
+                    this.emit("transcript.done", "");
+                    break;
+                }
                 this.emit("transcript.done", msg.transcript);
                 // Skip when the STT heard nothing: an empty transcript (or a known
                 // silence-hallucination string) would otherwise make the model
                 // respond to nothing. Mirrors the empty-transcript guard in the device.
-                const transcript = (msg.transcript ?? "").trim();
                 if (isBlankOrHallucinatedTranscript(transcript)) {
                     break;
                 }
@@ -957,7 +971,10 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
      */
     private sttVocabularyPrompt(): string | undefined {
         const names = this.toolManager.getSttVocabulary();
-        if (names.length === 0) return undefined;
+        if (names.length === 0) {
+            this.sttPromptNames = [];
+            return undefined;
+        }
 
         const MAX_CHARS = 800;
         const parts: string[] = [];
@@ -967,6 +984,7 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
             parts.push(name);
             length += name.length + 2;
         }
+        this.sttPromptNames = parts;
         return `Smart home voice commands. Device and room names: ${parts.join(', ')}.`;
     }
 
