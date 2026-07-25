@@ -20,8 +20,10 @@ and the test-firmware note are archived in [`COMPLETED.md` §11](./COMPLETED.md)
        resolves the promise directly (no 10 ms poll loop), the timeout handle is cleared in
        `finish()`, and a `client.start()` throw now also runs cleanup (was a leak). Details in
        [`COMPLETED.md` §7](./COMPLETED.md).
-3. [ ] **L4 — dead `preStart` variable in `pcm-segmenter.mts:134`** — implement the documented
-       pre-pad windowing or remove the dead code/comment.
+3. [x] **L4 — dead `preStart` variable in `pcm-segmenter.mts:134`** DONE 2026-07-25: removed
+       (not implemented) — plus the write-only `trailingBuffer` state and the `PRE_PAD_*`
+       constants, all dead. Zero behavior change (segmenter tests unchanged and green).
+       Rationale + details in [`COMPLETED.md` §7](./COMPLETED.md).
 4. [ ] **L5 — no teardown for process/SDK listeners** (`app.mts:81-102`, GeoHelper,
        DeviceManager). Mostly theoretical on Homey; add `dispose()` methods.
 5. [ ] **M5 — stage-test API hardening:** add basic body type/port validation only; do NOT

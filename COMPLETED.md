@@ -469,6 +469,18 @@ M6 npm-audit chains, M7 start() semantics, L1/L3/L4/L5) stay open in TODO.md.
   refactor; no unit tests exist for the driver probe — verified with a live pairing scan on the
   real Homey right after the change (2026-07-25, owner-confirmed working).
 
+- [x] **L4 — dead pre-pad code in `pcm-segmenter.mts` (removed 2026-07-25).** `preStart` was
+  computed and never used, and it turned out the `trailingBuffer` field was write-only (kept in
+  `feed()`, reset everywhere, read nowhere — the post-pad is actually implemented by the
+  `postEnd` arithmetic). Removed `preStart`, `trailingBuffer`, the `PRE_PAD_MS`/`PRE_PAD_BYTES`
+  constants, and rewrote the misleading "captured POST_PAD in trailingBuffer" comment. Chose
+  removal over implementing pre-pad trimming: the segmenter's playback behavior is live-verified,
+  trimming inter-sentence silence would audibly change segment boundaries right before a store
+  release, and the TR-choppiness watch item (TODO.md) makes audio-boundary changes extra risky.
+  If snappier sentence gaps are ever wanted, the pre-pad idea is: trim a new segment's leading
+  silence down to ~60 ms before its first speech frame. Zero behavior change — the 9 segmenter
+  tests pass unmodified.
+
 **Closes the "Wi-Fi setup via Bluetooth (Improv BLE)" TODO section — implemented 2026-07-16,
 now FULLY verified on real hardware.** The feature: the PE/TR pairing wizard's "Set up Wi-Fi
 via Bluetooth" path (fixes the miserable TR first-setup experience — previously HA-in-Docker +
