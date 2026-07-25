@@ -28,5 +28,8 @@
   },
   "1.4.3": {
     "en": "Devices with API encryption enabled (the default once adopted by Home Assistant) now work — enter the device's encryption key during pairing or in the device settings, and the connection is fully encrypted. Encrypted devices are detected automatically when you add them."
+  },
+  "1.4.4": {
+    "en": "Conversations flow much better: a short chime now tells you when the assistant is ready for your follow-up, the microphone reopens about two seconds faster, and conversations no longer end before you get a chance to answer. Fixes non-English voices speaking with an English accent. Unlocking locks by voice is now off by default — enable 'Allow unlocking by voice' in the app settings if you want it."
   }
 }
