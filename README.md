@@ -429,8 +429,9 @@ down live.
    devices and zones, read the weather and local time, and manage timers. When you say *"turn off
    the kitchen lights"*, the model calls a tool and the app executes it through Homey's API.
 4. **Reply.** The spoken answer is encoded to FLAC and served from a small HTTP server inside the
-   app; the device fetches and plays it over the LAN. After answering, the mic reopens so you can
-   ask a follow-up — the session ends when you stay silent.
+   app; the device fetches and plays it over the LAN. After answering a question with a question,
+   the device plays a short chime and reopens the mic so you can ask a follow-up — the chime is
+   your cue to speak. The session ends when you stay silent.
 5. **Timers** live in the app (not the device), so they survive brief disconnects; the device
    renders the countdown on its LED ring and chimes when a timer finishes.
 

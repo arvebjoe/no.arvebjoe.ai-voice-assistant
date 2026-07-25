@@ -7,6 +7,12 @@ vi.mock('../src/llm/voice-provider-factory.mjs', () => import('./mocks/mock-voic
 vi.mock('../src/helpers/audio-encoders.mjs', () => ({
     pcmToFlacBuffer: async (b: any) => (Buffer.isBuffer(b) ? b : Buffer.from(b)),
 }));
+// Keep the pure PCM helpers real; only stub the /userdata-writing one so tests
+// never touch the filesystem and the reopen path still carries the chime URL.
+vi.mock('../src/helpers/listening-chime.mjs', async (importOriginal) => ({
+    ...(await importOriginal() as object),
+    ensureListeningChime: async () => 'listening_chime.flac',
+}));
 
 import { createHarness, Harness } from './mocks/device-harness.mjs';
 import { __resetProviderRegistry, createdProviders } from './mocks/mock-voice-provider.mjs';
@@ -259,6 +265,16 @@ describe('VoiceAssistantDevice (harness)', () => {
             expect((h.device as any).turn.peConversationActive).toBe(true);
         });
 
+        it('the mic reopen carries the listening chime URL (fast firmware announce-finish)', async () => {
+            const h = await createHarness();
+            await runAnnounceTurnEndingInQuestion(h);
+
+            // A real clip makes the firmware end the reopen announce at end of
+            // playback instead of its 2 s empty-media fallback timeout.
+            const reopen = h.esp.calls.find(c => c.method === 'send_voice_assistant_request');
+            expect(reopen?.args[0]).toBe('http://x/listening_chime.flac');
+        });
+
         it('a follow-up turn delivers its reply in-band on TTS_END and closes the session', async () => {
             const h = await createHarness();
             await runAnnounceTurnEndingInQuestion(h);
@@ -288,7 +304,10 @@ describe('VoiceAssistantDevice (harness)', () => {
             const ttsEnds = h.esp.calls.filter(c => c.method === 'tts_end');
             expect(ttsEnds[ttsEnds.length - 1].args[0]).toMatch(/^http:\/\/x\//);
             expect(h.esp.countOf('run_end')).toBe(2);
-            // Final reply -> the PE goes idle after playback; session over.
+            // Final reply -> the PE goes idle after playback; session over. NO chime
+            // appended: nothing reopens, so a cue would be misleading.
+            const finalFile = h.buildStreamCalls[h.buildStreamCalls.length - 1];
+            expect(finalFile.length).toBe(4800);
             expect((h.device as any).turn.peConversationActive).toBe(false);
         });
 
@@ -309,6 +328,18 @@ describe('VoiceAssistantDevice (harness)', () => {
             const intentEnds = h.esp.calls.filter(c => c.method === 'intent_end');
             expect(intentEnds[intentEnds.length - 1].args[1]).toBe(true); // keep open
             expect((h.device as any).turn.peConversationActive).toBe(true);
+
+            // Keep-open replies carry the listening chime in the file tail: the PE
+            // reopens the mic itself at end of playback (no announce of ours), so
+            // this is how reopens after the first one get the "speak now" cue.
+            const keepOpenFile = h.buildStreamCalls[h.buildStreamCalls.length - 1];
+            expect(keepOpenFile.length).toBeGreaterThan(4800);
+            // The tail is the chime, not silence: some sample near the end is loud.
+            let tailPeak = 0;
+            for (let i = keepOpenFile.length - 4800; i < keepOpenFile.length; i += 2) {
+                tailPeak = Math.max(tailPeak, Math.abs(keepOpenFile.readInt16LE(i)));
+            }
+            expect(tailPeak).toBeGreaterThan(3000);
         });
 
         it('an empty transcript right after a follow-up mic-open retries the mic (spurious VAD trip)', async () => {

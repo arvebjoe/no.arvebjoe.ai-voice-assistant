@@ -877,28 +877,31 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
   }
 
 
-  send_voice_assistant_request(): void {
+  /**
+   * Open the satellite's mic: an announce with startConversation:true is the
+   * ONLY client->device mic-open in the native API (VoiceAssistantRequest is
+   * device->client). `mediaUrl` should carry a short real clip (the listening
+   * chime): the firmware ends an announce promptly only when its media player
+   * actually played — with empty media nothing plays and the announce is ended
+   * by voice_assistant.cpp's hardcoded 2 s fallback timeout
+   * (start_playback_timeout_), delaying the mic-open by ~2.1 s. That firmware
+   * timeout is also the graceful fallback whenever the clip can't play (e.g.
+   * a mid-conversation PE dropping announce media): worst case is the old
+   * slow-but-working behavior.
+   *
+   * protobufjs field-name gotcha: the camelCase `mediaId` is the real proto
+   * field (media_id); a snake_case `media_id` key is silently dropped, which
+   * is why the old `media_id: ''` "worked" — proto3 defaults absent strings
+   * to '' on the wire.
+   */
+  send_voice_assistant_request(mediaUrl: string = ''): void {
 
     this.shouldAnnounceFinished = false;
 
-    /* 
-      Note to self:
-      
-      Strange behavior when announcing media
-      The message must contain either "media_id" or "mediaId" for this to work.
-      However, the "mediaId" field must be populated with a valid sound (flac) URL. Which the ESP then will play.
-            mediaId: SOUND_URLS.wake_word_triggered   -> Works
-      While "media_id" can be an empty string. It must be defined however.
-            media_id: ''      -> Works also
-      If none of these are included in the message, then it will not work.
-      
-      This could be a bug in firmware, be on the look out for this.
-    */
-
     this.send('VoiceAssistantAnnounceRequest', {
       startConversation: true,
-      media_id: '',
-
+      mediaId: mediaUrl,
+      text: '',
     });
 
   }

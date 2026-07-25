@@ -210,6 +210,42 @@ describe('TurnStateMachine', () => {
             // A known silence-hallucination (from transcript-hallucinations list).
             expect(m.machine.transcriptDone('Undertekster av AI-Media').kind).toBe('end_session');
         });
+
+        it('measures the spurious window to mic-CLOSE, so slow STT cannot blow it (live regression 2026-07-25)', () => {
+            const m = makeMachine();
+            openSession(m);
+            m.machine.startTurn(SKIP);
+            // Echo trips VAD and closes the mic 800ms in (clearly spurious)...
+            m.advance(800);
+            m.machine.micClosed();
+            // ...but the discarded vocabulary-echo transcript streams device names
+            // for two more seconds, landing past the old 2.5s transcript-arrival
+            // clock (the live failure: mic closed 813ms in, transcript at 2541ms).
+            m.advance(2_000);
+            const d = m.machine.transcriptDone('');
+            expect(d.kind).toBe('spurious_retry');
+            expect((d as any).turnMs).toBe(800);
+        });
+
+        it('a long listening phase ends the session even if the empty transcript returns fast', () => {
+            const m = makeMachine();
+            openSession(m);
+            m.machine.startTurn(SKIP);
+            // The user stood silent through a long mic window: genuinely no answer.
+            m.advance(6_000);
+            m.machine.micClosed();
+            m.advance(100);
+            expect(m.machine.transcriptDone('').kind).toBe('end_session');
+        });
+
+        it('a mic-close stamp from a previous turn is ignored (falls back to transcript arrival)', () => {
+            const m = makeMachine();
+            openSession(m); // openSession calls micClosed() during turn 1
+            m.machine.startTurn(SKIP);
+            // No micClosed() this turn; the empty transcript arrives late.
+            m.advance(5_000);
+            expect(m.machine.transcriptDone('').kind).toBe('end_session');
+        });
     });
 
     describe('in-band delivery', () => {

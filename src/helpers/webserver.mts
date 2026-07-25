@@ -21,6 +21,15 @@ export class WebServer {
 
     }
 
+    /**
+     * URL for a persistent (non-turn) file in the audio folder — same shape as
+     * buildStream URLs, IP re-resolved per call (DHCP lease can change).
+     */
+    buildStaticUrl(filename: string): string {
+        this.ip = this.getLanIP();
+        return `http://${this.ip}/app/${this.homey.manifest.id}/userdata/audio/${filename}`;
+    }
+
     async buildStream(audioData: AudioData): Promise<FileInfo> {
         const fileInfo = await saveAudioData(this.homey, audioData);
         // Re-resolve per file: the IP was previously cached once at init, so a

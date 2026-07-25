@@ -80,6 +80,9 @@ export async function createHarness(opts: HarnessOptions = {}): Promise<Harness>
     let zoneChangeCallback: ((changed: any) => void) | null = null;
 
     const webServer = {
+        buildStaticUrl(filename: string) {
+            return 'http://x/' + filename;
+        },
         async buildStream(audioData: any) {
             const data: Buffer = audioData.data;
             buildStreamCalls.push(data);

@@ -15,6 +15,7 @@ import { AudioOutputPipeline } from './audio-output-pipeline.mjs';
 import { DeviceStore } from '../helpers/interfaces.mjs';
 import { createLogger } from '../helpers/logger.mjs';
 import { SOUND_URLS } from '../helpers/sound-urls.mjs';
+import { ensureListeningChime, appendChimeToPcm } from '../helpers/listening-chime.mjs';
 import { scheduleAudioFileDeletion } from '../helpers/file-helper.mjs';
 import { Pcm16kTo24k } from '../helpers/Pcm16kTo24k.mjs';
 import { GeoHelper } from '../helpers/geo-helper.mjs';
@@ -56,6 +57,11 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
   private providerOptions!: VoiceProviderOptions;
   private currentZone: string = '';
   private macAddress: string = '';
+
+  // Filename of the persistent listening chime (set async in onInit). The mic
+  // reopen plays it so the firmware ends the reopen announce at end-of-playback
+  // instead of its 2 s empty-media timeout; null falls back to the empty announce.
+  private chimeFilename: string | null = null;
 
   private isMutedValue: boolean = false;
   private logger = createLogger('Voice_Assistant_Device', true);
@@ -133,6 +139,14 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     this.deviceManager = services.deviceManager;
     this.geoHelper = services.geoHelper;
     this.weatherHelper = services.weatherHelper;
+
+    // The follow-up reopen plays this short chime: a real clip makes the
+    // firmware open the mic at end-of-playback (~0.3 s) instead of its 2 s
+    // empty-media fallback timeout, and cues the user to speak. Non-fatal:
+    // without it the reopen falls back to the (slow but working) empty announce.
+    ensureListeningChime()
+      .then((filename) => { this.chimeFilename = filename; })
+      .catch((err) => this.logger.warn('Listening chime unavailable — follow-up reopen will use the 2 s firmware timeout:', err));
 
 
 
@@ -435,7 +449,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
         // auto-reopens afterwards delivers its reply in-band on TTS_END. We send
         // only THIS reopen; the PE drives the rest of the chain.
         this.homey.setTimeout(() => {
-          this.esp.send_voice_assistant_request();
+          this.reopenMic();
         }, 1);
       } else {
         this.convo.info('Turn complete — conversation closed', 'END');
@@ -470,9 +484,15 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
         // us — without this the PE never shows its "replying" phase.
         this.esp.tts_start(replyText);
 
+        // Keep-open replies get the listening chime baked into the reply file's
+        // tail: the PE reopens the mic itself at end of playback (no announce of
+        // ours is involved), so this is the only way follow-up reopens after the
+        // first one get the "speak now" cue.
+        const pcm = keepOpen && d.pcm.length > 0 ? appendChimeToPcm(d.pcm) : d.pcm;
+
         // Encode + serve + schedule deletion (TTL extended by playback length) —
         // the pipeline owns the file mechanics.
-        const file = d.pcm.length > 0 ? await this.audioOutput.buildReplyFile(d.pcm) : null;
+        const file = pcm.length > 0 ? await this.audioOutput.buildReplyFile(pcm) : null;
 
         if (file) {
           this.convo.info(keepOpen
@@ -697,13 +717,13 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       // reopen the mic so the user actually gets to answer (retry budget bounded
       // by the machine; a genuine no-answer still ends the session below).
       if (decision.kind === 'spurious_retry') {
-        this.convo.info(`Heard nothing only ${(decision.turnMs / 1000).toFixed(1)}s after mic open — spurious VAD trip (TTS echo), reopening mic (retry ${decision.retry}/${decision.maxRetries})`, 'STT');
+        this.convo.info(`Heard nothing — mic closed only ${(decision.turnMs / 1000).toFixed(1)}s after opening — spurious VAD trip (TTS echo), reopening mic (retry ${decision.retry}/${decision.maxRetries})`, 'STT');
         this.audioOutput.cancelInband();
         this.esp.stt_end('');
         this.esp.run_end();
         this.setCapabilityValue('onoff', false);
         this.homey.setTimeout(() => {
-          this.esp.send_voice_assistant_request();
+          this.reopenMic();
         }, 1);
         return;
       }
@@ -1022,7 +1042,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       this.logger.info(`Capability onoff changed to: ${value}`);
       if (this.esp && value) {
         try {
-          await this.esp.send_voice_assistant_request();
+          this.reopenMic();
         } catch (error) {
           this.logger.error('Error sending voice assistant request:', error);
         }
@@ -1070,6 +1090,18 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     } else {
       this.logger.error('ESP client not initialized or playAudioFromUrl method not available');
     }
+  }
+
+  /**
+   * Open the satellite's mic (announce + startConversation:true), carrying the
+   * listening chime when available: a real clip ends the reopen announce at
+   * end-of-playback (~0.3 s) instead of the firmware's 2 s empty-media timeout,
+   * and doubles as the "speak now" cue. The URL is built fresh per call (the
+   * LAN IP can change between turns).
+   */
+  private reopenMic(): void {
+    const chimeUrl = this.chimeFilename ? this.webServer.buildStaticUrl(this.chimeFilename) : '';
+    this.esp.send_voice_assistant_request(chimeUrl);
   }
 
   private playUrlByFileInfo(fileInfo: FileInfo, startConversation: boolean) {

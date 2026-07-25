@@ -58,6 +58,7 @@ export class TurnStateMachine {
     private currentTurnSkipBytes = 0;
 
     private turnStartedAt = 0;
+    private micClosedAt = 0;
     private lastTurnEndedAt = 0;
 
     // Spurious empty-turn retries used in the current conversation. Bounded so a
@@ -145,6 +146,7 @@ export class TurnStateMachine {
     /** The user stopped speaking (provider VAD): close of the listening phase. */
     micClosed(): void {
         this.hasIntent = true;
+        this.micClosedAt = this.now();
         if (this.state_ === 'listening') {
             this.state_ = 'thinking';
         }
@@ -192,7 +194,16 @@ export class TurnStateMachine {
         }
 
         const now = this.now();
-        const turnMs = now - this.turnStartedAt;
+        // Measure the spurious window mic-open -> mic-CLOSE, not mic-open ->
+        // transcript arrival: STT latency must not count against the user. A
+        // vocabulary-echo transcript on a silent turn streams 1.5-2s of device
+        // names before it can be discarded, which blew the window and turned
+        // what should be a retry into end_session (live log 2026-07-25: echo
+        // closed the mic after 813ms but the discarded transcript landed at
+        // 2541ms — 41ms past the old transcript-arrival clock). Fall back to
+        // `now` if the mic never closed during this turn.
+        const micClosedThisTurn = this.micClosedAt > this.turnStartedAt;
+        const turnMs = (micClosedThisTurn ? this.micClosedAt : now) - this.turnStartedAt;
         if (this.peConversationActive && turnMs < this.SPURIOUS_TURN_MS && this.emptyTurnRetries < this.MAX_EMPTY_TURN_RETRIES) {
             this.emptyTurnRetries++;
             this.state_ = 'idle';
