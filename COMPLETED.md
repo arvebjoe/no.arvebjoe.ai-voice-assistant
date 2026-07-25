@@ -498,6 +498,20 @@ M6 npm-audit chains, M7 start() semantics, L1/L3/L4/L5) stay open in TODO.md.
   called) + a DeviceManager dispose test (fake API extended with `removeListener`).
   656 tests + lint green.
 
+- [x] **M5 — stage-test API body validation (fixed 2026-07-25).** `/test-local-stage` passed
+  the posted body straight into `testLocalStage()`. New `validateStageTestRequest()` (exported
+  from stage-tester.mts, called at the top of `testLocalStage` so the never-throws contract
+  holds — failures return `{ ok:false, message }`): body must be a plain object; the string
+  fields (`stage`/`backend`/`host`/`model`/keys/`url`/`language`/`voice`/`voiceOverride`) must
+  be strings ≤ 2048 chars; `port` must be a string/number coercing to an integer 1–65535
+  (empty string still means "backend default port"); `url` must be http(s) and carry no
+  embedded credentials. **Scheme gotcha:** the scheme must be checked on the RAW value —
+  `normalizeOpenAiBaseUrl` prefixes `http://` onto anything non-http (its bare-host default),
+  which turns `ftp://x` into a weird-but-parseable http URL. Per the TODO decision there is
+  deliberately NO loopback/LAN-range blocking or rate limiting — contacting arbitrary
+  user-chosen LAN endpoints is the endpoint's purpose (documented in the validator comment).
+  5 new tests, all asserting rejections never touch the network. 661 tests + lint green.
+
 **Closes the "Wi-Fi setup via Bluetooth (Improv BLE)" TODO section — implemented 2026-07-16,
 now FULLY verified on real hardware.** The feature: the PE/TR pairing wizard's "Set up Wi-Fi
 via Bluetooth" path (fixes the miserable TR first-setup experience — previously HA-in-Docker +

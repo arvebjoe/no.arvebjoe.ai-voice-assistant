@@ -125,4 +125,54 @@ describe('testLocalStage', () => {
         expect(res.ok).toBe(false);
         expect(fetchCalls.length).toBe(0);
     });
+
+    /* ---------- M5: body validation — every rejection stays off the network ---------- */
+
+    it('M5 — non-object bodies are rejected as malformed', async () => {
+        for (const body of [null, 'stt', 42, ['stt']]) {
+            const res = await testLocalStage(body as any);
+            expect(res.ok).toBe(false);
+            expect(res.message).toContain('Malformed request body');
+        }
+        expect(fetchCalls.length).toBe(0);
+    });
+
+    it('M5 — non-string fields are rejected by name', async () => {
+        const res = await testLocalStage({ stage: 'llm', backend: 'ollama', host: '10.0.0.9', model: { $ne: '' } } as any);
+        expect(res.ok).toBe(false);
+        expect(res.message).toBe("Field 'model' must be a string");
+        expect(fetchCalls.length).toBe(0);
+    });
+
+    it('M5 — oversized fields are rejected', async () => {
+        const res = await testLocalStage({ stage: 'llm', backend: 'ollama', host: 'x'.repeat(3000), model: 'qwen3' });
+        expect(res.ok).toBe(false);
+        expect(res.message).toBe("Field 'host' is too long");
+        expect(fetchCalls.length).toBe(0);
+    });
+
+    it('M5 — out-of-range and non-numeric ports are rejected; empty port still means default', async () => {
+        for (const port of [70000, -1, 'abc', '80.5', {} as any]) {
+            const res = await testLocalStage({ stage: 'llm', backend: 'ollama', host: '10.0.0.9', port, model: 'qwen3' });
+            expect(res.ok).toBe(false);
+            expect(res.message).toMatch(/port/i);
+        }
+        expect(fetchCalls.length).toBe(0);
+
+        // Empty string keeps the existing "use the backend default" behavior.
+        const res = await testLocalStage({ stage: 'llm', backend: 'ollama', host: '', port: '', model: '' });
+        expect(res.message).toContain('Fill in the connection fields');
+    });
+
+    it('M5 — URLs with embedded credentials or non-http schemes are rejected', async () => {
+        const withCreds = await testLocalStage({ stage: 'llm', backend: 'openai', url: 'http://user:pass@10.0.0.5/v1', model: 'm' });
+        expect(withCreds.ok).toBe(false);
+        expect(withCreds.message).toContain('must not contain credentials');
+
+        const ftp = await testLocalStage({ stage: 'llm', backend: 'openai', url: 'ftp://10.0.0.5/v1', model: 'm' });
+        expect(ftp.ok).toBe(false);
+        expect(ftp.message).toContain('http(s)');
+
+        expect(fetchCalls.length).toBe(0);
+    });
 });

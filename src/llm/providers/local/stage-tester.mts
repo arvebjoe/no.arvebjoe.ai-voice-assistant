@@ -14,6 +14,7 @@ import { OpenAiTtsClient } from './openai-tts-client.mjs';
 import { WyomingSttClient } from './wyoming-stt-client.mjs';
 import { WyomingTtsClient } from './wyoming-tts-client.mjs';
 import { LmStudioClient } from './lmstudio-client.mjs';
+import { normalizeOpenAiBaseUrl } from './openai-compat.mjs';
 import { LOCAL_DEFAULT_PORTS } from '../local-pipeline-provider.mjs';
 
 /**
@@ -65,6 +66,68 @@ function withTimeout<T>(work: Promise<T>, ms: number): Promise<T> {
 
 const str = (v: unknown): string => String(v ?? '').trim();
 const num = (v: unknown, fallback: number): number => Number(v) || fallback;
+
+/**
+ * Basic shape validation for the posted body (code_review_2 M5). This is an
+ * authenticated settings endpoint whose PURPOSE is contacting user-chosen LAN
+ * hosts, so there is deliberately NO loopback/LAN-range blocking here — only
+ * type, size, port and URL-scheme sanity, so malformed input fails fast with
+ * a clear message instead of reaching a client constructor or the network.
+ * Returns the error message, or null when the request is well-formed.
+ */
+const MAX_FIELD_CHARS = 2048;
+const STRING_FIELDS = [
+    'stage', 'backend', 'host', 'model', 'mistralApiKey',
+    'url', 'key', 'language', 'voice', 'voiceOverride',
+] as const;
+
+export function validateStageTestRequest(req: unknown): string | null {
+    if (typeof req !== 'object' || req === null || Array.isArray(req)) {
+        return 'Malformed request body';
+    }
+    const body = req as Record<string, unknown>;
+
+    for (const field of STRING_FIELDS) {
+        const v = body[field];
+        if (v === undefined || v === null) continue;
+        if (typeof v !== 'string') return `Field '${field}' must be a string`;
+        if (v.length > MAX_FIELD_CHARS) return `Field '${field}' is too long`;
+    }
+
+    const rawPort = body.port;
+    if (rawPort !== undefined && rawPort !== null && typeof rawPort !== 'string' && typeof rawPort !== 'number') {
+        return `Field 'port' must be a number`;
+    }
+    const port = str(rawPort);
+    if (port) { // empty means "use the backend's default port"
+        const n = Number(port);
+        if (!Number.isInteger(n) || n < 1 || n > 65535) {
+            return `Invalid port '${port.slice(0, 20)}' — must be 1-65535`;
+        }
+    }
+
+    const url = str(body.url);
+    if (url) {
+        // Check the scheme on the RAW value: normalizeOpenAiBaseUrl prefixes
+        // http:// onto anything non-http (its bare-host default), which would
+        // otherwise disguise a ftp://... input as a weird-but-valid http URL.
+        const scheme = url.match(/^([a-z][a-z0-9+.-]*):\/\//i)?.[1];
+        if (scheme && scheme.toLowerCase() !== 'http' && scheme.toLowerCase() !== 'https') {
+            return `URL must be http(s), not '${scheme}'`;
+        }
+        let parsed: URL;
+        try {
+            parsed = new URL(normalizeOpenAiBaseUrl(url));
+        } catch {
+            return `Invalid URL '${url.slice(0, 80)}'`;
+        }
+        if (parsed.username || parsed.password) {
+            return 'URL must not contain credentials — use the API key field instead';
+        }
+    }
+
+    return null;
+}
 
 function buildSttClient(req: StageTestRequest): ISttClient {
     switch (req.backend) {
@@ -139,6 +202,10 @@ async function runTtsTest(req: StageTestRequest): Promise<string> {
 /** Run the test for one stage. Never throws — errors come back as { ok:false }. */
 export async function testLocalStage(req: StageTestRequest): Promise<StageTestResult> {
     const started = Date.now();
+    const invalid = validateStageTestRequest(req);
+    if (invalid) {
+        return { ok: false, message: invalid };
+    }
     try {
         let message: string;
         switch (req?.stage) {

@@ -30,8 +30,10 @@ and the test-firmware note are archived in [`COMPLETED.md` §11](./COMPLETED.md)
        DeviceManager (before ApiHelper — it unregisters through `apiHelper.devices`) and
        ApiHelper (`api.destroy()`). Covered by 3 new tests. Details in
        [`COMPLETED.md` §7](./COMPLETED.md).
-5. [ ] **M5 — stage-test API hardening:** add basic body type/port validation only; do NOT
-       block loopback/LAN ranges — arbitrary LAN endpoints are the product's purpose.
+5. [x] **M5 — stage-test API hardening** DONE 2026-07-25: `validateStageTestRequest()` in
+       stage-tester.mts — body shape, string-field types + 2048-char cap, port 1-65535,
+       http(s)-only URLs without embedded credentials. Deliberately NO loopback/LAN blocking
+       (the endpoint's purpose). 5 new tests. Details in [`COMPLETED.md` §7](./COMPLETED.md).
 6. [ ] **M6 — npm audit legacy chains** (`homey-api`/`homey-log`: socket.io-client 2.x, raven).
        Re-run `npm audit`, confirm still 0 critical/high, ask Athom for updated releases,
        then close as tracked-upstream.
