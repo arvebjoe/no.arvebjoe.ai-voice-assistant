@@ -24,8 +24,12 @@ and the test-firmware note are archived in [`COMPLETED.md` §11](./COMPLETED.md)
        (not implemented) — plus the write-only `trailingBuffer` state and the `PRE_PAD_*`
        constants, all dead. Zero behavior change (segmenter tests unchanged and green).
        Rationale + details in [`COMPLETED.md` §7](./COMPLETED.md).
-4. [ ] **L5 — no teardown for process/SDK listeners** (`app.mts:81-102`, GeoHelper,
-       DeviceManager). Mostly theoretical on Homey; add `dispose()` methods.
+4. [x] **L5 — no teardown for process/SDK listeners** DONE 2026-07-25: `onUninit` now removes
+       the three process listeners (stored via `addProcessListener`), unsubscribes the
+       remote-log `onGlobals` subscription, and calls new `dispose()` methods on GeoHelper,
+       DeviceManager (before ApiHelper — it unregisters through `apiHelper.devices`) and
+       ApiHelper (`api.destroy()`). Covered by 3 new tests. Details in
+       [`COMPLETED.md` §7](./COMPLETED.md).
 5. [ ] **M5 — stage-test API hardening:** add basic body type/port validation only; do NOT
        block loopback/LAN ranges — arbitrary LAN endpoints are the product's purpose.
 6. [ ] **M6 — npm audit legacy chains** (`homey-api`/`homey-log`: socket.io-client 2.x, raven).

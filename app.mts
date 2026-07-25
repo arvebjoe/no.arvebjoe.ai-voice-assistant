@@ -25,6 +25,10 @@ export default class AiVoiceAssistantApp extends Homey.App implements AppService
   private apiHelper: ApiHelper | undefined;
   private logger = createLogger('APP');
   private homeyLog: any;
+  // Teardown bookkeeping (code_review_2 L5): every listener registered on
+  // process or a shared service is stored so onUninit can remove it again.
+  private processListeners: Array<[event: string, handler: (...args: any[]) => void]> = [];
+  private unsubscribeRemoteLog: (() => void) | null = null;
 
 
   /**
@@ -46,7 +50,7 @@ export default class AiVoiceAssistantApp extends Homey.App implements AppService
     // ones) mirrors into this transport when it's enabled in settings. The
     // subscription fires once immediately with the current snapshot, then on
     // every settings save.
-    settingsManager.onGlobals((globals) => configureRemoteLogFromSettings(globals));
+    this.unsubscribeRemoteLog = settingsManager.onGlobals((globals) => configureRemoteLogFromSettings(globals));
 
     // Awaited: the cleanup inside deletes EVERY file in the audio folder, so it
     // must finish before devices come online and start writing reply audio — an
@@ -79,7 +83,23 @@ export default class AiVoiceAssistantApp extends Homey.App implements AppService
   async onUninit() {
     this.logger.info('AI voice assistant is being uninitialized');
 
-    // Clean up WebServer
+    // Symmetric teardown of everything onInit registered (code_review_2 L5).
+    for (const [event, handler] of this.processListeners) {
+      process.removeListener(event as any, handler);
+    }
+    this.processListeners = [];
+
+    if (this.unsubscribeRemoteLog) {
+      this.unsubscribeRemoteLog();
+      this.unsubscribeRemoteLog = null;
+    }
+
+    this.geoHelper?.dispose();
+    // DeviceManager before ApiHelper: its dispose() unregisters through
+    // apiHelper.devices, which is gone once the API is destroyed.
+    this.deviceManager?.dispose();
+    this.apiHelper?.dispose();
+
     if (this.webServer) {
       await this.webServer.stop();
     }
@@ -92,18 +112,18 @@ export default class AiVoiceAssistantApp extends Homey.App implements AppService
   private setupGlobalErrorHandling() {
 
     // Handle uncaught exceptions that might escape Homey's error handling
-    process.on('uncaughtException', (error) => {
+    this.addProcessListener('uncaughtException', (error) => {
       this.logger.error('Uncaught Exception:', error);
     });
 
     // Handle unhandled promise rejections
-    process.on('unhandledRejection', (reason, promise) => {
+    this.addProcessListener('unhandledRejection', (reason) => {
       const error = reason instanceof Error ? reason : new Error(String(reason));
       this.logger.error(`Unhandled Rejection - reason: ${reason}`, error);
     });
 
     // Handle warnings (optional, for debugging)
-    process.on('warning', (warning) => {
+    this.addProcessListener('warning', (warning) => {
       this.logger.warn('Process Warning:', warning);
       if (this.homeyLog) {
         this.homeyLog.captureMessage(`Process Warning: ${warning.message}`).catch(() => {
@@ -111,6 +131,11 @@ export default class AiVoiceAssistantApp extends Homey.App implements AppService
         });
       }
     });
+  }
+
+  private addProcessListener(event: string, handler: (...args: any[]) => void) {
+    process.on(event as any, handler);
+    this.processListeners.push([event, handler]);
   }
 
 }

@@ -7,6 +7,9 @@ export class GeoHelper {
     private _longitude: number | null = null;
     private _timezone: string | null = null;
     private isInitialized = false;
+    // Kept as fields so dispose() can remove exactly what init() registered.
+    private onLocationChange: (() => void) | null = null;
+    private onTimezoneChange: (() => void) | null = null;
 
     constructor(homey: any) {
         this.homey = homey;
@@ -31,20 +34,22 @@ export class GeoHelper {
             await this.updateTimezone();
 
             // Listen for location changes
-            this.homey.geolocation.on('location', () => {
+            this.onLocationChange = () => {
                 this.logger.info('Location changed event received');
                 this.updateLocation().catch(error => {
                     this.logger.error('Failed to update location on change:', error);
                 });
-            });
+            };
+            this.homey.geolocation.on('location', this.onLocationChange);
 
             // Listen for timezone changes
-            this.homey.clock.on('timezoneChange', () => {
+            this.onTimezoneChange = () => {
                 this.logger.info('Timezone changed event received');
                 this.updateTimezone().catch((error: any) => {
                     this.logger.error('Failed to update timezone on change:', error);
                 });
-            });
+            };
+            this.homey.clock.on('timezoneChange', this.onTimezoneChange);
 
             this.isInitialized = true;
             this.logger.info('GeoHelper initialized');
@@ -52,6 +57,22 @@ export class GeoHelper {
             this.logger.error('Failed to initialize GeoHelper:', error);
             throw error;
         }
+    }
+
+    /**
+     * Remove the SDK listeners registered in init(). Safe to call when init()
+     * bailed early (no geolocation/clock) or was never called.
+     */
+    dispose(): void {
+        if (this.onLocationChange) {
+            this.homey.geolocation?.removeListener?.('location', this.onLocationChange);
+            this.onLocationChange = null;
+        }
+        if (this.onTimezoneChange) {
+            this.homey.clock?.removeListener?.('timezoneChange', this.onTimezoneChange);
+            this.onTimezoneChange = null;
+        }
+        this.isInitialized = false;
     }
 
     /**

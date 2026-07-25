@@ -21,6 +21,15 @@ export class ApiHelper {
     }
 
     /**
+     * Tear down the HomeyAPI instance: destroy() removes all manager
+     * listeners and closes the Socket.io session. Safe to call before init().
+     */
+    dispose(): void {
+        this.api?.destroy?.();
+        this.api = null;
+    }
+
+    /**
      * Get the devices API instance
      */
     get devices() {

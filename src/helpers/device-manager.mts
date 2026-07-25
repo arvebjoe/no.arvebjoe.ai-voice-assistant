@@ -20,6 +20,8 @@ export class DeviceManager implements IDeviceManager {
     // resolved fresh per event. `currentZone` is the last zone we notified for,
     // which is what makes the dedup survive the device.update storm.
     private zoneSubscriptions: Map<string, { currentZone: string; callback: (changed: ZoneChanged) => void }> = new Map();
+    // Kept as a field so dispose() can remove exactly what init() registered.
+    private onDeviceUpdate: ((updated: any) => void) | null = null;
 
 
     constructor(homey: any, apiHelper: ApiHelper) {
@@ -35,7 +37,7 @@ export class DeviceManager implements IDeviceManager {
     async init(): Promise<void> {
         this.logger.info('DeviceManager initialized');
 
-        this.apiHelper.devices.on("device.update", (updated: any) => {
+        this.onDeviceUpdate = (updated: any) => {
 
             if (!this.zones) {
                 return;
@@ -99,7 +101,20 @@ export class DeviceManager implements IDeviceManager {
                 newZone: currentZone.name
             });
 
-        });
+        };
+        this.apiHelper.devices.on("device.update", this.onDeviceUpdate);
+    }
+
+    /**
+     * Remove the device.update listener registered in init() and drop all
+     * zone-change subscriptions. Safe to call before init().
+     */
+    dispose(): void {
+        if (this.onDeviceUpdate) {
+            this.apiHelper.devices.removeListener?.("device.update", this.onDeviceUpdate);
+            this.onDeviceUpdate = null;
+        }
+        this.zoneSubscriptions.clear();
     }
 
     registerDevice(mac: string, callback: (changed: ZoneChanged) => void): string {

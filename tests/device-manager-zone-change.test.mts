@@ -13,6 +13,9 @@ function makeFakeApi() {
             on: (event: string, handler: (u: any) => void) => {
                 if (event === 'device.update') updateHandler = handler;
             },
+            removeListener: (event: string, handler: (u: any) => void) => {
+                if (event === 'device.update' && handler === updateHandler) updateHandler = null;
+            },
             getDevices: async () => ({
                 dev1: {
                     id: 'dev1',
@@ -150,5 +153,19 @@ describe('DeviceManager zone-change callback', () => {
         expect(cb).toHaveBeenCalledTimes(1);
         expect(cb.mock.calls[0][0]).toMatchObject({ oldZone: 'Office', newZone: 'Bedroom' });
         expect(cb.mock.calls[0][0].device.name).toBe('Voice PE');
+    });
+
+    /* ---------- L5: symmetric teardown ---------- */
+
+    it('L5 — dispose() removes the device.update listener and drops subscriptions', () => {
+        const cb = vi.fn();
+        dm.registerDevice('AA:BB:CC', cb);
+
+        dm.dispose();
+
+        // The handler was removed from the (fake) API manager...
+        expect(api.captured()).toBeNull();
+        // ...and disposing again is a harmless no-op.
+        expect(() => dm.dispose()).not.toThrow();
     });
 });

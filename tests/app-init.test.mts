@@ -88,4 +88,29 @@ describe('AiVoiceAssistantApp.onInit', () => {
         await app.onUninit();
         expect(stopSpy).toHaveBeenCalledTimes(1);
     });
+
+    it('L5 — onUninit removes the process listeners onInit registered', async () => {
+        await app.onInit();
+        for (const e of EVENTS) {
+            expect(process.listeners(e as any).length).toBeGreaterThan(handlersBefore[e].length);
+        }
+
+        await app.onUninit();
+        for (const e of EVENTS) {
+            expect(process.listeners(e as any).length).toBe(handlersBefore[e].length);
+        }
+    });
+
+    it('L5 — onUninit disposes the shared services', async () => {
+        await app.onInit();
+        const geoSpy = vi.spyOn(app.geoHelper, 'dispose');
+        const dmSpy = vi.spyOn(app.deviceManager, 'dispose');
+        const apiSpy = vi.spyOn((app as any).apiHelper, 'dispose');
+
+        await app.onUninit();
+
+        expect(geoSpy).toHaveBeenCalledTimes(1);
+        expect(dmSpy).toHaveBeenCalledTimes(1);
+        expect(apiSpy).toHaveBeenCalledTimes(1);
+    });
 });

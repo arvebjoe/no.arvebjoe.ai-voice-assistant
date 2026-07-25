@@ -481,6 +481,23 @@ M6 npm-audit chains, M7 start() semantics, L1/L3/L4/L5) stay open in TODO.md.
   silence down to ~60 ms before its first speech frame. Zero behavior change — the 9 segmenter
   tests pass unmodified.
 
+- [x] **L5 — process/SDK listeners now have symmetric teardown (fixed 2026-07-25).**
+  `onUninit` previously only called the (empty) `WebServer.stop()`. Now: (1) the three
+  anonymous `process` listeners in `setupGlobalErrorHandling` are registered via a new
+  `addProcessListener` helper that records `[event, handler]` pairs, and `onUninit` removes
+  them; (2) the `settingsManager.onGlobals(...)` remote-log subscription's unsubscribe fn
+  (previously discarded) is stored and called; (3) new `dispose()` methods: `GeoHelper`
+  (removes the `geolocation`/`clock` listeners — handlers kept as fields; safe when init
+  bailed early), `DeviceManager` (removes the `device.update` listener, clears
+  `zoneSubscriptions`), `ApiHelper` (`api.destroy()` — homey-api's Manager/API destroy
+  removes all manager listeners and closes the Socket.io session). **Ordering gotcha:**
+  DeviceManager must dispose BEFORE ApiHelper, because its unregister goes through the
+  `apiHelper.devices` getter, which throws once the API is nulled. All removals are
+  optional-chained (`removeListener?.`) so test fakes without the method stay valid. Tests:
+  two new `app-init` tests (process-listener counts return to baseline; all three disposes
+  called) + a DeviceManager dispose test (fake API extended with `removeListener`).
+  656 tests + lint green.
+
 **Closes the "Wi-Fi setup via Bluetooth (Improv BLE)" TODO section — implemented 2026-07-16,
 now FULLY verified on real hardware.** The feature: the PE/TR pairing wizard's "Set up Wi-Fi
 via Bluetooth" path (fixes the miserable TR first-setup experience — previously HA-in-Docker +
