@@ -34,20 +34,23 @@ and the test-firmware note are archived in [`COMPLETED.md` §11](./COMPLETED.md)
        stage-tester.mts — body shape, string-field types + 2048-char cap, port 1-65535,
        http(s)-only URLs without embedded credentials. Deliberately NO loopback/LAN blocking
        (the endpoint's purpose). 5 new tests. Details in [`COMPLETED.md` §7](./COMPLETED.md).
-6. [ ] **M6 — npm audit legacy chains** (`homey-api`/`homey-log`: socket.io-client 2.x, raven).
-       Re-run `npm audit`, confirm still 0 critical/high, ask Athom for updated releases,
-       then close as tracked-upstream.
+6. [x] **M6 — npm audit legacy chains** DONE 2026-07-26: re-ran `npm audit --omit=dev` —
+       0 critical/high (2 low, 7 moderate). Fixed the one actionable finding: protobufjs
+       7.5.x DoS advisory (GHSA-j3f2-48v5-ccww) → 7.6.5 via `npm audit fix` (semver-safe;
+       esp-messages + noise-codec tests green). The rest are the known upstream chains —
+       `homey-log`→raven (cookie/uuid, no fix) and `homey-api`→socket.io-client 2.x
+       (parseuri; npm's "fix" is a homey-api DOWNGRADE — do not apply). Closed as
+       tracked-upstream; optionally nudge Athom for updated releases.
 7. [ ] **M7 — provider `start()` readiness semantics:** largely defused by the H1
        serialization. Decide: document + close, or centralize state in the provider seam.
 8. [ ] **TR mic gain refinement:** expose `micGain` as a device setting (advanced) instead of
        the hardcoded TR constant 4; sanity-check that 4× gain doesn't clip/hurt STT for loud
        close speech. (Fix itself shipped + verified 2026-07-19 — context in the watch item
        below and COMPLETED.md.)
-9. [ ] **README/store-listing polish:** retake the stale settings screenshots
-       (`.resources/settings.jpg`, predate the settings redesign — needs the owner's Homey);
-       ~~add the plaintext-only/no-Noise limitation note~~ (superseded — Noise encryption is
-       now implemented and README.md/README.txt describe it); spot-check README.txt still
-       matches.
+9. [~] **README/store-listing polish:** retake the stale settings screenshots
+       (`.resources/settings.jpg`, predate the settings redesign — needs the owner's Homey).
+       ~~add the plaintext-only/no-Noise limitation note~~ (superseded — Noise encryption
+       shipped); ~~spot-check README.txt~~ (done 2026-07-26 — accurate, incl. locks/encryption).
 10. [ ] **Release-testing checklist pass** ([`docs/release-testing-since-1.4.0.md`](./docs/release-testing-since-1.4.0.md)):
        tick off everything the 2026-07-19→23 live sessions already proved (pairing/BLE, Mistral,
        music, TR end-to-end, soak); then run what genuinely remains — upgrade path 1.4.0→1.4.1
@@ -127,6 +130,23 @@ image analysis — see [`COMPLETED.md` §6](./COMPLETED.md)).
 
 ### High value, more work
 
+- [ ] **Device-less "Ask AI (text answer)" flow card — target 1.5.0** (forum request 2026-07-25,
+      owner-approved). An APP-level action card (no device picker) so flows can use the AI with
+      zero voice hardware: *"summarize my open windows and send a notification"*, yes/no
+      questions, text generation. Design sketch (agreed 2026-07-25): new
+      `.homeycompose/flow/actions/` card registered in `app.mts`; a **headless provider**
+      through the existing `IVoiceProvider` seam/factory in text↔text mode (works with all four
+      engines + configured key automatically), created lazily on first use and torn down after
+      idle (don't hold an OpenAI realtime websocket open forever; local/Mistral LLMs are
+      stateless HTTP); a **headless ToolManager** with the device-bound tools removed — no
+      timers (`esp.supportsTimers` needs a satellite), no interim-speak, zone context "whole
+      home" — everything else (DeviceManager control, weather, geo/time, web search, shopping,
+      music) is already an app singleton. Serialize concurrent flow invocations like the
+      device's textRequestQueue (H2 lesson); single-shot per invocation, no conversation
+      carryover between flow runs. Explicitly SKIPPED from the same request: device-less timer
+      cards — the satellite rendering (LED ring + chime) is the point of app timers, Homey's
+      native delays/timer apps cover the device-less case, and a headless timer tool would grow
+      every turn's prompt (cost-of-growth rule 1). Remember READMEs + feature-costs when built.
 - [ ] **Reminders (the missing sibling of timers)** — *"remind me tomorrow at 8 to take out the
       recycling"*. Unlike timers these need persistence (app settings) and delivery: spoken
       announcement on the satellite that set it, plus a Homey timeline/push notification as
