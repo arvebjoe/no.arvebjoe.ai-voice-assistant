@@ -248,6 +248,12 @@ Each stage has its own host/port (or URL/key/model) settings, and a **Test butto
 real mini-request from your Homey — wrong ports, model names, keys and voices show up immediately
 with the actual error and latency.
 
+> **Setup recipes:** [docs/custom-pipeline-setup-guide.md](./docs/custom-pipeline-setup-guide.md)
+> has a copy-paste Docker Compose for every backend of every stage (Whisper, Wyoming,
+> Voxtral, OpenAI-compatible for STT · Ollama, LM Studio, Jan, llama.cpp, vLLM, Mistral for
+> the LLM · Piper, Wyoming Piper, Kokoro, Voxtral for TTS), plus the desktop-app steps for
+> Ollama and LM Studio and the networking gotchas.
+
 For Ollama there is also a **Context window (num_ctx)** setting (default 8192). Ollama's own
 default window is too small for the assistant's instructions and tools, which makes small models
 silently "forget" their rules — leave this at the default unless you know you want a different
