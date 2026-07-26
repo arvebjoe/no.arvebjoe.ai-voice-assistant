@@ -307,7 +307,13 @@ Notes:
 
 ## App settings
 
-<img src="./.resources/settings.jpg" height="500" alt="Settings" />
+<p>
+<img src="./.resources/settings_general.png" height="440" alt="General settings" />
+<img src="./.resources/settings_smart_home.png" height="440" alt="Smart home control settings" />
+<img src="./.resources/settings_weather.png" height="440" alt="Weather feature settings" />
+<img src="./.resources/settings_custom_pipeline.png" height="440" alt="Custom pipeline settings" />
+<img src="./.resources/settings_logging.png" height="440" alt="Logging settings" />
+</p>
 
 The settings page is organized by a **section dropdown** at the top: **General**, **Custom
 pipeline** (only selectable while the Custom pipeline provider is active), and one section per
