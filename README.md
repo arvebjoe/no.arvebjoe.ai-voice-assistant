@@ -311,6 +311,8 @@ Notes:
 <img src="./.resources/settings_general.png" height="440" alt="General settings" />
 <img src="./.resources/settings_smart_home.png" height="440" alt="Smart home control settings" />
 <img src="./.resources/settings_weather.png" height="440" alt="Weather feature settings" />
+<img src="./.resources/settings_web_search.png" height="440" alt="Web search feature settings" />
+<img src="./.resources/settings_music.png" height="440" alt="Music feature settings" />
 <img src="./.resources/settings_custom_pipeline.png" height="440" alt="Custom pipeline settings" />
 <img src="./.resources/settings_logging.png" height="440" alt="Logging settings" />
 </p>

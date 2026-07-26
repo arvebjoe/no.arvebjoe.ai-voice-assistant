@@ -63,10 +63,10 @@ and the test-firmware note are archived in [`COMPLETED.md` §11](./COMPLETED.md)
        settings + troubleshooting updated (README.txt doesn't enumerate per-device tuning —
        unchanged); app.json recomposed, `homey app validate` green at publish level.
 9. [x] **README/store-listing polish:** ~~retake the stale settings screenshots~~ (done
-       2026-07-26 — `.resources/settings.jpg` replaced by five section screenshots:
+       2026-07-26 — `.resources/settings.jpg` replaced by seven section screenshots:
        `settings_general.png`, `settings_smart_home.png`, `settings_weather.png`,
-       `settings_custom_pipeline.png`, `settings_logging.png`, reflecting the section-dropdown
-       redesign). ~~add the plaintext-only/no-Noise limitation note~~ (superseded — Noise
+       `settings_web_search.png`, `settings_music.png`, `settings_custom_pipeline.png`,
+       `settings_logging.png`, reflecting the section-dropdown redesign). ~~add the plaintext-only/no-Noise limitation note~~ (superseded — Noise
        encryption shipped); ~~spot-check README.txt~~ (done 2026-07-26 — accurate, incl.
        locks/encryption).
 10. [ ] **Release-testing checklist pass** ([`docs/release-testing-since-1.4.0.md`](./docs/release-testing-since-1.4.0.md)):
