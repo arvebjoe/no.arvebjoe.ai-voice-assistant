@@ -512,6 +512,25 @@ M6 npm-audit chains, M7 start() semantics, L1/L3/L4/L5) stay open in TODO.md.
   user-chosen LAN endpoints is the endpoint's purpose (documented in the validator comment).
   5 new tests, all asserting rejections never touch the network. 661 tests + lint green.
 
+- [x] **M7 — provider `start()` readiness semantics (closed 2026-07-26, decision: document +
+  close).** The review flagged inconsistent `start()` contracts (OpenAI resolves at "attempt
+  initiated", local pipeline after health probes) plus fire-and-forgotten restart promises.
+  Re-audit against current code showed the promise-discard sites were already fixed under H1
+  (zone-change restart and the pipeline's settings health re-probe `.catch()` explicitly;
+  the device's settings restart is awaited inside the serialized settings queue), and the
+  four providers already share one coherent de facto contract: `start()` = begin the attempt,
+  NEVER rejects on connection failure (failures emit `error`/`Unhealthy` and feed the
+  provider-owned reconnect campaign; missing API key emits `missing_api_key` with no
+  campaign), readiness is signaled by `open`/`Healthy` and queryable via `isConnected()`,
+  `restart()` = `close()` + delay + `start()`. That contract is now DOCUMENTED on
+  `IVoiceProvider.start()/close()/restart()` in `src/llm/voice-provider.mts` (plus the stale
+  "only implementation is OpenAI" header fixed), so the guarantee is pinned at the seam every
+  new provider implements. Centralizing lifecycle state (`stopped/connecting/ready/closing`)
+  in a base class was deliberately REJECTED for now: pure refactor risk on live-verified
+  reconnect behavior right before a store release, no user-visible gain — revisit only if L1
+  (class splits) ever opens these files. Callers must keep the two rules in the doc: never
+  gate on `await start()` meaning ready, and never retry `start()` around the campaign.
+
 **Closes the "Wi-Fi setup via Bluetooth (Improv BLE)" TODO section — implemented 2026-07-16,
 now FULLY verified on real hardware.** The feature: the PE/TR pairing wizard's "Set up Wi-Fi
 via Bluetooth" path (fixes the miserable TR first-setup experience — previously HA-in-Docker +

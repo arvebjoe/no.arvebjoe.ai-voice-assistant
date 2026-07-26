@@ -371,7 +371,10 @@ Settings changes apply on the fly — no app restart needed.
 
 **Per-device settings** (on the device in Homey): *Initial audio skip* and *Follow-up audio skip*
 trim a few milliseconds from the start of each turn to swallow the wake-word sound / mic-open
-noise, should you ever hear the assistant react to itself.
+noise, should you ever hear the assistant react to itself. *Microphone gain* boosts the
+microphone audio in software before speech recognition — 0 means automatic (each device model's
+tuned default; the ThirdReality's quiet mic gets 4×, the Voice PE needs none). Raise it if the
+assistant doesn't hear you from a distance; lower it if loud close-up speech gets misheard.
 
 ---
 
@@ -468,6 +471,8 @@ entirely on the engine you pick — with the local pipeline, nothing does.
   for the local pipeline.
 * **The assistant reacts to its own wake word sound:** increase the device's *Initial audio
   skip* setting slightly.
+* **The device wakes but doesn't hear what you say (or only up close):** raise the device's
+  *Microphone gain* setting; if loud close-up speech gets misheard instead, lower it.
 * **Flashing/USB issues:** try another USB cable/port; if needed, enter bootloader mode and
   re-flash.
 * **Device not updating OTA:** ensure it's online and reachable; verify hostname/DNS on your LAN.

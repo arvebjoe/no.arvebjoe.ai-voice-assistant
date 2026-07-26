@@ -41,12 +41,27 @@ and the test-firmware note are archived in [`COMPLETED.md` §11](./COMPLETED.md)
        `homey-log`→raven (cookie/uuid, no fix) and `homey-api`→socket.io-client 2.x
        (parseuri; npm's "fix" is a homey-api DOWNGRADE — do not apply). Closed as
        tracked-upstream; optionally nudge Athom for updated releases.
-7. [ ] **M7 — provider `start()` readiness semantics:** largely defused by the H1
-       serialization. Decide: document + close, or centralize state in the provider seam.
-8. [ ] **TR mic gain refinement:** expose `micGain` as a device setting (advanced) instead of
-       the hardcoded TR constant 4; sanity-check that 4× gain doesn't clip/hurt STT for loud
-       close speech. (Fix itself shipped + verified 2026-07-19 — context in the watch item
-       below and COMPLETED.md.)
+7. [x] **M7 — provider `start()` readiness semantics** DONE 2026-07-26 (decision: document +
+       close). The de facto contract was already consistent across all four providers —
+       `start()` = "attempt initiated", never rejects on connect failure, provider-owned
+       reconnect campaign, readiness via `open`/`Healthy`/`isConnected()` — and the
+       fire-and-forgotten call sites were fixed under H1. Contract now documented on
+       `IVoiceProvider.start()/close()/restart()` in `src/llm/voice-provider.mts`.
+       Centralizing lifecycle state = deliberate non-goal (goes with L1 if ever). Details in
+       [`COMPLETED.md` §7](./COMPLETED.md).
+8. [x] **TR mic gain refinement** DONE 2026-07-26: new `mic_gain` device setting (PE + TR
+       drivers' `driver.settings.compose.json`; number 0–20, default **0 = automatic** = the
+       driver's built-in default, so the code constant stays authoritative and existing
+       devices keep exact current behavior). `micGain` is now a mutable field resolved via
+       `resolveMicGain()` (0/unset/invalid → `defaultMicGain` — the renamed subclass override,
+       TR = 4; positive values clamped 1–20); applies live in `onSettings`, no reconnect. Gain
+       loop now `Math.round`s (fractional gains would make `writeInt16LE` throw). Clip
+       sanity-check (analytical): TR close speech ~330–430 int16 RMS → ×4 stays well under
+       32767 even at peak; the clamp catches extremes, and the setting itself is now the
+       mitigation if a loud talker ever distorts (turn it down). Live confirmation on the TR
+       stays part of the release-testing pass (item 10). 5 new harness tests; README.md
+       settings + troubleshooting updated (README.txt doesn't enumerate per-device tuning —
+       unchanged); app.json recomposed, `homey app validate` green at publish level.
 9. [~] **README/store-listing polish:** retake the stale settings screenshots
        (`.resources/settings.jpg`, predate the settings redesign — needs the owner's Homey).
        ~~add the plaintext-only/no-Noise limitation note~~ (superseded — Noise encryption

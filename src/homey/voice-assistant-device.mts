@@ -89,8 +89,10 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
   // Software mic gain applied to incoming 16 kHz PCM before VAD/STT. 1 = off.
   // The TR's WebRTC-processed mic is far quieter than the PE's XMOS feed
   // (close speech peaks ~330-430 int16 RMS vs the local VAD's ~500 speech
-  // threshold), so its driver subclass raises this.
-  readonly micGain: number = 1;
+  // threshold), so its driver subclass raises this default. The `mic_gain`
+  // device setting overrides it at runtime (0/unset = use this default).
+  readonly defaultMicGain: number = 1;
+  private micGain: number = 1;
 
   // Captures raw mic input and serves it back as a playback URL for debugging.
   // Emulator-only: the `input_buffer_debug` setting is honored solely when the
@@ -162,6 +164,8 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     if (settings.initial_audio_skip) {
       this.skipInitialBytes = this.msToBytes(settings.initial_audio_skip, 16000, 1, 2);
     }
+
+    this.micGain = this.resolveMicGain(settings.mic_gain);
 
     // Follow-up burst-skip: use the setting if present, else the small default. Unlike the
     // wake skip this defaults to a non-zero value so the mic-open burst is always swallowed.
@@ -344,10 +348,12 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
         return;
       }
 
-      // Boost quiet mics (see micGain) in place, with int16 clamping.
+      // Boost quiet mics (see micGain) in place, with int16 clamping. The
+      // round matters: the setting allows fractional gains, and writeInt16LE
+      // throws on non-integers.
       if (this.micGain !== 1) {
         for (let i = 0; i + 1 < trimmed.length; i += 2) {
-          const v = trimmed.readInt16LE(i) * this.micGain;
+          const v = Math.round(trimmed.readInt16LE(i) * this.micGain);
           trimmed.writeInt16LE(v > 32767 ? 32767 : (v < -32768 ? -32768 : v), i);
         }
       }
@@ -1391,6 +1397,19 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
   }
 
   /**
+   * Resolve the effective mic gain from the `mic_gain` device setting.
+   * 0/unset/invalid means "automatic" — the driver's built-in default
+   * (`defaultMicGain`), so tuning the constant keeps working for devices
+   * that never touched the setting. Positive values are clamped to the
+   * setting's 1–20 range.
+   */
+  private resolveMicGain(value: unknown): number {
+    const n = Number(value);
+    if (!Number.isFinite(n) || n <= 0) return this.defaultMicGain;
+    return Math.min(20, Math.max(1, n));
+  }
+
+  /**
    * One-line JSON for the conversation trace. Long payloads (device lists, tool
    * results) are truncated so a single tool call can't flood the log.
    */
@@ -1452,6 +1471,12 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     this.followupSkipBytes = this.msToBytes(followupSkipMs, 16000, 1, 2);
 
     this.logger.info(`Audio skip updated: initial=${skipMs ?? 'unset'}ms, followup=${followupSkipMs}ms`);
+
+    // Mic gain applies live to the next mic chunk — no reconnect needed.
+    if (changedKeys.includes('mic_gain')) {
+      this.micGain = this.resolveMicGain(newSettings.mic_gain);
+      this.logger.info(`Mic gain set to ${this.micGain}x${Number(newSettings.mic_gain) > 0 ? '' : ` (automatic — driver default)`}`);
+    }
 
     // Wake-word change: resolve the typed name/id against what the satellite
     // reported and activate it (VoiceAssistantSetConfiguration). Throwing here

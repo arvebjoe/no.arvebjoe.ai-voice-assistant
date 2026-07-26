@@ -54,6 +54,22 @@
         }
     },
     {
+        "id": "mic_gain",
+        "type": "number",
+        "label": {
+            "en": "Microphone gain"
+        },
+        "hint": {
+            "en": "Software boost applied to the microphone audio before speech recognition. 0 = automatic (4x for this device — its microphone is much quieter than other satellites). Raise it if the assistant does not hear you; lower it towards 1 if loud close-up speech gets misheard (distortion from clipping)."
+        },
+        "value": 0,
+        "min": 0,
+        "max": 20,
+        "units": {
+            "en": "x"
+        }
+    },
+    {
         "id": "encryption_key",
         "type": "password",
         "label": {

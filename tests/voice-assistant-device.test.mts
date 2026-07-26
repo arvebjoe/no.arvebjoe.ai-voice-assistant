@@ -134,6 +134,66 @@ describe('VoiceAssistantDevice (harness)', () => {
         });
     });
 
+    describe('mic gain — `mic_gain` device setting', () => {
+        // The gain is applied IN PLACE on the mic chunk before resampling, so
+        // asserting on the emitted buffer observes exactly what the provider gets.
+        function pcm(...samples: number[]): Buffer {
+            const b = Buffer.alloc(samples.length * 2);
+            samples.forEach((s, i) => b.writeInt16LE(s, i * 2));
+            return b;
+        }
+        function samples(b: Buffer): number[] {
+            const out: number[] = [];
+            for (let i = 0; i + 1 < b.length; i += 2) out.push(b.readInt16LE(i));
+            return out;
+        }
+
+        it('defaults to the driver default (1x — chunk untouched)', async () => {
+            const h = await createHarness();
+            startTurn(h);
+            const buf = pcm(1000, -1000);
+            h.esp.emit('chunk', buf);
+            expect(samples(buf)).toEqual([1000, -1000]);
+        });
+
+        it('applies the mic_gain setting with int16 clamping', async () => {
+            const h = await createHarness({ settings: { mic_gain: 4 } });
+            startTurn(h);
+            const buf = pcm(1000, -1000, 20000, -20000);
+            h.esp.emit('chunk', buf);
+            expect(samples(buf)).toEqual([4000, -4000, 32767, -32768]);
+        });
+
+        it('treats mic_gain = 0 as automatic (driver default, 1x here)', async () => {
+            const h = await createHarness({ settings: { mic_gain: 0 } });
+            startTurn(h);
+            const buf = pcm(500);
+            h.esp.emit('chunk', buf);
+            expect(samples(buf)).toEqual([500]);
+        });
+
+        it('a mic_gain change via onSettings applies to the next chunk (no restart)', async () => {
+            const h = await createHarness();
+            await (h.device as any).onSettings({
+                oldSettings: { mic_gain: 0 },
+                newSettings: { mic_gain: 2 },
+                changedKeys: ['mic_gain'],
+            });
+            startTurn(h);
+            const buf = pcm(300);
+            h.esp.emit('chunk', buf);
+            expect(samples(buf)).toEqual([600]);
+        });
+
+        it('rounds fractional gains so writeInt16LE never throws', async () => {
+            const h = await createHarness({ settings: { mic_gain: 1.5 } });
+            startTurn(h);
+            const buf = pcm(333);
+            h.esp.emit('chunk', buf);
+            expect(samples(buf)).toEqual([500]); // 333 * 1.5 = 499.5 -> rounds to 500
+        });
+    });
+
     describe('wake-word selection', () => {
         const nabu = { id: 'okay_nabu', wakeWord: 'Okay Nabu', trainedLanguages: ['en'] };
         const homey = { id: 'hey_homey', wakeWord: 'Hey Homey', trainedLanguages: ['en'] };

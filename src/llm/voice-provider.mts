@@ -4,11 +4,12 @@ import { TypedEmitter } from "tiny-typed-emitter";
  * Provider-agnostic voice/LLM abstraction.
  *
  * `IVoiceProvider` is the seam between the device (`voice-assistant-device.mts`)
- * and a concrete backend. Today the only implementation is the OpenAI Realtime
- * agent, but the contract is deliberately backend-neutral so a provider can be:
- *   - a single realtime speech-in / speech-out WebSocket (like OpenAI Realtime), or
- *   - a composed pipeline (e.g. local Whisper STT -> Claude/Ollama LLM -> Piper/OpenAI TTS),
- *     possibly mixing WebSocket and slower REST transports internally.
+ * and a concrete backend. The contract is deliberately backend-neutral: a provider
+ * can be a single realtime speech-in / speech-out WebSocket (OpenAI Realtime,
+ * Gemini Live) or a composed pipeline (the local/custom pipeline and its Mistral
+ * subclass: VAD -> STT -> LLM -> TTS), possibly mixing WebSocket and slower REST
+ * transports internally. `voice-provider-factory.mts` picks the implementation
+ * from the `voice_provider` global setting.
  *
  * The device treats the provider as a black box: it pushes microphone PCM in and
  * receives audio/text + tool calls out, plus lifecycle and on-the-fly settings updates.
@@ -107,8 +108,35 @@ export interface IVoiceProvider extends TypedEmitter<VoiceProviderEvents> {
     readonly apiKeySettingKey: string;
 
     // --- lifecycle ---
+    /**
+     * Begin connecting. LIFECYCLE CONTRACT (all providers conform — code_review_2 M7):
+     *
+     *   - Resolving means "connection attempt initiated", NOT "ready". A provider
+     *     MAY resolve later than that (the local pipeline resolves only after its
+     *     health probes pass), but callers MUST NOT rely on readiness — gate on
+     *     the `open`/`Healthy` events or poll `isConnected()` instead.
+     *   - `start()` NEVER rejects on connection failure. Async connect failures
+     *     emit `error`/`Unhealthy` and feed the provider-owned reconnect campaign
+     *     (`reconnecting`/`reconnected` events); the campaign is the only retry
+     *     mechanism — callers must not retry `start()` themselves. Exception: a
+     *     missing API key emits `missing_api_key` and starts NO campaign (nothing
+     *     changes until settings do).
+     *   - A fresh `start()` cancels any pending reconnect timer and clears the
+     *     manually-closing flag set by `close()`, so drops reconnect again.
+     */
     start(): Promise<void>;
+    /**
+     * Tear down the transport and stop the reconnect campaign. Synchronous and
+     * idempotent; emits `close`. After `close()` the provider stays down until
+     * the next `start()`.
+     */
     close(code?: number, reason?: string): void;
+    /**
+     * `close()` + short delay + `start()`. Same non-rejecting semantics as
+     * `start()`. Callers still await it (or `.catch()` explicitly) so a sync
+     * throw never becomes an unhandled rejection; concurrent settings-driven
+     * restarts are serialized by the device's settings queue (H1), not here.
+     */
     restart(): Promise<void> | void;
     isConnected(): boolean;
     hasApiKey(): boolean;

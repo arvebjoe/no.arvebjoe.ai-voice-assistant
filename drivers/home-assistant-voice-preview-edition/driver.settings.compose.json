@@ -54,6 +54,22 @@
         }
     },
     {
+        "id": "mic_gain",
+        "type": "number",
+        "label": {
+            "en": "Microphone gain"
+        },
+        "hint": {
+            "en": "Software boost applied to the microphone audio before speech recognition. 0 = automatic (1x for this device — its microphone is already well calibrated). Raise it only if the assistant does not hear you from a distance; too much gain distorts loud close-up speech (clipping)."
+        },
+        "value": 0,
+        "min": 0,
+        "max": 20,
+        "units": {
+            "en": "x"
+        }
+    },
+    {
         "id": "encryption_key",
         "type": "password",
         "label": {
