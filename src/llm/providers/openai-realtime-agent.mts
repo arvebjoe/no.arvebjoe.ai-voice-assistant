@@ -995,10 +995,25 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
         return `Smart home voice commands. Device and room names: ${parts.join(', ')}.`;
     }
 
+    /**
+     * Advanced VAD tuning from the global settings ('openai_vad_threshold',
+     * 'openai_vad_silence_ms'), clamped so a typo can't render the session
+     * unusable. Empty/invalid = the built-in default.
+     */
+    private numberSetting(key: string, fallback: number, min: number, max: number): number {
+        const raw = settingsManager.getGlobal<unknown>(key);
+        const n = typeof raw === 'number' ? raw : parseFloat(String(raw ?? ''));
+        if (!Number.isFinite(n)) return fallback;
+        return Math.min(max, Math.max(min, n));
+    }
+
     private sendSessionUpdate() {
         // tools schema
         const tools = this.sessionToolsArray();
         const sttPrompt = this.sttVocabularyPrompt();
+
+        const vadThreshold = this.numberSetting('openai_vad_threshold', 0.6, 0.1, 0.9);
+        const vadSilenceMs = Math.round(this.numberSetting('openai_vad_silence_ms', 600, 200, 2000));
 
         // Configure session: model, voice, audio formats, STT language, VAD, instructions.
         const payload = {
@@ -1029,9 +1044,9 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
                         },
                         turn_detection: {
                             type: "server_vad",
-                            threshold: 0.6,
+                            threshold: vadThreshold,
                             prefix_padding_ms: 400,
-                            silence_duration_ms: 600,
+                            silence_duration_ms: vadSilenceMs,
                             idle_timeout_ms: 30000,  // Auto-close idle sessions after 30s to reduce costs
                             create_response: false,
                             interrupt_response: false

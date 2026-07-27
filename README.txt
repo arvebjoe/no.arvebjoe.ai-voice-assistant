@@ -6,6 +6,8 @@ You choose the AI engine:
     - Mistral (Voxtral) — the European alternative on one API key: streaming Voxtral speech recognition that transcribes while you talk, a Mistral chat model, and Voxtral voices.
     - Local / self-hosted — Whisper, Voxtral Realtime, Ollama, LM Studio, Piper, Wyoming and any OpenAI-compatible server. Mix and match per stage; with a fully local setup no audio leaves your network.
 
+Does the assistant trigger on TV sound, or cut you off mid-sentence? With the OpenAI engine you can tune the speech detection sensitivity and the pause length that ends your turn, under advanced settings.
+
 The assistant can also search the web for current information (opening hours, departures, what's on at the cinema) using OpenAI web search or the Brave Search API, and it can tell you what it is able to do when you ask for help.
 
 Smart locks: locking by voice always works, but unlocking is off by default — anyone within earshot can talk to the device, so you must first enable "Allow unlocking by voice" in the app settings. Even then only one lock can be unlocked per command.

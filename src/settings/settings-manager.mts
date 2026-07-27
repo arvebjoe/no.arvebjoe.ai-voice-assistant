@@ -154,7 +154,10 @@ export class SettingsManager {
     
     // Homey settings API does not expose list directly; define keys we care about explicitly.
     // Extend this list as needed.
-    const knownKeys = ['openai_api_key', 'openai_model', 'gemini_api_key', 'openweather_api_key', 'selected_language_code', 'selected_language_name', 'selected_voice', 'ai_instructions', 'voice_provider', 'input_buffer_debug',
+    const knownKeys = ['openai_api_key', 'openai_model',
+      // Advanced OpenAI server-VAD tuning (speech threshold + end-of-turn silence)
+      'openai_vad_threshold', 'openai_vad_silence_ms',
+      'gemini_api_key', 'openweather_api_key', 'selected_language_code', 'selected_language_name', 'selected_voice', 'ai_instructions', 'voice_provider', 'input_buffer_debug',
       // Web search tool (backend choice + the Brave key; 'openai' reuses openai_api_key)
       'web_search_provider', 'brave_api_key',
       // Feature gates (default on) — disabled features cost no LLM context
