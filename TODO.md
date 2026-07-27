@@ -62,10 +62,13 @@ and the test-firmware note are archived in [`COMPLETED.md` §11](./COMPLETED.md)
        stays part of the release-testing pass (item 10). 5 new harness tests; README.md
        settings + troubleshooting updated (README.txt doesn't enumerate per-device tuning —
        unchanged); app.json recomposed, `homey app validate` green at publish level.
-9. [~] **README/store-listing polish:** retake the stale settings screenshots
-       (`.resources/settings.jpg`, predate the settings redesign — needs the owner's Homey).
-       ~~add the plaintext-only/no-Noise limitation note~~ (superseded — Noise encryption
-       shipped); ~~spot-check README.txt~~ (done 2026-07-26 — accurate, incl. locks/encryption).
+9. [x] **README/store-listing polish:** ~~retake the stale settings screenshots~~ (done
+       2026-07-26 — `.resources/settings.jpg` replaced by seven section screenshots:
+       `settings_general.png`, `settings_smart_home.png`, `settings_weather.png`,
+       `settings_web_search.png`, `settings_music.png`, `settings_custom_pipeline.png`,
+       `settings_logging.png`, reflecting the section-dropdown redesign). ~~add the plaintext-only/no-Noise limitation note~~ (superseded — Noise
+       encryption shipped); ~~spot-check README.txt~~ (done 2026-07-26 — accurate, incl.
+       locks/encryption).
 10. [ ] **Release-testing checklist pass** ([`docs/release-testing-since-1.4.0.md`](./docs/release-testing-since-1.4.0.md)):
        tick off everything the 2026-07-19→23 live sessions already proved (pairing/BLE, Mistral,
        music, TR end-to-end, soak); then run what genuinely remains — upgrade path 1.4.0→1.4.1
@@ -207,5 +210,6 @@ Add new work here as it comes up. Reference docs that used to feed this list:
 - [`OPENAI_API_IMPROVEMENTS.md`](./OPENAI_API_IMPROVEMENTS.md) — OpenAI Realtime API audit (all items resolved)
 - [`docs/home-assistant-voice-preview-edition/implementation-gap-analysis.md`](./docs/home-assistant-voice-preview-edition/implementation-gap-analysis.md) — ESPHome native-API coverage vs. the PE docs
 
-**Not tracked but worth remembering before a store release:** the README screenshots
-(`.resources/settings.jpg`) predate the provider-choice settings redesign and are stale.
+**Not tracked but worth remembering before a store release:** ~~the README screenshots
+predate the provider-choice settings redesign and are stale~~ (done 2026-07-26 — replaced with
+five current section screenshots under `.resources/settings_*.png`).
