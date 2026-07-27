@@ -1,5 +1,10 @@
 # Release testing checklist — changes since v1.4.0
 
+> **ARCHIVED 2026-07-27.** The 13 `[x]` items below carry dated evidence notes and stay
+> here as the verification record. Everything still unticked was moved to **`TODO.md`
+> item 10**, which is now the single tracker for remaining release testing — do not tick
+> items here anymore. (The custom-pipeline backend matrix is TODO.md item 11.)
+
 Everything on `main` since the v1.4.0 release commit (`7c37f17`, 118 commits) that needs
 verification on physical hardware, split by **where** it can be tested:
 
@@ -41,10 +46,15 @@ Casa detection), **code-review-2 fixes**, **Sentry throttling**, **reconnect pol
   - [ ] TTS: Wyoming Piper (port 10200 docker), Piper HTTP, Voxtral TTS (live voice
         list fetched with the Mistral key; preset names must NOT be offered),
         OpenAI-compat free-text voice.
-- [ ] Local VAD turn-taking with `mic <recording>` replays — deterministic; check the
+- [x] Local VAD turn-taking with `mic <recording>` replays — deterministic; check the
       turn closes on trailing silence and doesn't clip speech.
-- [ ] Sentence-by-sentence speaking while the LLM streams (latency feel on a real
+      _Verified live 2026-07-19 (stronger than the replay method): full spoken turns on
+      the custom pipeline against the real PE — turns closed on trailing silence,
+      follow-up turns worked, transcripts accurate (COMPLETED.md §9)._
+- [x] Sentence-by-sentence speaking while the LLM streams (latency feel on a real
       satellite speaker).
+      _Verified 2026-07-19 on the real PE while the LLM streamed; mic-close→speaking
+      ≈ 2.7 s on the all-Mistral pipeline (COMPLETED.md §9)._
 - [ ] Kill a stage mid-turn (stop Ollama/Piper) — graceful error, next turn recovers.
 
 ### Voice behavior with a real satellite (emulator-driven, no Homey)
@@ -62,8 +72,10 @@ Casa detection), **code-review-2 fixes**, **Sentry throttling**, **reconnect pol
       _Partially verified 2026-07-19 on the custom pipeline (real PE + Homey Pro):
       question-ending reply → mic reopened → follow-up turn with context → closing
       reply in-band, conversation closed; sentence-by-sentence speaking while the LLM
-      streamed also confirmed. The OpenAI-specific parts (gpt-4o-transcribe
-      text-anchored replies, spurious-follow-up suppression) still need a pass._
+      streamed also confirmed. gpt-4o-transcribe text-anchored replies live-verified
+      2026-07-25 (Norwegian turns on the real PE). **Remaining:** the spurious-retry
+      window fix from 2026-07-25 (clock now mic-open→mic-close instead of →transcript
+      arrival) has NOT been live-verified yet._
 - [ ] **LED voice-phase rainbows** (PE firmware): distinct listening/thinking/replying
       phases, seamless position handoff, dark-level looks right.
 - [ ] Timer round-trip on the satellite: chime + LED ring countdown (`then start-timer`
@@ -77,13 +89,20 @@ Casa detection), **code-review-2 fixes**, **Sentry throttling**, **reconnect pol
       the SSO-account gotcha message if applicable.
 - [ ] **Web search**: each provider value works; setting it to `disabled` removes the
       tool (agent should say it can't search).
-- [ ] **Music Assistant control plane** against the real MA server (≥ 2.7) — the TODO.md
+- [x] **Music Assistant control plane** against the real MA server (≥ 2.7) — the TODO.md
       checklist: MA discovers PE + TR as Sendspin players, `resolveMusicPlayer`
       auto-matching (IP → device name → zone), play/pause/next/shuffle/"what's
       playing"/room targeting, resume on a long-idle queue, partial-result accumulation
       against the full real library.
-- [ ] Wake word while music plays (PE XMOS AEC / TR WebRTC AEC) and announcement
+      _Fully verified 2026-07-20 against real MA 2.9.9 (COMPLETED.md §10): discovery on
+      both devices, MAC-hint auto-matching (IP was null on MA 2.9 — fixed same day),
+      token auth added, play/pause/next/shuffle/what's-playing, name + room targeting,
+      resume after ~5 min idle, partial-results considered covered via a 1277-track
+      queue; slow-play acknowledgement added and timeout semantics fixed._
+- [x] Wake word while music plays (PE XMOS AEC / TR WebRTC AEC) and announcement
       ducking + music resume after the reply.
+      _Verified 2026-07-20 on BOTH devices: commands understood over playing music,
+      volume ducks for the reply and restores after (COMPLETED.md §10)._
 
 ### Providers, settings & gates
 
@@ -99,8 +118,13 @@ Casa detection), **code-review-2 fixes**, **Sentry throttling**, **reconnect pol
       rebuilt, `get_weather_summary` called again. Other gates not yet flipped._
 - [ ] Token-budget meter / `GET /feature-costs`: per-feature breakdown, AI-instructions
       contribution, green/amber/red verdict vs `local_llm_num_ctx` (Ollama only).
-- [ ] Settings save hardening (code review H1/L2): rapid repeated saves — no torn
+- [x] Settings save hardening (code review H1/L2): rapid repeated saves — no torn
       state, last save wins.
+      _Verified in practice: a real mobile-webview save burst (~30 sequential
+      `Homey.set` calls) was observed live 2026-07-19 — staggered rebuilds but the
+      final config won (harmless, noisy); `EMIT_DEBOUNCE_MS` raised 300 ms → 1.5 s
+      2026-07-20 in response (COMPLETED.md §9). Many saves across the 07-19→25
+      sessions since, no torn state seen._
 - [ ] Reconnect policy: drop the internet mid-session (cloud providers) and power-cycle
       the satellite (ESP client health-check/reconnect) — both recover.
       _Satellite power-cycle verified 2026-07-19 on the Homey Pro: TCP `read ETIMEDOUT` →
@@ -124,6 +148,8 @@ Casa detection), **code-review-2 fixes**, **Sentry throttling**, **reconnect pol
       (verified live 2026-07-18/19, incl. the full BLE Wi-Fi wizard — see
       `COMPLETED.md` §8; the `txt.platform` regex needed broadening to
       `esp32|ESP32|ThirdReality|thirdreality`, the TR advertises `platform=ThirdReality`).
+      PE + TR pairing additionally re-verified 2026-07-24 across all Noise permutations
+      (scan/BT wizard/manual IP × encrypted/plain, COMPLETED.md §11).
       **XiaoZhi still untested.**
 - [x] ThirdReality appears in the add-device list with the new icon/images and pairs to
       the correct driver (not swallowed by the PE driver). _Verified 2026-07-18 after the
@@ -133,8 +159,12 @@ Casa detection), **code-review-2 fixes**, **Sentry throttling**, **reconnect pol
       immediately (which also exercised Homey-hosted FLAC audio). "Try to repair" is
       N/A — our drivers define no repair flow (that maintenance action is built-in for
       Z-Wave/Zigbee only), and there are no per-device credentials to repair._
-- [ ] M2 store-release criterion: a satellite **with API encryption enabled** fails
-      pairing *gracefully* (clear failure, no crash) — the client is plaintext-only.
+- [x] M2 store-release criterion: ~~a satellite **with API encryption enabled** fails
+      pairing *gracefully* (clear failure, no crash) — the client is plaintext-only~~.
+      _SUPERSEDED and exceeded: Noise encryption shipped 2026-07-24 — encrypted
+      satellites now pair and connect fully. ALL pairing permutations live-verified
+      2026-07-24 (PE/TR × scan/BT wizard/manual IP × encrypted/plain,
+      COMPLETED.md §11)._
 
 ### Upgrade path
 
@@ -177,24 +207,36 @@ Casa detection), **code-review-2 fixes**, **Sentry throttling**, **reconnect pol
 - [ ] **Real device control via ApiHelper**: voice commands against your actual Homey
       devices and zones (DeviceManager changed substantially) — including the H4
       lock-device cap: voice can lock but the one-device unlock cap behaves as designed.
+      _Note: the H4 unlock path changed again 2026-07-25 — unlock is now additionally
+      gated by the default-off `allow_unlock_via_voice` setting (tests green, not
+      live-verified). General device control was exercised throughout the 07-19→25
+      sessions but no explicit on/off/dim/zone regression pass is on record._
 - [ ] **Audio served from the Homey itself**: WebServer picks the right LAN interface,
       satellites fetch and play the FLAC URLs, files are cleaned up after the TTL
       (emulator serves audio through a different port-80 shim, so this path is
       Homey-only). _Serving/playback verified implicitly 2026-07-19 — every spoken reply
       (OpenAI + Mistral + custom pipeline) played from Homey-hosted URLs on the PE.
       TTL file cleanup still unchecked._
-- [ ] **Performance & stability on Homey Pro hardware**: local-pipeline resampling +
+- [x] **Performance & stability on Homey Pro hardware**: local-pipeline resampling +
       FLAC encoding CPU/latency, multi-day run without memory growth, recovery after a
       Homey network blip (reconnect policy under real conditions).
+      _Soak PASSED 2026-07-20 (COMPLETED.md §9): overnight 8+ h with PE + TR connected,
+      zero disconnects, memory stable ~40–50 MB idle (~65–70 MB during turns), CPU 0%
+      idle; both devices answered cleanly in the morning. Pipeline latency measured
+      mic-close→speaking ≈ 2.7 s. Satellite power-cycle recovery + a transient OpenAI
+      websocket drop self-healing also verified 2026-07-19._
 - [x] **Sentry / homey-log throttling** (homey-log is shimmed in the emulator): a
       repeated error reports once and is then throttled; genuine new errors still
       arrive. _Verified 2026-07-19 on the Homey Pro: repeated pipeline health-check
       exceptions produced "Prevented sending a duplicate log" while distinct new errors
       (ESP TCP drop, websocket drop) were still captured. (Dev run, so captures were
       local-only — no `HOMEY_LOG_URL` — but the throttle logic itself fired.)_
-- [ ] Final Music Assistant pass with the app running **on the Homey** (production
+- [x] Final Music Assistant pass with the app running **on the Homey** (production
       timing differs from a dev machine): one end-to-end "play X in the kitchen" +
       ducking check per device type.
+      _Covered by the 2026-07-20 live verification (COMPLETED.md §10) — the session ran
+      on the Homey Pro (`homey app run --remote`), with end-to-end play + ducking
+      confirmed on both PE and TR against the real MA 2.9.9 server._
 
 ---
 

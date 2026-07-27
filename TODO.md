@@ -59,7 +59,7 @@ and the test-firmware note are archived in [`COMPLETED.md` §11](./COMPLETED.md)
        sanity-check (analytical): TR close speech ~330–430 int16 RMS → ×4 stays well under
        32767 even at peak; the clamp catches extremes, and the setting itself is now the
        mitigation if a loud talker ever distorts (turn it down). Live confirmation on the TR
-       stays part of the release-testing pass (item 10). 5 new harness tests; README.md
+       stays part of the release-testing items (10–29, fits naturally under item 14). 5 new harness tests; README.md
        settings + troubleshooting updated (README.txt doesn't enumerate per-device tuning —
        unchanged); app.json recomposed, `homey app validate` green at publish level.
 9. [x] **README/store-listing polish:** ~~retake the stale settings screenshots~~ (done
@@ -69,34 +69,84 @@ and the test-firmware note are archived in [`COMPLETED.md` §11](./COMPLETED.md)
        `settings_logging.png`, reflecting the section-dropdown redesign). ~~add the plaintext-only/no-Noise limitation note~~ (superseded — Noise
        encryption shipped); ~~spot-check README.txt~~ (done 2026-07-26 — accurate, incl.
        locks/encryption).
-10. [ ] **Release-testing checklist pass** ([`docs/release-testing-since-1.4.0.md`](./docs/release-testing-since-1.4.0.md)):
-       tick off everything the 2026-07-19→23 live sessions already proved (pairing/BLE, Mistral,
-       music, TR end-to-end, soak); then run what genuinely remains — upgrade path 1.4.0→1.4.1
-       on the live Homey, flow-editor cards, settings webview on mobile. The custom-pipeline
-       matrix is item 11 below.
-11. [ ] **Custom-pipeline backend matrix — test EVERY implementation (STT, LLM, TTS).**
-       Overlaps the checklist's "Custom pipeline" block but tracked here explicitly. First
-       build **a repeatable way to test them**: a matrix-runner script (emulator side, no Homey
-       needed) that exercises each backend client in isolation against the real endpoint —
-       feed one known WAV to every STT backend and diff transcripts, one fixed prompt (incl. a
-       tool call) to every LLM backend, one fixed sentence to every TTS backend and check
-       audio comes back — then one full `ask`/`mic` voice turn per backend family via the
-       emulator + settings Test buttons (`/test-local-stage`) for the UI path. Needed servers:
-       Wyoming dockers (10300/10200), Whisper HTTP, Piper HTTP, Ollama, LM Studio, a Mistral
-       key, one OpenAI-compat endpoint (Groq/speaches/kokoro cover STT/LLM/TTS cheaply).
-       Implementations to tick off (each at least once, stage in isolation + one spoken turn):
-       - STT: [ ] Whisper HTTP · [ ] Wyoming faster-whisper · [ ] Mistral Voxtral (batch) ·
-         [x] Mistral Voxtral Realtime (streaming — live-verified 2026-07-19) · [ ] OpenAI-compat
-       - LLM: [ ] Ollama (verify `local_llm_num_ctx` actually applied) · [x] LM Studio
-         (live-verified 2026-07-19, model auto-pick OK) · [x] Mistral (live-verified
-         2026-07-19, tool calls OK) · [ ] OpenAI-compat
-       - TTS: [ ] Piper HTTP · [ ] Wyoming Piper · [x] Mistral Voxtral TTS (live-verified
-         2026-07-19; still check: voice dropdown lists live voices, presets NOT offered) ·
-         [ ] OpenAI-compat (free-text voice override)
-       - Cross-cutting: [ ] streaming-STT batch fallback (kill the ws mid-utterance) ·
-         [ ] kill a stage mid-turn (stop Ollama/Piper) — graceful error, next turn recovers ·
-         [ ] `MIRRORED_INPUTS` key/model mirroring on the settings page
-12. [ ] **L1 — split oversized classes / reduce `any` at trust boundaries.** Long-term, NOT a
+10. [ ] Wake-word model (0.98 cutoff): reliability at distance / with TV on, false-accept
+         rate (the PE runs the `.esp_home` firmware daily since ~07-19)
+11. [ ] Mic auto_gain 6 dBFS: transcription accuracy vs distortion on real hardware
+12. [x] LED voice-phase rainbows: distinct listening/thinking/replying, seamless position
+         handoff, dark-level looks right
+13. [ ] Timer round-trip on the satellite: chime + LED ring countdown (voice or
+         `then start-timer`)
+14. [ ] Smart-home control regression: on/off, dim, zone targeting against real devices
+         (tool-manager grew ~900 lines) — include the H4 lock path live: voice-lock works,
+         unlock blocked until `allow_unlock_via_voice` is on, then single-device-only
+         (gate shipped 2026-07-25, tests green, never live-verified)
+15. [x] Settings page in the real mobile-app webview: rendering, section dropdown, sticky
+         footer, budget-meter tap breakdown, stage Test buttons (the 07-19 pass verified all
+         of this through Homey's API routing — confirm whether that was the mobile app; if
+         yes just tick)
+16. [ ] Spurious-retry window fix (2026-07-25, clock now mic-open→mic-close) — the one
+         conversation-flow piece NEVER live-verified (one live conversation session covers
+         items 16 + 17 together)
+17. [ ] Audio-skip defaults: wake sound not transcribed (`initial_audio_skip` now 0) and
+         follow-up turns don't lose the first word (new `followup_audio_skip`)
+18. [x] Bring! with real credentials: add / remove / read items; SSO-account gotcha message
+         (items 18–21: console `ask` is fine, no satellite needed)
+19. [ ] Web search: each provider value works; `disabled` removes the tool (agent says it
+         can't search)
+20. [ ] Gemini live provider switch — the only provider never exercised (openai ↔ local ↔
+         mistral rebuild-on-save verified 2026-07-19)
+21. [x] Feature-gate flips besides weather (verified both ways 2026-07-19): web search,
+         timers, Bring!, Music Assistant on/off → provider restarts, tool list changes
+22. [x] Budget-meter verdict (green/amber/red) vs `local_llm_num_ctx` — needs Ollama,
+         overlaps item 36
+23. [ ] Flow-card run-listeners from the console: `then speak-text`,
+         `then ask-agent-output-as-text` (tokens printed), `and is-muted`, timer cards
+         (TR `button-pressed` already verified in a real flow 2026-07-19)
+24. [ ] Emulator `discover` finds and correctly types PE vs Nabu Casa vs TR
+25. [x] **Upgrade path**: install this build over a real 1.4.0 — devices survive without
+         re-pairing, new settings keys get sane defaults (especially what
+         `initial_audio_skip` ends up as on *existing* devices after the 350→0 default
+         change), provider still connects
+26. [ ] XiaoZhi pairing through Homey's real pairing UI (only untested device type)
+27. [ ] Device tile: active timer name + time remaining shown; volume/mute changes from
+         the Homey UI reach the satellite
+28. [x] Audio-file TTL cleanup on the Homey (serving/playback already verified implicitly)
+29. [ ] Internet drop mid-session (cloud providers) recovers (satellite power-cycle side
+         already verified 2026-07-19)
+30. [ ] **Build the custom-pipeline matrix-runner** — the repeatable way to test every
+         backend implementation (items 31–46). A script (emulator side, no Homey needed)
+         that exercises each backend client in isolation against the real endpoint: feed
+         one known WAV to every STT backend and diff transcripts, one fixed prompt (incl.
+         a tool call) to every LLM backend, one fixed sentence to every TTS backend and
+         check audio comes back. Then each backend also gets one full `ask`/`mic` voice
+         turn per family via the emulator + settings Test buttons (`/test-local-stage`)
+         for the UI path. Needed servers: Wyoming dockers (10300/10200), Whisper HTTP,
+         Piper HTTP, Ollama, LM Studio, a Mistral key, one OpenAI-compat endpoint
+         (Groq/speaches/kokoro cover STT/LLM/TTS cheaply). Each backend counts as done
+         after stage-in-isolation + one spoken turn.
+31. [ ] STT: Whisper HTTP
+32. [ ] STT: Wyoming faster-whisper (port 10300 docker)
+33. [ ] STT: Mistral Voxtral (batch)
+34. [x] STT: Mistral Voxtral Realtime (streaming) — live-verified 2026-07-19
+35. [ ] STT: OpenAI-compat
+36. [ ] LLM: Ollama — also verify `local_llm_num_ctx` is actually applied (closes the
+         budget-meter half of item 22)
+37. [x] LLM: LM Studio — live-verified 2026-07-19, model auto-pick from `/v1/models` OK
+38. [x] LLM: Mistral — live-verified 2026-07-19, tool calls OK (9-char tool_call_id)
+39. [ ] LLM: OpenAI-compat
+40. [ ] TTS: Piper HTTP
+41. [ ] TTS: Wyoming Piper (port 10200 docker)
+42. [x] TTS: Mistral Voxtral TTS — live-verified 2026-07-19 (residual settings-page check
+         folded into item 46)
+43. [ ] TTS: OpenAI-compat (free-text voice override)
+44. [ ] Cross-cutting: streaming-STT batch fallback — kill the websocket mid-utterance,
+         batch path takes over
+45. [ ] Cross-cutting: kill a stage mid-turn (stop Ollama/Piper) — graceful error, next
+         turn recovers
+46. [ ] Cross-cutting: settings page — `MIRRORED_INPUTS` key/model mirroring works, and
+         the Voxtral voice dropdown lists live voices fetched with the Mistral key
+         (preset names must NOT be offered)
+47. [ ] **L1 — split oversized classes / reduce `any` at trust boundaries.** Long-term, NOT a
        release gate — only touch opportunistically if items above already open those files.
 
 ## Deferred with a deadline
