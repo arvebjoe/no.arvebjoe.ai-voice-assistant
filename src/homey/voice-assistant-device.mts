@@ -48,6 +48,10 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
   // baked into the Realtime websocket URL, so a change needs a provider restart
   // (handleSettingsChange) rather than a session.update.
   private currentOpenAiModel: string = 'full';
+  // Last seen advanced VAD tuning ('openai_vad_threshold' | 'openai_vad_silence_ms'),
+  // as a composite key. The agent reads the settings itself at session config, so a
+  // change just needs a provider restart to re-send turn_detection.
+  private currentOpenAiVadTuning: string = '';
 
   private settingsUnsubscribe?: () => void;
   // Serializes handleSettingsChange runs (see the onGlobals subscription).
@@ -249,6 +253,9 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     // runtime provider switch and rebuild (see rebuildProvider).
     this.currentProviderId = settingsManager.getGlobal('voice_provider', DEFAULT_VOICE_PROVIDER);
     this.currentOpenAiModel = settingsManager.getGlobal('openai_model', 'full');
+    this.currentOpenAiVadTuning = VoiceAssistantDevice.vadTuningKey(
+      settingsManager.getGlobal('openai_vad_threshold'),
+      settingsManager.getGlobal('openai_vad_silence_ms'));
     this.provider = createVoiceProvider(this.homey, this.toolManager, this.providerOptions, this.currentProviderId);
     this.configureResampler();
 
@@ -901,6 +908,11 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
   /**
    * Handle settings changes and update agent accordingly
    */
+  /** Composite change-detection key for the advanced OpenAI VAD settings. */
+  private static vadTuningKey(threshold: unknown, silenceMs: unknown): string {
+    return `${threshold ?? ''}|${silenceMs ?? ''}`;
+  }
+
   private async handleSettingsChange(newSettings: any): Promise<void> {
     this.logger.info('Settings changed, updating agent...', undefined, newSettings);
 
@@ -958,6 +970,18 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       if (newOpenAiModel !== this.currentOpenAiModel) {
         this.logger.info(`OpenAI model quality changed from ${this.currentOpenAiModel} to ${newOpenAiModel}`);
         this.currentOpenAiModel = newOpenAiModel;
+        if (this.currentProviderId === 'openai-realtime') {
+          needRestart = true;
+        }
+      }
+
+      // Advanced VAD tuning changed: the agent reads these settings itself when
+      // it sends the session config, so a restart is all that's needed to apply.
+      const newVadTuning = VoiceAssistantDevice.vadTuningKey(
+        newSettings.openai_vad_threshold, newSettings.openai_vad_silence_ms);
+      if (newVadTuning !== this.currentOpenAiVadTuning) {
+        this.logger.info(`OpenAI VAD tuning changed from '${this.currentOpenAiVadTuning}' to '${newVadTuning}'`);
+        this.currentOpenAiVadTuning = newVadTuning;
         if (this.currentProviderId === 'openai-realtime') {
           needRestart = true;
         }

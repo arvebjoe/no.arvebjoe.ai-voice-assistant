@@ -64,6 +64,21 @@
       font-style: italic;
     }
 
+    /* Collapsed-by-default advanced tuning blocks (e.g. OpenAI VAD). */
+    details.advanced-settings {
+      margin: 12px 0;
+      padding-top: 8px;
+      border-top: 1px solid #e9ecef;
+    }
+
+    details.advanced-settings>summary {
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 13px;
+      color: #6c757d;
+      margin-bottom: 8px;
+    }
+
     /* API-key fields: password input with a show/hide toggle riding its right edge. */
     .secret-wrap {
       position: relative;
@@ -566,6 +581,27 @@
               <div class="help-text">Mini costs a fraction of Full per minute; Full understands tricky requests better.
               </div>
             </div>
+
+            <!-- Advanced server-VAD tuning. Empty = the app's defaults (0.6 / 600 ms);
+                 values are clamped app-side to the ranges in the placeholders. -->
+            <details class="advanced-settings">
+              <summary>Advanced: speech detection tuning</summary>
+              <div class="homey-form-group">
+                <label class="homey-form-label" for="openai_vad_threshold">Speech detection sensitivity</label>
+                <input type="number" class="homey-form-input" id="openai_vad_threshold" min="0.1" max="0.9" step="0.05"
+                  placeholder="0.6 (default) — range 0.1–0.9" />
+                <div class="help-text">How confident the assistant must be that it hears speech before it starts
+                  listening to you. Raise it (e.g. 0.7–0.8) if a TV or background noise keeps triggering it; lower it
+                  (e.g. 0.4–0.5) if it misses quiet or distant speakers. Empty = default 0.6.</div>
+              </div>
+              <div class="homey-form-group">
+                <label class="homey-form-label" for="openai_vad_silence_ms">Silence before reply (ms)</label>
+                <input type="number" class="homey-form-input" id="openai_vad_silence_ms" min="200" max="2000" step="50"
+                  placeholder="600 (default) — range 200–2000" />
+                <div class="help-text">How long a pause ends your turn. Raise it (e.g. 800–1000) if the assistant cuts
+                  you off mid-sentence; lower it for snappier replies. Empty = default 600 ms.</div>
+              </div>
+            </details>
           </div>
 
           <div id="gemini_realtime_settings" style="display: none;">
@@ -1673,6 +1709,18 @@
         document.getElementById("openai_model").value = model || "full";
       });
 
+      // Advanced VAD tuning: stored as numbers, "" = unset (app default applies).
+      function loadNumberSetting(id) {
+        Homey.get(id, function (err, value) {
+          if (err) return Homey.alert(err);
+          if (value !== null && value !== undefined && value !== "") {
+            document.getElementById(id).value = value;
+          }
+        });
+      }
+      loadNumberSetting("openai_vad_threshold");
+      loadNumberSetting("openai_vad_silence_ms");
+
       // Feature gates (default on): weather + timers are plain booleans; web
       // search folds its toggle into web_search_provider ('disabled' = off,
       // otherwise the value is the backend).
@@ -1880,6 +1928,13 @@
 
       /* ----------------------------- save ----------------------------- */
 
+      // Number input -> stored value: a parsed number, or "" when empty/invalid
+      // so the app-side default applies.
+      function parseNumberInput(id) {
+        var n = parseFloat(document.getElementById(id).value);
+        return isFinite(n) ? n : "";
+      }
+
       function setSetting(key, value) {
         return new Promise(function (resolve, reject) {
           Homey.set(key, value, function (err) {
@@ -1900,6 +1955,10 @@
           ["gemini_api_key", geminiApiKeyElement.value.trim()],
           // OpenAI Realtime model quality (full vs mini)
           ["openai_model", document.getElementById("openai_model").value],
+          // Advanced VAD tuning: parsed to numbers, "" = unset (app default).
+          // The app clamps out-of-range values, so no client-side validation.
+          ["openai_vad_threshold", parseNumberInput("openai_vad_threshold")],
+          ["openai_vad_silence_ms", parseNumberInput("openai_vad_silence_ms")],
           // Web-search gate + backend + Brave key. Off is stored as provider
           // 'disabled' so the tool is not registered at all.
           ["web_search_provider", webSearchEnabledElement.checked ? webSearchSelectElement.value : "disabled"],

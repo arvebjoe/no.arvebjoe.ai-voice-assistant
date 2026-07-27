@@ -335,6 +335,11 @@ length you configured when loading the model).
 * **API key** — for the selected cloud provider (OpenAI, Gemini or Mistral).
 * **Model quality** *(OpenAI only)* — **Full** for the best understanding, **Mini** for a much
   cheaper, slightly faster model.
+* **Advanced: speech detection tuning** *(OpenAI only, collapsed by default)* — two optional
+  knobs for the server-side voice detection. **Speech detection sensitivity**: raise it if a TV
+  or background noise keeps triggering the assistant, lower it if it misses quiet or distant
+  speakers. **Silence before reply**: raise it if the assistant cuts you off mid-sentence, lower
+  it for snappier replies. Leave both empty for the defaults.
 * **Voice** — the voice the assistant speaks with. The list adapts to the selected provider
   (and, for the Custom pipeline, to the selected TTS backend).
 * **Optional AI instructions** — personality or behaviour tweaks. Be careful: this **will**
