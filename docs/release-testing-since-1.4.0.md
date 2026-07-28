@@ -59,14 +59,22 @@ Casa detection), **code-review-2 fixes**, **Sentry throttling**, **reconnect pol
 
 ### Voice behavior with a real satellite (emulator-driven, no Homey)
 
-- [ ] **New wake-word model** (0.98 cutoff): wake reliability at distance / with TV on,
+- [x] **New wake-word model** (0.98 cutoff): wake reliability at distance / with TV on,
       and false-accept rate. Firmware must be reflashed first (`.esp_home/`).
-- [ ] **Mic auto_gain 6 dBFS**: transcription accuracy vs distortion (this flip-flopped
+      _Verified 2026-07-28 via ~9 days of daily use on the real PE (firmware running
+      since ~07-19): reliable wakes at distance and with the TV on, no meaningful false
+      accepts. 0.98 stays the shipped cutoff._
+- [x] **Mic auto_gain 6 dBFS**: transcription accuracy vs distortion (this flip-flopped
       during development — verify the final value on real hardware).
-- [ ] **Audio-skip defaults changed**: `initial_audio_skip` default went 350 → 0 and
+      _Verified 2026-07-28 over the same daily-use window: transcripts accurate, no
+      audible clipping/distortion. 6 dBFS stays the shipped value._
+- [x] **Audio-skip defaults changed**: `initial_audio_skip` default went 350 → 0 and
       `followup_audio_skip` is new — confirm the wake-word sound is not transcribed and
       follow-up turns don't lose the first word.
-- [ ] **Conversation-flow hardening**: multi-turn follow-ups, spurious follow-up turns,
+      _Verified 2026-07-28 live (real PE, OpenAI realtime): three fresh-wake transcripts
+      clean of wake-sound artifacts; follow-up answer transcribed with the first word
+      intact._
+- [x] **Conversation-flow hardening**: multi-turn follow-ups, spurious follow-up turns,
       asking time/date, interrupting; transcripts now come from gpt-4o-transcribe with
       text-anchored replies — check replies match what was actually said.
       _Partially verified 2026-07-19 on the custom pipeline (real PE + Homey Pro):
@@ -75,11 +83,23 @@ Casa detection), **code-review-2 fixes**, **Sentry throttling**, **reconnect pol
       streamed also confirmed. gpt-4o-transcribe text-anchored replies live-verified
       2026-07-25 (Norwegian turns on the real PE). **Remaining:** the spurious-retry
       window fix from 2026-07-25 (clock now mic-open→mic-close instead of →transcript
-      arrival) has NOT been live-verified yet._
+      arrival) has NOT been live-verified yet. **2026-07-28 live test caught a worse
+      silent-turn bug**: `idle_timeout_ms` made the server COMMIT a 30 s speech-free
+      follow-up buffer, gpt-4o-transcribe hallucinated a device command from the STT
+      vocabulary prompt, and a real light was switched off. Fixed same day
+      (`input_audio_buffer.timeout_triggered` handler discards such transcripts as
+      silence); re-verified live the same evening — the STT hallucinated another
+      command ("Slå på terasse") from a silent 30 s follow-up and the handler
+      discarded it: no tool call, conversation closed cleanly. No spurious retries
+      observed across the session's turns. Conversation-flow items all verified._
 - [ ] **LED voice-phase rainbows** (PE firmware): distinct listening/thinking/replying
       phases, seamless position handoff, dark-level looks right.
-- [ ] Timer round-trip on the satellite: chime + LED ring countdown (`then start-timer`
+- [x] Timer round-trip on the satellite: chime + LED ring countdown (`then start-timer`
       from the console, or by voice).
+      _Verified 2026-07-28 live (real PE + Homey Pro, by voice): `set_timer` tool ok,
+      verbal confirmation, LED ring countdown, chime + blue flashing LEDs at zero,
+      button press stops the chime. One wrinkle: Norwegian "START nedtelling" phrasing
+      didn't trigger the tool ("SETT nedtelling" did) — tracked as a TODO watch item._
 
 ### Tools & features (console `ask`, dummy devices are fine)
 

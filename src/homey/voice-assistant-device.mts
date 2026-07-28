@@ -15,7 +15,7 @@ import { AudioOutputPipeline } from './audio-output-pipeline.mjs';
 import { DeviceStore } from '../helpers/interfaces.mjs';
 import { createLogger } from '../helpers/logger.mjs';
 import { SOUND_URLS } from '../helpers/sound-urls.mjs';
-import { ensureListeningChime, appendChimeToPcm } from '../helpers/listening-chime.mjs';
+import { ensureListeningChime, ensureMicClosedChime, appendChimeToPcm } from '../helpers/listening-chime.mjs';
 import { scheduleAudioFileDeletion } from '../helpers/file-helper.mjs';
 import { Pcm16kTo24k } from '../helpers/Pcm16kTo24k.mjs';
 import { GeoHelper } from '../helpers/geo-helper.mjs';
@@ -66,6 +66,9 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
   // reopen plays it so the firmware ends the reopen announce at end-of-playback
   // instead of its 2 s empty-media timeout; null falls back to the empty announce.
   private chimeFilename: string | null = null;
+  // The descending mirror chime (A5 -> E5), played when a listening window
+  // closes with nothing heard so the user knows the mic is off; null skips it.
+  private micClosedChimeFilename: string | null = null;
 
   private isMutedValue: boolean = false;
   private logger = createLogger('Voice_Assistant_Device', true);
@@ -153,6 +156,12 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     ensureListeningChime()
       .then((filename) => { this.chimeFilename = filename; })
       .catch((err) => this.logger.warn('Listening chime unavailable — follow-up reopen will use the 2 s firmware timeout:', err));
+
+    // The "mic closed" cue for silent-window timeouts. Non-fatal: without it
+    // the conversation just ends quietly like before.
+    ensureMicClosedChime()
+      .then((filename) => { this.micClosedChimeFilename = filename; })
+      .catch((err) => this.logger.warn('Mic-closed chime unavailable — silent timeouts will end without a cue:', err));
 
 
 
@@ -751,6 +760,12 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
         this.esp.stt_end('');
         this.esp.run_end();
         this.setCapabilityValue('onoff', false);
+        // Descending "mic closed" cue — the listening chime's mirror — so the
+        // user knows the silent window is over and the device is no longer
+        // listening (the LED alone doesn't cue someone not looking at it).
+        if (this.micClosedChimeFilename) {
+          this.playUrl(this.webServer.buildStaticUrl(this.micClosedChimeFilename));
+        }
         return;
       }
 

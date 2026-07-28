@@ -154,6 +154,12 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
     // order), kept to detect prompt-echo hallucinations on silent turns.
     private sttPromptNames: string[] = [];
 
+    // Audio items the server committed via turn_detection.idle_timeout_ms, i.e.
+    // WITHOUT ever detecting speech. Any transcript of such an item is noise or
+    // prompt-fed hallucination by definition and must be discarded as silence —
+    // acting on one has switched real devices from a silent room.
+    private timeoutCommittedItemIds = new Set<string>();
+
     constructor(homey: any, toolManager: ToolManager, opts: RealtimeOptions) {
         super();
 
@@ -670,6 +676,7 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
                 // Don't race the constructor's fire-and-forget instruction load —
                 // a session configured before it finishes would run on an empty
                 // system prompt (ensureLoaded also retries a failed load once).
+                this.timeoutCommittedItemIds.clear();
                 await this.instructionState.ensureLoaded(this.instructionParams());
                 this.sendSessionUpdate();
                 break;
@@ -692,6 +699,20 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
 
             case "input_audio_buffer.speech_stopped":
                 // Server VAD indicated end-of-utterance; useful to stop mic.
+                this.emit("silence", "server");
+                break;
+
+            case "input_audio_buffer.timeout_triggered":
+                // turn_detection.idle_timeout_ms elapsed with NO speech detected —
+                // the server commits the buffered room-tone audio anyway. Live
+                // incident 2026-07-28: gpt-4o-transcribe hallucinated a coherent
+                // device command out of the vocabulary prompt from such a commit
+                // and turned off a real light. Mark the item so its transcript is
+                // discarded, and close the mic like a normal end-of-utterance.
+                if (typeof msg.item_id === "string") {
+                    this.timeoutCommittedItemIds.add(msg.item_id);
+                }
+                this.logger.warn("Idle timeout — server committed audio with no detected speech; its transcript will be discarded");
                 this.emit("silence", "server");
                 break;
 
@@ -751,6 +772,17 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
 
             case "conversation.item.input_audio_transcription.completed": {
                 const transcript = (msg.transcript ?? "").trim();
+                // Speech was never detected on this item — the server committed it
+                // via idle timeout. Whatever the STT made of the room tone is
+                // hallucination; report silence downstream and drop the audio item
+                // so the model never hears it either.
+                if (typeof msg.item_id === "string" && this.timeoutCommittedItemIds.has(msg.item_id)) {
+                    this.timeoutCommittedItemIds.delete(msg.item_id);
+                    this.logger.warn(`Discarding transcript of timeout-committed audio (no speech was detected): "${transcript}"`);
+                    this.send({ type: "conversation.item.delete", item_id: msg.item_id });
+                    this.emit("transcript.done", "");
+                    break;
+                }
                 // Prompt-echo hallucination: on a silent/noise-only turn the prompted
                 // transcriber can regurgitate a slice of the vocabulary prompt (real
                 // device names, comma-joined, in prompt order). Report it downstream
@@ -1047,7 +1079,11 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
                             threshold: vadThreshold,
                             prefix_padding_ms: 400,
                             silence_duration_ms: vadSilenceMs,
-                            idle_timeout_ms: 30000,  // Auto-close idle sessions after 30s to reduce costs
+                            // Ends a speechless mic window after 10s. NOTE: the server
+                            // COMMITS the buffered audio when this fires (it does not
+                            // just idle out) — the timeout_triggered handler marks the
+                            // item so its hallucination-prone transcript is discarded.
+                            idle_timeout_ms: 10000,
                             create_response: false,
                             interrupt_response: false
                         }

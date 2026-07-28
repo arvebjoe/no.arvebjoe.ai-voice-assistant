@@ -479,8 +479,9 @@ down live.
    the kitchen lights"*, the model calls a tool and the app executes it through Homey's API.
 4. **Reply.** The spoken answer is encoded to FLAC and served from a small HTTP server inside the
    app; the device fetches and plays it over the LAN. After answering a question with a question,
-   the device plays a short chime and reopens the mic so you can ask a follow-up — the chime is
-   your cue to speak. The session ends when you stay silent.
+   the device plays a short rising chime and reopens the mic so you can ask a follow-up — the
+   chime is your cue to speak. If you stay silent (about 10 seconds), the session ends and the
+   device plays the same chime descending — your cue that the mic has closed.
 5. **Timers** live in the app (not the device), so they survive brief disconnects; the device
    renders the countdown on its LED ring and chimes when a timer finishes.
 

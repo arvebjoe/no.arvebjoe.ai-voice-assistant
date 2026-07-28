@@ -17,24 +17,30 @@ const log = createLogger('CHIME', true);
  * webserver (not the GitHub sound URLs) so reopen latency never depends on
  * WAN and offline/local-pipeline setups keep working.
  *
- * The file lives in the turn-audio folder but is written once per boot
- * (initAudioFolder wipes the folder before devices init) and never gets a
+ * The files live in the turn-audio folder but are written once per boot
+ * (initAudioFolder wipes the folder before devices init) and never get a
  * scheduled deletion.
  */
 export const LISTENING_CHIME_FILENAME = 'listening_chime.flac';
 
+/**
+ * The mirror cue: played when a listening window closes with nothing heard
+ * (silent follow-up timeout / no answer after a wake), so the user knows the
+ * mic is no longer open. Same two tones as the listening chime, descending.
+ */
+export const MIC_CLOSED_CHIME_FILENAME = 'mic_closed_chime.flac';
+
 const SAMPLE_RATE = 24_000;
 
-/** Two soft ascending tones (E5 -> A5), raised-cosine fades, ~280 ms total. */
-export function synthesizeChimePcm(): Buffer {
+const E5 = 659.25;
+const A5 = 880.0;
+
+type TonePart = { freq: number; ms: number };
+
+/** Soft tones with raised-cosine fades; freq 0 = silence. */
+function synthesizeTonesPcm(parts: TonePart[]): Buffer {
     const AMPLITUDE = 0.22 * 32767;
     const FADE_MS = 12;
-    const parts: { freq: number; ms: number }[] = [
-        { freq: 659.25, ms: 90 }, // E5
-        { freq: 0, ms: 40 },      // gap
-        { freq: 880.0, ms: 90 },  // A5
-        { freq: 0, ms: 60 },      // silent tail so playback doesn't clip the fade
-    ];
 
     const chunks: Buffer[] = [];
     for (const { freq, ms } of parts) {
@@ -58,6 +64,26 @@ export function synthesizeChimePcm(): Buffer {
     return Buffer.concat(chunks);
 }
 
+/** Two soft ascending tones (E5 -> A5), ~280 ms total: "speak now". */
+export function synthesizeChimePcm(): Buffer {
+    return synthesizeTonesPcm([
+        { freq: E5, ms: 90 },
+        { freq: 0, ms: 40 },  // gap
+        { freq: A5, ms: 90 },
+        { freq: 0, ms: 60 },  // silent tail so playback doesn't clip the fade
+    ]);
+}
+
+/** The listening chime reversed (A5 -> E5), same length: "mic closed". */
+export function synthesizeMicClosedChimePcm(): Buffer {
+    return synthesizeTonesPcm([
+        { freq: A5, ms: 90 },
+        { freq: 0, ms: 40 },  // gap
+        { freq: E5, ms: 90 },
+        { freq: 0, ms: 60 },  // silent tail so playback doesn't clip the fade
+    ]);
+}
+
 let chimePcmCache: Buffer | null = null;
 
 /**
@@ -73,29 +99,39 @@ export function appendChimeToPcm(replyPcm: Buffer): Buffer {
     return Buffer.concat([replyPcm, leadInSilence, chimePcmCache]);
 }
 
-let chimeReady: Promise<string> | null = null;
+const chimeFileReady = new Map<string, Promise<string>>();
 
 /**
- * Synthesize + write the chime once per boot; concurrent/later callers share
+ * Synthesize + write a chime once per boot; concurrent/later callers share
  * the same promise. Resolves to the filename (the device builds the LAN URL
- * fresh per reopen — the IP can change). A failure clears the cache so the
+ * fresh per use — the IP can change). A failure clears the cache so the
  * next caller retries.
  */
-export function ensureListeningChime(): Promise<string> {
-    if (!chimeReady) {
-        chimeReady = (async () => {
-            const flac = await pcmToFlacBuffer(synthesizeChimePcm(), {
+function ensureChimeFile(filename: string, synthesize: () => Buffer): Promise<string> {
+    let ready = chimeFileReady.get(filename);
+    if (!ready) {
+        ready = (async () => {
+            const flac = await pcmToFlacBuffer(synthesize(), {
                 sampleRate: SAMPLE_RATE,
                 channels: 1,
                 bitsPerSample: 16,
             });
-            await fs.writeFile('/userdata/audio/' + LISTENING_CHIME_FILENAME, flac);
-            log.info(`Listening chime written (${flac.length} bytes FLAC)`);
-            return LISTENING_CHIME_FILENAME;
+            await fs.writeFile('/userdata/audio/' + filename, flac);
+            log.info(`Chime written: ${filename} (${flac.length} bytes FLAC)`);
+            return filename;
         })().catch((err) => {
-            chimeReady = null;
+            chimeFileReady.delete(filename);
             throw err;
         });
+        chimeFileReady.set(filename, ready);
     }
-    return chimeReady;
+    return ready;
+}
+
+export function ensureListeningChime(): Promise<string> {
+    return ensureChimeFile(LISTENING_CHIME_FILENAME, synthesizeChimePcm);
+}
+
+export function ensureMicClosedChime(): Promise<string> {
+    return ensureChimeFile(MIC_CLOSED_CHIME_FILENAME, synthesizeMicClosedChimePcm);
 }

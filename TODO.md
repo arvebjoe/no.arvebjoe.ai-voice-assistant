@@ -69,13 +69,19 @@ and the test-firmware note are archived in [`COMPLETED.md` §11](./COMPLETED.md)
        `settings_logging.png`, reflecting the section-dropdown redesign). ~~add the plaintext-only/no-Noise limitation note~~ (superseded — Noise
        encryption shipped); ~~spot-check README.txt~~ (done 2026-07-26 — accurate, incl.
        locks/encryption).
-10. [ ] Wake-word model (0.98 cutoff): reliability at distance / with TV on, false-accept
-         rate (the PE runs the `.esp_home` firmware daily since ~07-19)
-11. [ ] Mic auto_gain 6 dBFS: transcription accuracy vs distortion on real hardware
+10. [x] Wake-word model (0.98 cutoff) DONE 2026-07-28: verified through ~9 days of daily
+         use on the PE (firmware running since ~07-19) — wakes reliably at distance and
+         with the TV on, no meaningful false accepts. 0.98 stays the shipped cutoff.
+11. [x] Mic auto_gain 6 dBFS DONE 2026-07-28: same 9-day daily-use window — transcripts
+         accurate, no audible clipping/distortion. 6 dBFS stays the shipped value.
 12. [x] LED voice-phase rainbows: distinct listening/thinking/replying, seamless position
          handoff, dark-level looks right
-13. [ ] Timer round-trip on the satellite: chime + LED ring countdown (voice or
-         `then start-timer`)
+13. [x] Timer round-trip on the satellite DONE 2026-07-28 (live, real PE + Homey Pro):
+         voice "Sett nedtelling ett minutt" → `set_timer` tool ok → verbal confirmation,
+         LED ring countdown, chime + blue flashing LEDs at zero. Note: the phrasing
+         "START nedtelling ..." did NOT trigger the tool (LLM claimed it can't do
+         countdowns and read the clock instead) — candidate agent-instruction tweak,
+         tracked under Watch items. Stopping the chime with the button also verified.
 14. [ ] Smart-home control regression: on/off, dim, zone targeting against real devices
          (tool-manager grew ~900 lines) — include the H4 lock path live: voice-lock works,
          unlock blocked until `allow_unlock_via_voice` is on, then single-device-only
@@ -84,11 +90,30 @@ and the test-firmware note are archived in [`COMPLETED.md` §11](./COMPLETED.md)
          footer, budget-meter tap breakdown, stage Test buttons (the 07-19 pass verified all
          of this through Homey's API routing — confirm whether that was the mobile app; if
          yes just tick)
-16. [ ] Spurious-retry window fix (2026-07-25, clock now mic-open→mic-close) — the one
-         conversation-flow piece NEVER live-verified (one live conversation session covers
-         items 16 + 17 together)
-17. [ ] Audio-skip defaults: wake sound not transcribed (`initial_audio_skip` now 0) and
-         follow-up turns don't lose the first word (new `followup_audio_skip`)
+16. [x] Spurious-retry window: live test 2026-07-28 **caught a real bug** — a silent
+         follow-up window ended after 30 s with a hallucinated transcript ("Kronborgsvingen
+         62, slå av soverom taklys", built from our own STT vocabulary prompt) and the agent
+         REALLY turned off the bedroom light. Root cause: `turn_detection.idle_timeout_ms:
+         30000` makes OpenAI **commit** the speech-free buffer on timeout
+         (`input_audio_buffer.timeout_triggered`, no handler existed); gpt-4o-transcribe then
+         hallucinates from room tone + vocab prompt, and our transcript handler anchored a
+         response on it. The PE LED never left "waiting" — server VAD correctly saw no
+         speech the whole time. FIX (same day): handle `timeout_triggered` — mark the item
+         id, emit `silence` (mic closes like a normal end-of-utterance), and when that
+         item's transcript arrives discard it as silence + delete the audio item. Tests
+         green. Marked [x]: re-verified live same evening — silent follow-up → "Idle
+         timeout" + "Discarding transcript" warns (the STT hallucinated ANOTHER command,
+         "Slå på terasse", proving the class of bug), no tool call, conversation closed
+         cleanly. No spurious retry observed in any of the session's turns either.
+         Follow-up refinements same night (owner-requested, both live-verified): idle
+         timeout 30 s → 10 s, and a descending mic-closed chime (A5→E5, the listening
+         chime mirrored — `ensureMicClosedChime` in listening-chime.mts) plays when a
+         window ends with nothing heard. Third hallucination discarded during verify
+         ("Hvordan er temperaturen på 2. etasje?") — the guard is earning its keep.
+17. [x] Audio-skip defaults DONE 2026-07-28 (live, real PE): fresh-wake transcripts clean —
+         no wake-sound artifacts with `initial_audio_skip` 0 (three wake turns checked);
+         follow-up answer "New York, ja." transcribed with the first word intact
+         (`followup_audio_skip` default 150 ms).
 18. [x] Bring! with real credentials: add / remove / read items; SSO-account gotcha message
          (items 18–21: console `ask` is fine, no satellite needed)
 19. [ ] Web search: each provider value works; `disabled` removes the tool (agent says it
@@ -188,6 +213,13 @@ each choice: [`docs/respeaker-xvf3800/README.md`](./docs/respeaker-xvf3800/READM
   thread/changelog for a fix, then verify with a few Norwegian turns on the real PE.
 
 ## Watch items (no action unless they recur)
+
+- **Timer-tool phrasing miss (2026-07-28, live test, Norwegian):** "START nedtelling ett
+  minutt" did not trigger `set_timer` — the LLM said it can't do countdowns and called
+  `get_local_time` instead; "SETT nedtelling ett minutt" worked. If it recurs, consider a
+  line in the timer instruction block mapping start/begin-a-countdown phrasings to
+  `set_timer` (mind cost-of-growth rule 1 — one sentence, inside the existing
+  timers-enabled gate).
 
 - **Settings webview one-off (2026-07-19, unreproduced):** one webview session where Save
   silently persisted nothing (no error shown; reopening showed old values; later sessions
