@@ -101,6 +101,48 @@ esphome:
 name), so **the only device-specific tokens are `respeaker` and `xvf3800`** — and they appear in the
 device name, the friendly name *and* the project name, i.e. in both identity-bearing messages.
 
+### What discovery will actually show — derivable from the YAML alone
+
+Nothing here has to be guessed or observed on hardware: ESPHome derives every discovery field
+mechanically from those three keys. Verified against
+[`mdns_component.cpp`](https://github.com/esphome/esphome/blob/dev/esphome/components/mdns/mdns_component.cpp)
+(`dev`, read 2026-07-28):
+
+| Field | Derived from | Value for this YAML |
+|---|---|---|
+| mDNS hostname / service instance | `App.get_name()` ← `esphome: name:` (line 262) | `respeaker-xvf3800-assistant` → `respeaker-xvf3800-assistant._esphomelib._tcp.local` |
+| `txt.friendly_name` | `esphome: friendly_name:` (line 132) | `reSpeaker XVF3800 Assistant` |
+| `txt.platform` | compile target, literal (line 146) | `ESP32` → satisfies our discovery regex |
+| `txt.board` | `ESPHOME_BOARD` (line 158) | `esp32-s3-devkitc-1` |
+| `txt.network` | literal (line 162) | `wifi` |
+| `txt.mac` | chip MAC (line 140) | per-unit → our `{{txt.mac}}` discovery id |
+| `txt.project_name` / `_version` | `esphome: project:` (lines 190–192) | `formatbce.Respeaker XVF3800 Satellite` / `2026.6.0` |
+| `txt.api_encryption` | only when a Noise PSK is set (line 176) | **absent** — this config sets no key |
+| `txt.version`, `txt.config_hash` | ESPHome version + config hash | build-dependent |
+
+Our pair list labels a device `r.txt?.friendly_name || r.name || r.host || 'ESPHome ####'`
+(`voice-assistant-driver.mts:155`), and ESPHome always publishes `friendly_name` in TXT when it is
+set. So with the stock example config **the device appears in Homey's pair list as exactly
+"reSpeaker XVF3800 Assistant"** — predictable up front, no hardware needed.
+
+Both identity tokens survive into the API handshake too: `HelloResponse.name` is the same
+`App.get_name()` string (`respeaker-xvf3800-assistant`), and `DeviceInfoResponse` carries the
+friendly name and project name. So a sniff on `respeaker` / `xvf3800` hits regardless of which of
+the two identity messages arrives first.
+
+The caveat is narrower than "we can't know the name": the mapping is exact, but **a user editing
+`name:` / `friendly_name:` changes it**, and only `esphome: name:` is constrained (lowercase,
+hyphens). Someone who sets `name: kitchen-speaker` and drops the project block leaves no matchable
+token at all — which is the argument for matching the two product tokens rather than the full
+default string, and for keeping manual IP entry as the fallback.
+
+**Bonus finding, relevant to the existing PE/TR pair flow:** current ESPHome publishes
+`api_encryption_supported` (not `api_encryption`) when Noise is compiled in but **no** key is set,
+and adds `api_provisioning=zero-psk` for the newer key-provisioning flow (lines 171–186). Our
+`requiresEncryption: !!r.txt?.api_encryption` check (`voice-assistant-driver.mts:167`) is therefore
+still correct — it keys off the record that only appears when a PSK really is set — but the newer
+records are worth knowing about if we ever want to detect "encryption available but unprovisioned".
+
 ### API / transport
 
 - `api:` block at line 118 — **no `encryption:` key in the example**, so out of the box it is
@@ -151,9 +193,34 @@ numbers, selects (wake-word / LED colour presets), and `Next timer` / `Next time
 The config includes `sendspin:` (line 1280) and a `sendspin` media player — the same Open Home
 Foundation multi-room protocol the ThirdReality uses. Orthogonal to the voice path; we don't touch it.
 
+## Implementation status
+
+**A driver was written on 2026-07-28 from this research alone — no hardware was available**, so
+every choice below is a best guess documented at the point it was made. The open verification list
+lives in [`TODO.md`](../../TODO.md) under *"ReSpeaker XVF3800 driver — needs hardware verification"*.
+
+What shipped:
+
+| | |
+|---|---|
+| `drivers/respeaker-xvf3800/` | New driver: `thisAssistantType = 'respeaker'`, `supportsEncryptedPairing = true`, `improvNameFilter = null`, `needDelayedPlayback = false`, no `defaultMicGain` override (base 1×) |
+| Pair views | `start` (no Bluetooth option), `manual_entry`, `list_devices` → `encryption_check` → `add_devices` |
+| `esp-voice-assistant-client.mts` | Identity sniff branch for `respeaker` / `xvf3800`; mute-switch selection reworked (below) |
+| `tests/esp-client-events.test.mts` | 7 new cases covering the sniff and the mute-switch scoring |
+| `app.json` | Driver entry composed by hand — the Homey CLI was not installable in the research environment, so this must be re-verified by a real `homey app run`/compose |
+| Artwork | Drawn stylised top view, **not** a product photo — placeholder pending real images |
+
+The mute fix is the one change that reaches beyond this device. `setMute()` read
+`entityKeys['mute']`, populated only by a switch whose `object_id` is exactly `mute` — a PE
+convention, not part of the protocol. It is now scored: `mute` wins outright, otherwise a switch
+naming both a microphone and mute (`microphone_mute` here). A bare `includes('mute')` was
+deliberately rejected — this device also exposes `mute_sound` (whether the mute chime plays), and
+it is listed *before* the real mic mute, so first-match-wins would have picked the wrong switch.
+
 ## Integration notes for this app
 
-What it would take for `esp-voice-assistant-client.mts` + a driver to drive this device:
+The analysis the implementation above was built from — what it takes for
+`esp-voice-assistant-client.mts` + a driver to drive this device:
 
 1. **Transport: works as-is.** Stock ESPHome native API, varint-framed protobuf, same `api.proto`,
    API version well above our ≥ 1.5 gate. Plaintext by default, Noise supported if the user sets a key.

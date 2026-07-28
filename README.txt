@@ -20,6 +20,7 @@ Supported devices:
     - Home Assistant Voice Preview Edition (stock ESPHome firmware, no Home Assistant needed)
     - ThirdReality Voice & Music Assistant (works out of the box, and doubles as a Music Assistant multi-room speaker)
     - XiaoZhi AI devices (running RealDeco's ESPHome firmware)
+    - Seeed ReSpeaker XVF3800 with XIAO ESP32S3 (for tinkerers: you flash the community ESPHome firmware yourself; four microphones for very good pickup across a room)
 
 New device that is not on your Wi-Fi yet? The pairing wizard can set it up for you: choose "Set up Wi-Fi via Bluetooth", Homey finds the device over Bluetooth and sends it your network name and password — no other apps or cables needed (Voice PE and ThirdReality; place the device near your Homey during setup).
 

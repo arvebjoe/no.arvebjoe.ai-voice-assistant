@@ -3,9 +3,9 @@
 <img src="./assets/images/large.png" alt="App banner" />
 
 Talk to your smart home. This Homey app connects small, inexpensive voice devices
-(Home Assistant Voice Preview Edition, XiaoZhi AI, ThirdReality Voice & Music Assistant) to an AI
-assistant that controls your Homey devices, answers questions, plays music, runs timers, and
-speaks back — in your language.
+(Home Assistant Voice Preview Edition, XiaoZhi AI, ThirdReality Voice & Music Assistant,
+Seeed ReSpeaker XVF3800) to an AI assistant that controls your Homey devices, answers questions,
+plays music, runs timers, and speaks back — in your language.
 
 You choose the brain: **OpenAI**, **Google Gemini**, **Mistral** (Voxtral), or a fully
 **local / self-hosted** pipeline (Whisper + Ollama + Piper and friends) where no audio ever
@@ -184,6 +184,33 @@ Wi-Fi yet — use the pairing wizard's
 [Bluetooth Wi-Fi setup](#getting-a-device-onto-wi-fi-bluetooth-setup) to get it connected.
 Technical deep-dive:
 [docs/thirdreality-voice-and-music](./docs/thirdreality-voice-and-music/README.md).
+
+### 4) Seeed ReSpeaker XVF3800 with XIAO ESP32S3
+
+<img src="./drivers/respeaker-xvf3800/assets/images/large.png" height="160" alt="ReSpeaker XVF3800" />
+
+A DIY satellite built around the **XMOS XVF3800** 4-microphone circular array — the same class of
+hardware voice front-end as the Voice PE, doing echo cancellation, beamforming, noise suppression
+and direction-of-arrival on-chip, with 360° pickup up to ~5 m. Sold by Seeed Studio
+[with a case](https://www.seeedstudio.com/ReSpeaker-XVF3800-With-Case-XIAO-ESP32S3-p-6628.html)
+or [as a bare board](https://www.seeedstudio.com/ReSpeaker-XVF3800-4-Mic-Array-With-XIAO-ESP32S3-p-6489.html).
+
+This one is for tinkerers: **you compile and flash the ESPHome firmware yourself** over USB, using
+the community configuration at
+[formatBCE/Respeaker-XVF3800-ESPHome-integration](https://github.com/formatBCE/Respeaker-XVF3800-ESPHome-integration)
+(that project is marked *"under development, use at your own risk"* and depends on a forked
+`i2s_audio` component — worth knowing before you buy). Once flashed it behaves much like the
+Voice PE: on-device wake words, LED ring, timers, and announcements over the ESPHome native API.
+
+Notes specific to this device:
+
+* Because the Wi-Fi credentials are baked in when you flash it, there is **no Bluetooth setup
+  step** — pair it with *"Find it on my network"*, or enter its IP manually.
+* It has **no buttons**, so the *button pressed* flow card never fires. Say *"stop"* to interrupt
+  a reply (the firmware ships a "stop" wake word for exactly this).
+* If you set an API encryption key in its YAML, enter the same key during pairing.
+
+Technical deep-dive: [docs/respeaker-xvf3800](./docs/respeaker-xvf3800/README.md).
 
 ---
 
@@ -386,7 +413,7 @@ Settings changes apply on the fly — no app restart needed.
 trim a few milliseconds from the start of each turn to swallow the wake-word sound / mic-open
 noise, should you ever hear the assistant react to itself. *Microphone gain* boosts the
 microphone audio in software before speech recognition — 0 means automatic (each device model's
-tuned default; the ThirdReality's quiet mic gets 4×, the Voice PE needs none). Raise it if the
+tuned default; the ThirdReality's quiet mic gets 4×, the Voice PE and ReSpeaker need none). Raise it if the
 assistant doesn't hear you from a distance; lower it if loud close-up speech gets misheard.
 
 ---

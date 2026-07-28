@@ -149,6 +149,32 @@ and the test-firmware note are archived in [`COMPLETED.md` §11](./COMPLETED.md)
 47. [ ] **L1 — split oversized classes / reduce `any` at trust boundaries.** Long-term, NOT a
        release gate — only touch opportunistically if items above already open those files.
 
+## ReSpeaker XVF3800 driver — needs hardware verification
+
+Driver written 2026-07-28 from the community ESPHome config alone (**no hardware was
+available**), so everything below is a documented best guess. Research and the reasoning behind
+each choice: [`docs/respeaker-xvf3800/README.md`](./docs/respeaker-xvf3800/README.md).
+
+- [ ] **Pair a real device end to end** — mDNS scan, manual IP, and the encrypted (Noise) path.
+      Confirm it lists as *"reSpeaker XVF3800 Assistant"* (that name is derived from the YAML,
+      not observed).
+- [ ] **Confirm the identity sniff fires.** We match on `respeaker` / `xvf3800` in
+      HelloResponse/DeviceInfoResponse. If Seeed's own wiki YAML (unreachable during research)
+      names the device without either token, widen the match.
+- [ ] **Check `voice_assistant_feature_flags`** — VOICE_ASSISTANT | API_AUDIO | TIMERS |
+      ANNOUNCE are certain from the config; START_CONVERSATION is assumed, not verified.
+- [ ] **Verify mic levels with `mic_gain` at 0 (1×).** The XMOS chip does AGC/AEC/beamforming
+      on-chip and the config zeroes the software stages, so it should behave like the PE rather
+      than the TR — but if speech is missed, this is the first knob.
+- [ ] **Tune `initial_audio_skip` / `followup_audio_skip`** against the wake-word ding; both
+      default to 0 and were never measured on this hardware.
+- [ ] **Confirm the mute switch is `microphone_mute`.** `scoreMuteCandidate()` picks it and
+      deliberately ignores the device's decoy `mute_sound` switch; check `volume_mute` actually
+      mutes the mic.
+- [ ] **Replace the stand-in artwork.** `drivers/respeaker-xvf3800/assets/` holds a stylised
+      top-view rendering of the board (drawn, not photographed — deliberately not a reused photo
+      of another device). Swap in real product images before the store release.
+
 ## Deferred with a deadline
 
 - [ ] **Re-attempt the gpt-realtime-2.1 migration (deadline: before Jan 20, 2027).** The

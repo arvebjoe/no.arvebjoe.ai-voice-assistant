@@ -50,6 +50,60 @@ describe('identity sniff (discovery probe)', () => {
     it('still classifies XiaoZhi as "xiaozhi"', async () => {
         expect(await sniff({ name: 'xiaozhi-ai-thing' })).toBe('xiaozhi');
     });
+
+    it('classifies the ReSpeaker XVF3800 as "respeaker" (stock example config identity)', async () => {
+        expect(await sniff({
+            name: 'respeaker-xvf3800-assistant',
+            friendlyName: 'reSpeaker XVF3800 Assistant',
+            projectName: 'formatbce.Respeaker XVF3800 Satellite',
+            projectVersion: '2026.6.0',
+            manufacturer: 'Espressif',
+            model: 'esp32-s3-devkitc-1',
+        })).toBe('respeaker');
+    });
+
+    it('matches a renamed ReSpeaker as long as a product token survives', async () => {
+        // The firmware is user-compiled, so only the product tokens are stable.
+        expect(await sniff({ name: 'kitchen-respeaker' })).toBe('respeaker');
+        expect(await sniff({ name: 'xvf3800-hallway' })).toBe('respeaker');
+    });
+});
+
+describe('mute switch discovery (ListEntitiesSwitchResponse)', () => {
+    async function registerSwitches(objectIds: string[]): Promise<number | undefined> {
+        const client = makeClient();
+        let key = 1;
+        for (const objectId of objectIds) {
+            await (client as any).dispatch({
+                name: 'ListEntitiesSwitchResponse',
+                message: { objectId, key: key++ },
+            });
+        }
+        return (client as any).entityKeys['mute'];
+    }
+
+    it('uses a switch named exactly "mute" (PE / ThirdReality)', async () => {
+        expect(await registerSwitches(['mute'])).toBe(1);
+    });
+
+    it('finds the ReSpeaker\'s "microphone_mute" switch', async () => {
+        expect(await registerSwitches(['microphone_mute'])).toBe(1);
+    });
+
+    it('ignores "mute_sound", which only toggles the mute chime', async () => {
+        // The ReSpeaker config lists mute_sound BEFORE the mic mute, so a naive
+        // first-match-wins substring test would pick the wrong switch here.
+        expect(await registerSwitches(['mute_sound', 'wake_sound', 'microphone_mute'])).toBe(3);
+    });
+
+    it('leaves mute unset when no switch looks like a mic mute', async () => {
+        expect(await registerSwitches(['mute_sound', 'beam_lock', 'alarm_on'])).toBeUndefined();
+    });
+
+    it('prefers an exact "mute" over a mic-mute variant regardless of order', async () => {
+        expect(await registerSwitches(['microphone_mute', 'mute'])).toBe(2);
+        expect(await registerSwitches(['mute', 'microphone_mute'])).toBe(1);
+    });
 });
 
 describe('Event entities (EventResponse)', () => {
