@@ -237,6 +237,21 @@ image analysis — see [`COMPLETED.md` §6](./COMPLETED.md)).
 - [ ] **Follow-me music** — we already control Music Assistant and know each satellite's zone;
       with per-zone motion/presence, *"follow me"* transfers the MA queue between Sendspin
       players as you move. Prototype behind an opt-in setting.
+- [ ] **"Hey Homey" wake word on the TR** — researched 2026-07-28, full plan in
+      [`docs/thirdreality-voice-and-music/custom-firmware.md`](./docs/thirdreality-voice-and-music/custom-firmware.md).
+      **No custom firmware needed**: the TR implements HA's external-wake-word mechanism, so we can
+      host a microWakeWord `hey_homey.tflite`/`.json` on our own `WebServer` and push it in
+      `VoiceAssistantConfigurationRequest` (needs one added proto field — our vendored `api.proto`
+      predates it). `applyWakeWord()` then activates it unchanged. Blocking unknown: getting a
+      model that behaves (train via OHF-Voice/micro-wake-word or microwakeword.com).
+      Sub-item worth doing on its own: **re-apply the configured wake word on connect** — the TR
+      firmware never persists `active_wake_words`, so it reverts to `okay_nabu` on every reboot.
+- [ ] **TR LED control** — same doc. The LED is a single RGB LED (`/sys/class/leds/RGB_*`) driven by
+      the `tr-ledring` daemon via a D-Bus signal, and is **not exposed on the ESPHome native API**,
+      so LAN control does require a firmware patch (add a Light or Select entity to
+      `linux-voice-assistant-cpp`; `api.proto` already carries the Light messages, only client
+      dispatch is missing). Decide ownership first — the satellite overwrites the LED on every
+      pipeline state change.
 
 ### Deferred technical work
 

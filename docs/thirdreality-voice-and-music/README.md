@@ -165,6 +165,14 @@ What it takes for our ESPHome client (`esp-voice-assistant-client.mts`) to drive
 7. **Dev conveniences we didn't have with the PE:** root SSH (`root`/`hello3r`), on-device logs,
    ADB, and the full firmware source to read when behavior surprises us.
 
+## Custom firmware, custom wake words, LED control
+
+See [`custom-firmware.md`](./custom-firmware.md) — how to build/flash the firmware, how to get a
+**"Hey Homey"** wake word onto the device (no firmware rebuild required: the satellite implements
+Home Assistant's external-wake-word download mechanism), and what it takes to **control the LED**
+from this app (that one *does* need a firmware patch — the LED is a single RGB LED driven over D-Bus
+by the `tr-ledring` daemon and is not exposed on the native API at all).
+
 ## Sources
 
 - [Product page — thirdreality.com](https://www.thirdreality.com/products/voice-music-assistant-dev-edition)
