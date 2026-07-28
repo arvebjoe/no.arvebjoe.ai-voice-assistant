@@ -193,9 +193,34 @@ numbers, selects (wake-word / LED colour presets), and `Next timer` / `Next time
 The config includes `sendspin:` (line 1280) and a `sendspin` media player — the same Open Home
 Foundation multi-room protocol the ThirdReality uses. Orthogonal to the voice path; we don't touch it.
 
+## Implementation status
+
+**A driver was written on 2026-07-28 from this research alone — no hardware was available**, so
+every choice below is a best guess documented at the point it was made. The open verification list
+lives in [`TODO.md`](../../TODO.md) under *"ReSpeaker XVF3800 driver — needs hardware verification"*.
+
+What shipped:
+
+| | |
+|---|---|
+| `drivers/respeaker-xvf3800/` | New driver: `thisAssistantType = 'respeaker'`, `supportsEncryptedPairing = true`, `improvNameFilter = null`, `needDelayedPlayback = false`, no `defaultMicGain` override (base 1×) |
+| Pair views | `start` (no Bluetooth option), `manual_entry`, `list_devices` → `encryption_check` → `add_devices` |
+| `esp-voice-assistant-client.mts` | Identity sniff branch for `respeaker` / `xvf3800`; mute-switch selection reworked (below) |
+| `tests/esp-client-events.test.mts` | 7 new cases covering the sniff and the mute-switch scoring |
+| `app.json` | Driver entry composed by hand — the Homey CLI was not installable in the research environment, so this must be re-verified by a real `homey app run`/compose |
+| Artwork | Drawn stylised top view, **not** a product photo — placeholder pending real images |
+
+The mute fix is the one change that reaches beyond this device. `setMute()` read
+`entityKeys['mute']`, populated only by a switch whose `object_id` is exactly `mute` — a PE
+convention, not part of the protocol. It is now scored: `mute` wins outright, otherwise a switch
+naming both a microphone and mute (`microphone_mute` here). A bare `includes('mute')` was
+deliberately rejected — this device also exposes `mute_sound` (whether the mute chime plays), and
+it is listed *before* the real mic mute, so first-match-wins would have picked the wrong switch.
+
 ## Integration notes for this app
 
-What it would take for `esp-voice-assistant-client.mts` + a driver to drive this device:
+The analysis the implementation above was built from — what it takes for
+`esp-voice-assistant-client.mts` + a driver to drive this device:
 
 1. **Transport: works as-is.** Stock ESPHome native API, varint-framed protobuf, same `api.proto`,
    API version well above our ≥ 1.5 gate. Plaintext by default, Noise supported if the user sets a key.

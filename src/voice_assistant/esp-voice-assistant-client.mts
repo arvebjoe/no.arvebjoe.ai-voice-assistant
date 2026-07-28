@@ -151,6 +151,11 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
   // EventResponse can be attributed to the entity that fired it.
   private eventEntityIds: Map<number, string> = new Map();
 
+  // Best mute-switch match seen in the current entity listing (see
+  // scoreMuteCandidate). Reset with entityKeys on every re-listing so a
+  // reconnect can't keep a stale winner.
+  private muteEntityScore: number = 0;
+
   // Track device state
   private currentVolume: number = 0.5;
   private isMutedValue: boolean = false;
@@ -569,6 +574,16 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
         // own driver (see docs/thirdreality-voice-and-music/README.md).
         this.deviceType = 'tr';
         this.discoveryMode = false;
+      } else if (rawMessage.includes('respeaker')
+        || rawMessage.includes('xvf3800')) {
+        // Seeed reSpeaker XVF3800 + XIAO ESP32S3. Unlike the PE/TR this is
+        // DIY firmware the user compiles, so there is no fixed factory
+        // identity — match the two product tokens rather than the example
+        // config's full device name ("respeaker-xvf3800-assistant") or its
+        // project ("formatbce.Respeaker XVF3800 Satellite"), both of which a
+        // user is free to change. See docs/respeaker-xvf3800/README.md.
+        this.deviceType = 'respeaker';
+        this.discoveryMode = false;
       } else if (rawMessage.includes('xiaozhi')) {
         this.deviceType = 'xiaozhi';
         this.discoveryMode = false;
@@ -634,6 +649,22 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
       if (message.objectId && message.key) {
         this.entityKeys[message.objectId] = message.key;
         this.logger.info(`Registered switch: ${message.objectId} with key ${message.key}`);
+
+        // setMute() reads entityKeys['mute']. The PE and TR name their mic-mute
+        // switch exactly "Mute" (object_id `mute`), but that is a convention,
+        // not part of the protocol — the ReSpeaker calls its switch
+        // "Microphone Mute" (`microphone_mute`), which used to leave mute
+        // silently dead. Score candidates instead of taking the first hit:
+        // a plain `mute` wins, otherwise a switch mentioning both mic and mute.
+        // Deliberately NOT a bare `includes('mute')` — the ReSpeaker also has a
+        // `mute_sound` switch (whether to play the mute chime), which such a
+        // match would happily mistake for the mic mute.
+        const score = this.scoreMuteCandidate(message.objectId);
+        if (score > this.muteEntityScore) {
+          this.muteEntityScore = score;
+          this.entityKeys['mute'] = message.key;
+          this.logger.info(`Using switch '${message.objectId}' as the mute control (score ${score})`);
+        }
       }
     }
 
@@ -864,6 +895,7 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
     this.voiceAssistantConfigurationCount = 0;
     this.entityKeys = {};
     this.eventEntityIds.clear();
+    this.muteEntityScore = 0;
 
     // Stream the device's own ESPHome logs over this same connection (opt-in).
     // Sent before ListEntities so we capture the device-side view from the start.
@@ -1151,6 +1183,25 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
     } catch (error) {
       this.logger.error('Error sending volume command:', error);
     }
+  }
+
+  /**
+   * How well a switch's object_id looks like *the microphone mute*, used to
+   * pick one when a satellite doesn't follow the PE's `mute` naming.
+   *
+   *   2 — exactly `mute` (PE, ThirdReality)
+   *   1 — mentions both a microphone and mute, in either order
+   *       (`microphone_mute` on the ReSpeaker, `mute_mic`, …)
+   *   0 — not a mute control
+   *
+   * Anything that merely contains "mute" scores 0 on purpose: the ReSpeaker's
+   * `mute_sound` switch only decides whether the mute chime plays.
+   */
+  private scoreMuteCandidate(objectId: string): number {
+    const id = objectId.toLowerCase();
+    if (id === 'mute') return 2;
+    if (id.includes('mute') && /(^|_)mic(rophone)?(_|$)/.test(id)) return 1;
+    return 0;
   }
 
   /**

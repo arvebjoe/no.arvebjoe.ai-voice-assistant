@@ -1,0 +1,83 @@
+[
+    {
+        "id": "available_wake_words",
+        "type": "label",
+        "label": {
+            "en": "Available wake words"
+        },
+        "value": "",
+        "hint": {
+            "en": "Wake words installed on the device, reported when it connects. The active one is marked."
+        }
+    },
+    {
+        "id": "wake_word",
+        "type": "text",
+        "label": {
+            "en": "Wake word"
+        },
+        "value": "",
+        "hint": {
+            "en": "Type one of the available wake words (name or id, e.g. 'Okay Nabu' or 'okay_nabu') to activate it on the device. Leave empty to keep the current one."
+        }
+    },
+    {
+        "id": "initial_audio_skip",
+        "type": "number",
+        "label": {
+            "en": "Initial audio skip"
+        },
+        "hint": {
+            "en": "Audio trimmed from the start of a wake-word turn to swallow the wake-word sound."
+        },
+        "value": 0,
+        "min": 0,
+        "max": 2000,
+        "units": {
+            "en": "ms"
+        }
+    },
+    {
+        "id": "followup_audio_skip",
+        "type": "number",
+        "label": {
+            "en": "Follow-up audio skip"
+        },
+        "hint": {
+            "en": "Audio trimmed from the start of a follow-up (conversation) turn. There is no wake-word sound here — keep this small, just enough to swallow the mic-open noise burst."
+        },
+        "value": 0,
+        "min": 0,
+        "max": 2000,
+        "units": {
+            "en": "ms"
+        }
+    },
+    {
+        "id": "mic_gain",
+        "type": "number",
+        "label": {
+            "en": "Microphone gain"
+        },
+        "hint": {
+            "en": "Software boost applied to the microphone audio before speech recognition. 0 = automatic (1x for this device — its XMOS chip already handles gain, echo cancellation and noise suppression on-chip). Raise it only if the assistant does not hear you from a distance; too much gain distorts loud close-up speech (clipping)."
+        },
+        "value": 0,
+        "min": 0,
+        "max": 20,
+        "units": {
+            "en": "x"
+        }
+    },
+    {
+        "id": "encryption_key",
+        "type": "password",
+        "label": {
+            "en": "API encryption key"
+        },
+        "value": "",
+        "hint": {
+            "en": "The device's ESPHome API encryption key (the 32-byte base64 string from its YAML configuration). Required when the device has API encryption enabled — e.g. after being adopted by Home Assistant. Leave empty for unencrypted devices (or to keep using the key entered during pairing)."
+        }
+    }
+]

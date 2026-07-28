@@ -1,0 +1,50 @@
+{
+  "name": {
+    "en": "ReSpeaker XVF3800 (ESPHome)"
+  },
+  "class": "other",
+  "discovery": "esphome",
+  "capabilities": [
+    "volume_set",
+    "onoff",
+    "volume_mute"
+  ],
+  "platforms": [
+    "local"
+  ],
+  "connectivity": [
+    "lan"
+  ],
+  "images": {
+    "small": "{{driverAssetsPath}}/images/small.png",
+    "large": "{{driverAssetsPath}}/images/large.png",
+    "xlarge": "{{driverAssetsPath}}/images/xlarge.png"
+  },
+  "pair": [
+    {
+      "id": "start"
+    },
+    {
+      "id": "manual_entry",
+      "navigation": {
+        "prev": "start"
+      }
+    },
+    {
+      "id": "list_devices",
+      "template": "list_devices",
+      "navigation": {
+        "next": "encryption_check",
+        "prev": "start"
+      }
+    },
+    {
+      "id": "encryption_check",
+      "template": "loading"
+    },
+    {
+      "id": "add_devices",
+      "template": "add_devices"
+    }
+  ]
+}
