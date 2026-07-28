@@ -154,11 +154,21 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
     // order), kept to detect prompt-echo hallucinations on silent turns.
     private sttPromptNames: string[] = [];
 
-    // Audio items the server committed via turn_detection.idle_timeout_ms, i.e.
-    // WITHOUT ever detecting speech. Any transcript of such an item is noise or
-    // prompt-fed hallucination by definition and must be discarded as silence —
-    // acting on one has switched real devices from a silent room.
-    private timeoutCommittedItemIds = new Set<string>();
+    // Audio items the server committed via turn_detection.idle_timeout_ms,
+    // mapped to WHEN the timeout fired. A transcript of such an item is dropped
+    // only if VAD never detected speech after the fire — if it did, the item
+    // ended up carrying a real utterance (the user was already talking when a
+    // phantom timeout fired) and must be processed normally. Acting on a true
+    // speech-free commit has switched real devices from a silent room.
+    private timeoutCommittedItems = new Map<string, number>();
+    // When server VAD last detected speech starting (0 = never this session).
+    private lastSpeechStartedAt = 0;
+    // When the current stretch of mic audio started streaming in (first
+    // input_audio_buffer.append since the last VAD commit / idle timeout).
+    // Used to tell a REAL 10 s silent window from a phantom idle timeout whose
+    // clock ran across the gap between turns and fired the instant audio
+    // resumed (observed live: 351 ms into a fresh wake turn).
+    private audioStreamingSinceMs: number | null = null;
 
     constructor(homey: any, toolManager: ToolManager, opts: RealtimeOptions) {
         super();
@@ -470,6 +480,8 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
             return;
         }
 
+        this.audioStreamingSinceMs ??= Date.now();
+
         // The device calls this unguarded per mic frame, so the seam contract is
         // no-throw (Gemini already honors it). On a dead socket, kick the
         // reconnect campaign and drop the frame instead of throwing into the
@@ -676,7 +688,9 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
                 // Don't race the constructor's fire-and-forget instruction load —
                 // a session configured before it finishes would run on an empty
                 // system prompt (ensureLoaded also retries a failed load once).
-                this.timeoutCommittedItemIds.clear();
+                this.timeoutCommittedItems.clear();
+                this.lastSpeechStartedAt = 0;
+                this.audioStreamingSinceMs = null;
                 await this.instructionState.ensureLoaded(this.instructionParams());
                 this.sendSessionUpdate();
                 break;
@@ -694,27 +708,48 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
             /* ---------- Input audio / VAD ---------- */
             case "input_audio_buffer.speech_started":
                 // Server VAD detected the user starting to speak.
+                this.lastSpeechStartedAt = Date.now();
                 this.emit("speech", "server");
                 break;
 
             case "input_audio_buffer.speech_stopped":
                 // Server VAD indicated end-of-utterance; useful to stop mic.
+                this.audioStreamingSinceMs = null;
                 this.emit("silence", "server");
                 break;
 
-            case "input_audio_buffer.timeout_triggered":
+            case "input_audio_buffer.timeout_triggered": {
                 // turn_detection.idle_timeout_ms elapsed with NO speech detected —
                 // the server commits the buffered room-tone audio anyway. Live
                 // incident 2026-07-28: gpt-4o-transcribe hallucinated a coherent
                 // device command out of the vocabulary prompt from such a commit
-                // and turned off a real light. Mark the item so its transcript is
-                // discarded, and close the mic like a normal end-of-utterance.
+                // and turned off a real light. Either way the committed item must
+                // never be acted on: mark it so its transcript is dropped.
                 if (typeof msg.item_id === "string") {
-                    this.timeoutCommittedItemIds.add(msg.item_id);
+                    this.timeoutCommittedItems.set(msg.item_id, Date.now());
                 }
-                this.logger.warn("Idle timeout — server committed audio with no detected speech; its transcript will be discarded");
+                const streamedMs = this.audioStreamingSinceMs === null ? 0 : Date.now() - this.audioStreamingSinceMs;
+                this.audioStreamingSinceMs = null;
+
+                // Phantom fire: the server's idle clock spans the gap BETWEEN
+                // turns, so it can trip the moment audio resumes on a new turn
+                // (live 2026-07-29: 351 ms into a fresh wake — before the user
+                // spoke — and no transcription ever arrived, hanging the turn on
+                // the "thinking" LED). If we haven't streamed anywhere near the
+                // full window, keep listening as if nothing happened; a genuine
+                // silent window re-fires ~10 s later and is handled below.
+                if (streamedMs < 8_000) {
+                    this.logger.warn(`Ignoring idle timeout ${streamedMs}ms into the audio stream (clock spans the inter-turn gap) — still listening`);
+                    break;
+                }
+
+                // Genuine silent window: end the turn as silence NOW. Don't wait
+                // for the committed buffer's transcription — it may never arrive.
+                this.logger.warn("Idle timeout — no speech for the whole window; ending the turn as silence");
                 this.emit("silence", "server");
+                this.emit("transcript.done", "");
                 break;
+            }
 
             /* ---------- Model response: text ---------- */
             case "response.text.delta":
@@ -772,16 +807,27 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
 
             case "conversation.item.input_audio_transcription.completed": {
                 const transcript = (msg.transcript ?? "").trim();
-                // Speech was never detected on this item — the server committed it
-                // via idle timeout. Whatever the STT made of the room tone is
-                // hallucination; report silence downstream and drop the audio item
-                // so the model never hears it either.
-                if (typeof msg.item_id === "string" && this.timeoutCommittedItemIds.has(msg.item_id)) {
-                    this.timeoutCommittedItemIds.delete(msg.item_id);
-                    this.logger.warn(`Discarding transcript of timeout-committed audio (no speech was detected): "${transcript}"`);
-                    this.send({ type: "conversation.item.delete", item_id: msg.item_id });
-                    this.emit("transcript.done", "");
-                    break;
+                // The server committed this item via idle timeout. If VAD never
+                // detected speech after the fire, the STT output is room-tone
+                // hallucination: drop it and delete the audio item so the model
+                // never hears it either. Deliberately NO transcript.done on drop:
+                // a genuine timeout already reported silence when it fired, and
+                // after an ignored phantom fire the mic is still live — an empty
+                // transcript now would kill the turn the user is speaking into.
+                // BUT if speech WAS detected after the fire, the "timeout" item
+                // ended up carrying a real utterance (live 2026-07-29: the user
+                // was already talking when a phantom fired 198 ms into the turn,
+                // and the marked item held their actual command) — process it.
+                const timeoutFiredAt = typeof msg.item_id === "string" ? this.timeoutCommittedItems.get(msg.item_id) : undefined;
+                if (timeoutFiredAt !== undefined) {
+                    this.timeoutCommittedItems.delete(msg.item_id);
+                    if (this.lastSpeechStartedAt > timeoutFiredAt) {
+                        this.logger.info('Timeout-committed item carries real speech (VAD fired after the timeout) — processing normally');
+                    } else {
+                        this.logger.warn(`Dropping transcript of timeout-committed audio (no speech was detected): "${transcript}"`);
+                        this.send({ type: "conversation.item.delete", item_id: msg.item_id });
+                        break;
+                    }
                 }
                 // Prompt-echo hallucination: on a silent/noise-only turn the prompted
                 // transcriber can regurgitate a slice of the vocabulary prompt (real

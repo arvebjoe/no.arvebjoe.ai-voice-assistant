@@ -82,10 +82,18 @@ and the test-firmware note are archived in [`COMPLETED.md` §11](./COMPLETED.md)
          "START nedtelling ..." did NOT trigger the tool (LLM claimed it can't do
          countdowns and read the clock instead) — candidate agent-instruction tweak,
          tracked under Watch items. Stopping the chime with the button also verified.
-14. [ ] Smart-home control regression: on/off, dim, zone targeting against real devices
-         (tool-manager grew ~900 lines) — include the H4 lock path live: voice-lock works,
-         unlock blocked until `allow_unlock_via_voice` is on, then single-device-only
-         (gate shipped 2026-07-25, tests green, never live-verified)
+14. [x] Smart-home control regression DONE 2026-07-28 (live, real PE + Homey Pro, all in
+         Norwegian): **on** (Trimrom zone → 4 lights, 3 success + 1 unreachable reported
+         per-device and relayed in the reply), **zone targeting** (Trimrom, Kontoret via
+         get_zones → get_devices), **dim** ("Dimm taklyset på kontoret til 10 prosent" →
+         dim 0.1, then back to 1.0 with the model reusing the device id from context —
+         no re-query), **H4 lock path**: voice-lock success; unlock with
+         `allow_unlock_via_voice` ON succeeded single-device (the toggle turned out to be
+         enabled — flipped during the 07-26 settings screenshots, worth remembering as a
+         hazard of screenshot sessions); with the toggle OFF the gate refused with
+         UNLOCK_DISABLED and the agent explained the setting by name. Note: the LLM
+         sometimes tries `get_devices_in_standard_zone` first for a named room and asks
+         instead of jumping to the zone lookup — harmless, self-corrects.
 15. [x] Settings page in the real mobile-app webview: rendering, section dropdown, sticky
          footer, budget-meter tap breakdown, stage Test buttons (the 07-19 pass verified all
          of this through Homey's API routing — confirm whether that was the mobile app; if

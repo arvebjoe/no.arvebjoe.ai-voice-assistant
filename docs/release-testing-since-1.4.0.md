@@ -103,8 +103,11 @@ Casa detection), **code-review-2 fixes**, **Sentry throttling**, **reconnect pol
 
 ### Tools & features (console `ask`, dummy devices are fine)
 
-- [ ] Smart-home tool calls against dummy devices (on/off, dim, zone targeting) — the
+- [x] Smart-home tool calls against dummy devices (on/off, dim, zone targeting) — the
       tool-manager grew ~900 lines, regression-check the basics.
+      _Verified 2026-07-28 live against REAL devices (stronger than the dummy-device
+      ask): zone on (partial-failure reported per device), dim 10 % + back to 100 %
+      with context reuse, zone targeting via get_zones → get_devices._
 - [ ] **Bring! shopping list** with real credentials: add / remove / read items; verify
       the SSO-account gotcha message if applicable.
 - [ ] **Web search**: each provider value works; setting it to `disabled` removes the
@@ -224,13 +227,14 @@ Casa detection), **code-review-2 fixes**, **Sentry throttling**, **reconnect pol
 
 ### Homey runtime specifics
 
-- [ ] **Real device control via ApiHelper**: voice commands against your actual Homey
+- [x] **Real device control via ApiHelper**: voice commands against your actual Homey
       devices and zones (DeviceManager changed substantially) — including the H4
       lock-device cap: voice can lock but the one-device unlock cap behaves as designed.
-      _Note: the H4 unlock path changed again 2026-07-25 — unlock is now additionally
-      gated by the default-off `allow_unlock_via_voice` setting (tests green, not
-      live-verified). General device control was exercised throughout the 07-19→25
-      sessions but no explicit on/off/dim/zone regression pass is on record._
+      _Verified 2026-07-28 live (real PE, Norwegian): on/off, dim, zone targeting all
+      pass; voice-lock success; unlock with `allow_unlock_via_voice` ON succeeded on a
+      single device; with it OFF the gate refused (UNLOCK_DISABLED) and the agent named
+      the setting in its reply. Gotcha discovered: the toggle had been left ON since the
+      07-26 settings-screenshot session — check toggles after screenshot sessions._
 - [ ] **Audio served from the Homey itself**: WebServer picks the right LAN interface,
       satellites fetch and play the FLAC URLs, files are cleaned up after the TTL
       (emulator serves audio through a different port-80 shim, so this path is
