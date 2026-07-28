@@ -124,10 +124,23 @@ and the test-firmware note are archived in [`COMPLETED.md` §11](./COMPLETED.md)
          (`followup_audio_skip` default 150 ms).
 18. [x] Bring! with real credentials: add / remove / read items; SSO-account gotcha message
          (items 18–21: console `ask` is fine, no satellite needed)
-19. [ ] Web search: each provider value works; `disabled` removes the tool (agent says it
-         can't search)
-20. [ ] Gemini live provider switch — the only provider never exercised (openai ↔ local ↔
-         mistral rebuild-on-save verified 2026-07-19)
+19. [x] Web search DONE 2026-07-28 (live, real PE): `openai` ✓ (specific query answered
+         with sources in ~17 s; a broad "all today's news" query hit the 30 s
+         REQUEST_TIMEOUT_MS and failed gracefully — SEARCH_FAILED to the model, spoken
+         apology, no hang; decision: keep 30 s, voice users won't wait longer);
+         `brave` ✓ (real key, result in ~1 s, snippets summarized by the agent);
+         `disabled` ✓ (explicit "søk på nett" request → no tool call, agent says it
+         can't search). UNTRUSTED WEB CONTENT wrapper observed on both backends.
+20. [x] Gemini live provider DONE 2026-07-28 (live, real PE, real key): provider rebuilt
+         on save, greeting + follow-up + get_local_time + full smart-home chain
+         (get_zones/get_device_types in parallel → get_devices → set_device_capability,
+         office light off) all worked. **Latency better than OpenAI** per the owner.
+         Fixed during the test: Gemini emits no speech-start with automatic VAD, so the
+         PE LED sat on "waiting" all turn — the provider now emits `speech` on the first
+         input-transcription delta (gemini-live-provider.mts, `speechSignaled`). Caveat:
+         those deltas lag, so the listening phase renders short; optional post-release
+         polish would be local energy VAD (SimpleVad) inside the provider for an
+         immediate signal.
 21. [x] Feature-gate flips besides weather (verified both ways 2026-07-19): web search,
          timers, Bring!, Music Assistant on/off → provider restarts, tool list changes
 22. [x] Budget-meter verdict (green/amber/red) vs `local_llm_num_ctx` — needs Ollama,

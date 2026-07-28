@@ -125,6 +125,11 @@ export class GeminiLiveProvider extends (EventEmitter as new () => TypedEmitter<
     // output marks the user's turn as over (-> 'silence' + final 'transcript.done').
     private awaitingResponse = false;
     private currentInputTranscript = "";
+    // Gemini Live sends no explicit speech-start with automatic VAD, so the
+    // first input-transcription delta of a listening window doubles as the
+    // 'speech' signal (drives the satellite's listening LED via stt_vad_start;
+    // without it the PE's ring sat on the "waiting" pattern for whole turns).
+    private speechSignaled = false;
 
     // A turn that issued tool calls is NOT the end of the conversation turn:
     // sendToolResponse feeds the result back and the model continues with the
@@ -284,6 +289,7 @@ export class GeminiLiveProvider extends (EventEmitter as new () => TypedEmitter<
         // (a full reset would require reconnecting the session).
         this.currentInputTranscript = "";
         this.awaitingResponse = false;
+        this.speechSignaled = false;
     }
 
     private onMessage(message: any): void {
@@ -319,6 +325,10 @@ export class GeminiLiveProvider extends (EventEmitter as new () => TypedEmitter<
             // User input transcript accumulates until the turn flips to responding.
             const inText = sc?.inputTranscription?.text;
             if (inText) {
+                if (!this.speechSignaled) {
+                    this.speechSignaled = true;
+                    this.emit("speech", "server");
+                }
                 this.currentInputTranscript += inText;
                 this.emit("input_transcript.delta", inText);
             }
@@ -350,6 +360,7 @@ export class GeminiLiveProvider extends (EventEmitter as new () => TypedEmitter<
     private markResponding(): void {
         if (!this.awaitingResponse) return;
         this.awaitingResponse = false;
+        this.speechSignaled = false;
         this.emit("silence", "server");
         this.emit("transcript.done", this.currentInputTranscript.trim());
         this.currentInputTranscript = "";
@@ -369,6 +380,7 @@ export class GeminiLiveProvider extends (EventEmitter as new () => TypedEmitter<
 
     private endTurn(): void {
         this.awaitingResponse = false;
+        this.speechSignaled = false;
         this.currentInputTranscript = "";
         // A barge-in (interrupted) aborts any pending tool continuation too.
         this.pendingToolTurn = false;

@@ -692,7 +692,15 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
                 this.lastSpeechStartedAt = 0;
                 this.audioStreamingSinceMs = null;
                 await this.instructionState.ensureLoaded(this.instructionParams());
-                this.sendSessionUpdate();
+                try {
+                    this.sendSessionUpdate();
+                } catch (err: any) {
+                    // The socket can close while ensureLoaded awaits (idle session
+                    // torn down mid-reconnect). Not an exception-worthy event — the
+                    // reconnect campaign re-delivers session.created and configures
+                    // the fresh socket. Seen live 2026-07-29 (Sentry noise).
+                    this.logger.warn(`Socket closed before the session could be configured — the reconnect will retry: ${err?.message ?? err}`);
+                }
                 break;
 
             case "session.updated":

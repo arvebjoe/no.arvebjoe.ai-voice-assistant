@@ -110,8 +110,12 @@ Casa detection), **code-review-2 fixes**, **Sentry throttling**, **reconnect pol
       with context reuse, zone targeting via get_zones → get_devices._
 - [ ] **Bring! shopping list** with real credentials: add / remove / read items; verify
       the SSO-account gotcha message if applicable.
-- [ ] **Web search**: each provider value works; setting it to `disabled` removes the
+- [x] **Web search**: each provider value works; setting it to `disabled` removes the
       tool (agent should say it can't search).
+      _Verified 2026-07-28 live: `openai` (specific queries fine ~17 s; broad news query
+      exceeded the 30 s timeout and failed gracefully — kept at 30 s by design), `brave`
+      (real key, ~1 s), `disabled` (no tool call, agent declines). Untrusted-content
+      wrapper present on both backends._
 - [x] **Music Assistant control plane** against the real MA server (≥ 2.7) — the TODO.md
       checklist: MA discovers PE + TR as Sendspin players, `resolveMusicPlayer`
       auto-matching (IP → device name → zone), play/pause/next/shuffle/"what's
@@ -129,11 +133,15 @@ Casa detection), **code-review-2 fixes**, **Sentry throttling**, **reconnect pol
 
 ### Providers, settings & gates
 
-- [ ] Live provider switching: openai-realtime ↔ gemini-realtime ↔ local; save in the
+- [x] Live provider switching: openai-realtime ↔ gemini-realtime ↔ local; save in the
       settings web UI and confirm the agent rebuilds without restart.
       _Partially verified 2026-07-19 (on the Homey Pro, not the emulator): openai-realtime
       → local → mistral-realtime all rebuilt live on save, no restart; language change
-      (en→no) applied on the very next turn. Gemini not yet exercised._
+      (en→no) applied on the very next turn. Gemini verified 2026-07-28 (real key, real
+      PE): rebuilt on save, conversation + tool calls + smart-home control all working,
+      latency subjectively better than OpenAI. LED speech-start fix shipped during the
+      test (Gemini sends no VAD speech-start; now derived from the first
+      input-transcription delta)._
 - [ ] Feature-gate flips restart the provider and change the tool list: weather,
       web search, timers, Bring!, Music Assistant on/off.
       _Weather verified both directions 2026-07-19 (live on the Homey, LM Studio
