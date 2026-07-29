@@ -12,7 +12,7 @@
       "title": {
         "en": "Device"
       },
-      "filter": "driver_id=home-assistant-voice-preview-edition|xiaozhi-ai"
+      "filter": "driver_id=home-assistant-voice-preview-edition|xiaozhi-ai|respeaker-xvf3800"
     }
   ],
   "tokens": [
