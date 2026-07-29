@@ -221,9 +221,40 @@ image analysis — see [`COMPLETED.md` §6](./COMPLETED.md)).
       ask without touching the dropped start-flows-by-voice idea.
 - [ ] **Presence** — *"is anyone home?"*, *"is Anna home yet?"*. Read-only tool over Homey's
       user/presence API.
+- [ ] **Accept full URLs (https) in the custom-pipeline host fields** — forum request
+      2026-07-29 (user runs their pipeline containers behind a swag reverse proxy). Verified
+      state: the dedicated backends take *Host + Port* and hardcode the scheme —
+      `http://${host}:${port}` in `ollama-client.mts:51`, `whisper-client.mts:44`,
+      `piper-client.mts:83` (LM Studio likewise) — so an https URL in those fields yields
+      `http://https://…` and fails. Nothing validates the input; the placeholder ("e.g.
+      192.168.1.50") is just what makes it look IP-only. **There is already a working route:**
+      each stage's *OpenAI-compatible* backend uses a Base URL field, and
+      `normalizeOpenAiBaseUrl()` (`local/openai-compat.mts`) only prepends `http://` to a bare
+      host — a full URL keeps its scheme. Fix: let the Host fields take a full URL too (parse
+      scheme/host/port, keep the Port field for bare hosts) and refresh the placeholders.
+      Note Wyoming STT/TTS can't benefit — raw TCP, not HTTP, so an HTTPS proxy can't front it.
 
 ### High value, more work
 
+- [ ] **Voice-input-only mode (reply spoken by some other speaker)** — forum request
+      2026-07-29, owner-approved in principle. User wants the satellite as a *microphone only*
+      and the answer spoken by the Sonos app's *Say* card, with no TTS container at all.
+      Design: a per-device setting (e.g. "Play response on this device", default **on**);
+      when off, skip playback entirely.
+      - **The flow side already works** — no new trigger card needed. `assistant-thinking`
+        fires with the finished reply and `type: 'reply'`
+        (`voice-assistant-device.mts:790`). Flows MUST filter on that token: the same card
+        also fires per tool call with `type: 'tool'`, so an unfiltered flow speaks
+        "Using tool get_devices".
+      - **Real work item:** make the TTS stage optional. `LocalPipelineProvider` currently
+        hard-requires it at startup — `tts.hasCredentials()` / `isConfigured()` / `check()`
+        gates at lines 490, 498, 509, 572, 591 — so today you need a TTS container running
+        even if nothing is ever spoken. Also check the realtime providers: they should be
+        put in an audio→text mode rather than generating speech that gets thrown away.
+      - **Known trade-offs to document for the user** (both confirmed, not guesses):
+        follow-up questions stop working, because continue-conversation keys off the device
+        finishing its own playback — every turn needs the wake word again; and the external
+        TTS round trip adds latency on top of the pipeline.
 - [ ] **Device-less "Ask AI (text answer)" flow card — target 1.5.0** (forum request 2026-07-25,
       owner-approved). An APP-level action card (no device picker) so flows can use the AI with
       zero voice hardware: *"summarize my open windows and send a notification"*, yes/no
