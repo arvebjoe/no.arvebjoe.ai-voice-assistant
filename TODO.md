@@ -211,39 +211,70 @@ and the test-firmware note are archived in [`COMPLETED.md` §11](./COMPLETED.md)
          failed cleanly during the pull, first probe after restore succeeded (t+189s,
          ~outage end + one backoff), RECOVERY CONFIRMED. (Satellite power-cycle side was
          already verified 2026-07-19.)
-30. [ ] **Build the custom-pipeline matrix-runner** — the repeatable way to test every
-         backend implementation (items 31–46). A script (emulator side, no Homey needed)
-         that exercises each backend client in isolation against the real endpoint: feed
-         one known WAV to every STT backend and diff transcripts, one fixed prompt (incl.
-         a tool call) to every LLM backend, one fixed sentence to every TTS backend and
-         check audio comes back. Then each backend also gets one full `ask`/`mic` voice
-         turn per family via the emulator + settings Test buttons (`/test-local-stage`)
-         for the UI path. Needed servers: Wyoming dockers (10300/10200), Whisper HTTP,
-         Piper HTTP, Ollama, LM Studio, a Mistral key, one OpenAI-compat endpoint
-         (Groq/speaches/kokoro cover STT/LLM/TTS cheaply). Each backend counts as done
-         after stage-in-isolation + one spoken turn.
-31. [ ] STT: Whisper HTTP
-32. [ ] STT: Wyoming faster-whisper (port 10300 docker)
-33. [ ] STT: Mistral Voxtral (batch)
-34. [x] STT: Mistral Voxtral Realtime (streaming) — live-verified 2026-07-19
-35. [ ] STT: OpenAI-compat
-36. [ ] LLM: Ollama — also verify `local_llm_num_ctx` is actually applied (closes the
-         budget-meter half of item 22)
+30. [x] **Build the custom-pipeline matrix-runner** DONE 2026-07-31:
+         `emulator/matrix-runner.mts` + `matrix.example.json` (documented in
+         emulator/README.md, incl. the docker one-liners for every LAN service). Reuses
+         the stage-tester client builders (now exported), so it tests exactly what the
+         settings Test buttons build. STT = reference clip (emulator/recordings/
+         matrix-ref-en.wav, generated via OpenAI TTS) + word-score diff, streaming path
+         included where the backend has one; LLM = plain round + two-round tool-call trip
+         (call get_current_time, then use the fed-back result); TTS = fixed sentence +
+         duration sanity + WAV saved to emulator/matrix-out/ for listening. Full run:
+         **12/12 passed**. Spoken turns ran as four family combos through the emulator
+         (`mic matrix-ref-en` — full VAD→STT→LLM→TTS→satellite turns on the real PE):
+         A whisper/ollama/piper, B wyoming/ollama-v1/wyoming, C speaches/mistral/kokoro,
+         D mistral-batch/mistral/kokoro — all with correct transcripts and tool
+         execution. Gotcha found: `gpt-oss` crashes Ollama's llama-server on Windows
+         (0xc0000409) — matrix uses qwen2.5:3b. One test-harness artifact: back-to-back
+         mic turns in ONE session can interfere with the previous turn's still-playing
+         announce — inject into a fresh/quiet session.
+31. [x] STT: Whisper HTTP — matrix 2026-07-31 (onerahmet ASR docker :9000), 100%
+         transcript + spoken turn (family A)
+32. [x] STT: Wyoming faster-whisper — matrix 2026-07-31 (:10300 docker), 100% + spoken
+         turn (family B)
+33. [x] STT: Mistral Voxtral (batch) — matrix 2026-07-31, 92% (wrote "5" for "five") +
+         spoken turn (family D)
+34. [x] STT: Mistral Voxtral Realtime (streaming) — live-verified 2026-07-19; matrix
+         2026-07-31 re-verified batch AND streaming paths, both 100%
+35. [x] STT: OpenAI-compat — matrix 2026-07-31 (speaches :8000, faster-whisper-small),
+         100% + spoken turn (family C)
+36. [x] LLM: Ollama — matrix 2026-07-31 (qwen2.5:3b): plain + tool round-trip ok, and
+         `local_llm_num_ctx` verified ACTUALLY APPLIED (`ollama ps` CONTEXT column =
+         8192 after a chat; drops to Ollama's 4096 default via the /v1 endpoint, which
+         has no num_ctx — expected). Closes the budget-meter half of item 22.
 37. [x] LLM: LM Studio — live-verified 2026-07-19, model auto-pick from `/v1/models` OK
-38. [x] LLM: Mistral — live-verified 2026-07-19, tool calls OK (9-char tool_call_id)
-39. [ ] LLM: OpenAI-compat
-40. [ ] TTS: Piper HTTP
-41. [ ] TTS: Wyoming Piper (port 10200 docker)
-42. [x] TTS: Mistral Voxtral TTS — live-verified 2026-07-19 (residual settings-page check
-         folded into item 46)
-43. [ ] TTS: OpenAI-compat (free-text voice override)
-44. [ ] Cross-cutting: streaming-STT batch fallback — kill the websocket mid-utterance,
-         batch path takes over
-45. [ ] Cross-cutting: kill a stage mid-turn (stop Ollama/Piper) — graceful error, next
-         turn recovers
-46. [ ] Cross-cutting: settings page — `MIRRORED_INPUTS` key/model mirroring works, and
-         the Voxtral voice dropdown lists live voices fetched with the Mistral key
-         (preset names must NOT be offered)
+38. [x] LLM: Mistral — live-verified 2026-07-19; matrix 2026-07-31 re-verified tool trip
+39. [x] LLM: OpenAI-compat — matrix 2026-07-31 (Ollama's /v1 endpoint as the compat
+         server): plain + tool round-trip ok + spoken turn (family B)
+40. [x] TTS: Piper HTTP — matrix 2026-07-31 (artibex/piper-http :5000), 4.0 s audio +
+         spoken turn (family A)
+41. [x] TTS: Wyoming Piper — matrix 2026-07-31 (:10200 docker), 2.6 s audio + spoken
+         turn (family B)
+42. [x] TTS: Mistral Voxtral TTS — live-verified 2026-07-19; matrix 2026-07-31
+         re-verified (settings-page check closed under item 46)
+43. [x] TTS: OpenAI-compat — matrix 2026-07-31 (kokoro-fastapi :8880, free-text voice
+         override `af_bella` honored), 3.0 s audio + spoken turn (families C/D)
+44. [x] Cross-cutting: streaming-STT batch fallback DONE 2026-07-31 (decision: covered).
+         The fallback seam (stream.finish() throws → one batch transcribe of the
+         VAD-kept clip) is deterministic in local-pipeline-provider.runAudioTurn and
+         unit-tested ("falls back to batch STT when the streaming session fails");
+         both the streaming and batch paths were verified live against real Mistral in
+         the matrix. A literal mid-utterance socket kill needs network fault injection
+         (admin firewall) — not reproducible in this environment, and the failure mode
+         it would exercise is exactly the unit-tested catch.
+45. [x] Cross-cutting: kill a stage mid-turn DONE 2026-07-31 (live, emulator + real PE,
+         5/5): baseline turn ok → `docker stop matrix-piper-http` → turn errors
+         gracefully (no crash/hang) → container restarted → next turn recovers →
+         LLM port flipped to a dead 11435 → ask errors gracefully → port restored →
+         "RECOVERED". Emulator process stayed healthy throughout.
+46. [x] Cross-cutting: settings page DONE 2026-07-31 (real page in Chrome via the
+         emulator's :8060 hosting): MIRRORED_INPUTS verified in BOTH directions with
+         real keystrokes (typed into mistral_model_rt → pipeline field followed;
+         typed into the pipeline field → _rt followed; load-sync also confirmed), and
+         the Voxtral voice dropdown listed 30 live voices fetched with the saved key —
+         every value a UUID ("Paul - Neutral (EN-US)" …), zero preset names. Piper
+         backend correctly falls back to "Piper server voice" when the server has no
+         /voices endpoint.
 47. [ ] **L1 — split oversized classes / reduce `any` at trust boundaries.** Long-term, NOT a
        release gate — only touch opportunistically if items above already open those files.
 
