@@ -129,7 +129,8 @@ export function validateStageTestRequest(req: unknown): string | null {
     return null;
 }
 
-function buildSttClient(req: StageTestRequest): ISttClient {
+/** Exported for the emulator's matrix-runner, which tests the same backends. */
+export function buildSttClient(req: StageTestRequest): ISttClient {
     switch (req.backend) {
         case 'wyoming': return new WyomingSttClient({ host: str(req.host), port: num(req.port, LOCAL_DEFAULT_PORTS.wyomingStt) });
         case 'mistral': return new MistralSttClient({ apiKey: str(req.mistralApiKey), model: str(req.model) });
@@ -139,7 +140,8 @@ function buildSttClient(req: StageTestRequest): ISttClient {
     }
 }
 
-function buildLlmClient(req: StageTestRequest): ILlmClient {
+/** Exported for the emulator's matrix-runner, which tests the same backends. */
+export function buildLlmClient(req: StageTestRequest): ILlmClient {
     switch (req.backend) {
         case 'lmstudio': return new LmStudioClient({ host: str(req.host), port: num(req.port, LOCAL_DEFAULT_PORTS.lmstudio), model: str(req.model) });
         case 'mistral': return new MistralClient({ apiKey: str(req.mistralApiKey), model: str(req.model) });
@@ -148,7 +150,8 @@ function buildLlmClient(req: StageTestRequest): ILlmClient {
     }
 }
 
-function buildTtsClient(req: StageTestRequest): ITtsClient {
+/** Exported for the emulator's matrix-runner, which tests the same backends. */
+export function buildTtsClient(req: StageTestRequest): ITtsClient {
     switch (req.backend) {
         case 'wyoming': return new WyomingTtsClient({ host: str(req.host), port: num(req.port, LOCAL_DEFAULT_PORTS.wyomingTts) });
         case 'mistral': return new MistralTtsClient({ apiKey: str(req.mistralApiKey), model: str(req.model), voice: str(req.voice) });

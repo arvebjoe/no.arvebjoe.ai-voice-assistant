@@ -8,6 +8,10 @@
 # Emulator local config (holds the OpenAI API key)
 /emulator/settings.json
 
+# Matrix-runner local config (can hold API keys) and its TTS output clips
+/emulator/matrix.json
+/emulator/matrix-out/
+
 # Emulator voice clips for the `mic` command (usually personal recordings)
 /emulator/recordings/*.flac
 /emulator/recordings/*.wav

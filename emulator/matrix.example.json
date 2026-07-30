@@ -1,0 +1,29 @@
+{
+  "_readme": [
+    "Backend matrix runner config — copy to emulator/matrix.json (git-ignored) and adjust.",
+    "Run: node --import tsx --import ./emulator/register.mjs ./emulator/matrix-runner.mts [id ...]",
+    "sttClip lives in emulator/recordings/ (16-bit WAV/FLAC, any rate — resampled on load).",
+    "Regenerate it with any TTS speaking exactly the sttClipExpect sentence.",
+    "Entries mirror the settings page's stage-test fields; enabled:false skips one."
+  ],
+  "sttClip": "matrix-ref-en.wav",
+  "sttClipExpect": "Turn on the kitchen light and start a timer for five minutes.",
+  "language": "en",
+  "entries": [
+    { "id": "stt-whisper-http", "stage": "stt", "backend": "whisper", "host": "127.0.0.1", "port": 9000 },
+    { "id": "stt-wyoming", "stage": "stt", "backend": "wyoming", "host": "127.0.0.1", "port": 10300 },
+    { "id": "stt-mistral-batch", "stage": "stt", "backend": "mistral", "mistralApiKey": "", "model": "", "enabled": false },
+    { "id": "stt-mistral-realtime", "stage": "stt", "backend": "mistral-realtime", "mistralApiKey": "", "model": "", "enabled": false },
+    { "id": "stt-openai-compat", "stage": "stt", "backend": "openai", "url": "http://127.0.0.1:8000/v1", "key": "", "model": "Systran/faster-whisper-small" },
+
+    { "id": "llm-ollama", "stage": "llm", "backend": "ollama", "host": "127.0.0.1", "port": 11434, "model": "", "numCtx": 8192 },
+    { "id": "llm-lmstudio", "stage": "llm", "backend": "lmstudio", "host": "127.0.0.1", "port": 1234, "model": "", "enabled": false },
+    { "id": "llm-mistral", "stage": "llm", "backend": "mistral", "mistralApiKey": "", "model": "mistral-small-latest", "enabled": false },
+    { "id": "llm-openai-compat", "stage": "llm", "backend": "openai", "url": "http://127.0.0.1:11434/v1", "key": "", "model": "" },
+
+    { "id": "tts-piper-http", "stage": "tts", "backend": "piper", "host": "127.0.0.1", "port": 5000 },
+    { "id": "tts-wyoming", "stage": "tts", "backend": "wyoming", "host": "127.0.0.1", "port": 10200 },
+    { "id": "tts-mistral", "stage": "tts", "backend": "mistral", "mistralApiKey": "", "model": "voxtral-mini-tts-2603", "voice": "", "enabled": false },
+    { "id": "tts-openai-compat", "stage": "tts", "backend": "openai", "url": "http://127.0.0.1:8880/v1", "key": "", "model": "kokoro", "voiceOverride": "af_bella" }
+  ]
+}

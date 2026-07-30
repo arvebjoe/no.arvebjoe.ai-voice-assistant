@@ -181,6 +181,45 @@ Notes:
 - `input_buffer_debug` recordings (what the mic actually captured, saved as
   FLAC) can be copied into `emulator/recordings/` and replayed.
 
+## Backend matrix runner (`matrix-runner.mts`)
+
+Tests every custom-pipeline backend implementation IN ISOLATION against its
+real endpoint — the repeatable way to verify all STT/LLM/TTS backends after a
+change (TODO item 30). Uses the app's real clients through the same builders
+as the settings page's Test buttons:
+
+- **STT**: transcribes a known reference clip (`recordings/` + expected words
+  in the config) and scores the transcript; backends with a streaming mode
+  (`createStream`) get the streaming path tested too.
+- **LLM**: one plain round ("Reply with exactly: PONG") and one two-round
+  tool-call trip — the model must call `get_current_time` and then use the
+  result we feed back.
+- **TTS**: synthesizes a fixed sentence, sanity-checks the duration and saves
+  the WAV under `emulator/matrix-out/` for listening.
+
+```bash
+cp emulator/matrix.example.json emulator/matrix.json   # git-ignored (holds keys)
+node --import tsx --import ./emulator/register.mjs ./emulator/matrix-runner.mts            # all enabled entries
+node --import tsx --import ./emulator/register.mjs ./emulator/matrix-runner.mts llm-ollama # a subset by id
+```
+
+The LAN services the default config expects (all disposable docker containers,
+models download on first start/request):
+
+```bash
+docker run -d --name matrix-wyoming-whisper -p 10300:10300 rhasspy/wyoming-whisper --model base-int8 --language en
+docker run -d --name matrix-wyoming-piper   -p 10200:10200 rhasspy/wyoming-piper --voice en_US-lessac-medium
+docker run -d --name matrix-whisper-asr     -p 9000:9000 -e ASR_MODEL=base -e ASR_ENGINE=faster_whisper onerahmet/openai-whisper-asr-webservice:latest
+docker run -d --name matrix-piper-http      -p 5000:5000 artibex/piper-http
+docker run -d --name matrix-speaches        -p 8000:8000 ghcr.io/speaches-ai/speaches:latest-cpu
+curl -X POST http://127.0.0.1:8000/v1/models/Systran%2Ffaster-whisper-small    # install its STT model
+docker run -d --name matrix-kokoro          -p 8880:8880 ghcr.io/remsky/kokoro-fastapi-cpu:latest
+```
+
+Plus Ollama on the host with a tool-capable model (`ollama pull qwen2.5:3b`)
+— the `llm-openai-compat` entry points at Ollama's `/v1` endpoint, so one
+install covers both LLM backends. Mistral entries need `mistralApiKey` set.
+
 ## How it works
 
 `npm run emulator` runs:
