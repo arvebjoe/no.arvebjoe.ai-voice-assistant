@@ -145,9 +145,20 @@ and the test-firmware note are archived in [`COMPLETED.md` §11](./COMPLETED.md)
          timers, Bring!, Music Assistant on/off → provider restarts, tool list changes
 22. [x] Budget-meter verdict (green/amber/red) vs `local_llm_num_ctx` — needs Ollama,
          overlaps item 36
-23. [ ] Flow-card run-listeners from the console: `then speak-text`,
-         `then ask-agent-output-as-text` (tokens printed), `and is-muted`, timer cards
-         (TR `button-pressed` already verified in a real flow 2026-07-19)
+23. [x] Flow-card run-listeners from the console DONE 2026-07-30 (emulator console,
+         scripted, real PE at 192.168.0.50, 14/14 checks): `and is-muted` false→true→false
+         via `press volume_mute`; timer cards — `start-timer` ⚡ timer-started with tokens,
+         `timer-is-running` true while counting, ⚡ timer-finished at zero (rang the real
+         PE — note: after the emulator exits nothing can cancel the ring; the PE button
+         stops it), `cancel-timer` ⚡ timer-cancelled, and starting a new timer over a
+         ringing one fires timer-cancelled for the old first (replace semantics, as
+         designed); `ask-agent-output-as-text` returned `{"ai-output":"The capital of
+         France is Paris."}` tokens; `speak-text` TTS played audibly on the PE. Gotcha
+         (emulator-only, already documented in emulator/README): on this multi-adapter
+         machine the auto-detected playback host was wrong — first speak-text was never
+         fetched; pinning `HE_HOST_IP=192.168.0.58` in settings.json → `env` fixed it
+         ([EMU-AUDIO][SERVE] line is the tell). (TR `button-pressed` already verified in
+         a real flow 2026-07-19)
 24. [ ] Emulator `discover` finds and correctly types PE vs Nabu Casa vs TR
 25. [x] **Upgrade path**: install this build over a real 1.4.0 — devices survive without
          re-pairing, new settings keys get sane defaults (especially what
