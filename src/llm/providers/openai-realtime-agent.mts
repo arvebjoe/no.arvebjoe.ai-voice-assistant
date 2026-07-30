@@ -1156,6 +1156,12 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
             },
         };
         this.send(payload);
+        // The payload above just put the SERVER in audio mode — sync the local
+        // cache or setOutputMode("text") no-ops after a reconnect (its early
+        // return trusts this field) and every text request times out waiting
+        // for a text.done the audio-mode session will never send. Found live
+        // 2026-07-30 by the item-29 internet-outage test.
+        this.outputMode = "audio";
     }
 
     private sessionToolsArray() {
