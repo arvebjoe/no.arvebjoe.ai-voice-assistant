@@ -105,7 +105,7 @@
             "title": {
               "en": "Device"
             },
-            "filter": "driver_id=home-assistant-voice-preview-edition|xiaozhi-ai|thirdreality-voice--music-assistant"
+            "filter": "driver_id=home-assistant-voice-preview-edition|xiaozhi-ai|thirdreality-voice--music-assistant|respeaker-xvf3800"
           }
         ],
         "tokens": [
@@ -136,7 +136,7 @@
             "title": {
               "en": "Device"
             },
-            "filter": "driver_id=home-assistant-voice-preview-edition|xiaozhi-ai|thirdreality-voice--music-assistant"
+            "filter": "driver_id=home-assistant-voice-preview-edition|xiaozhi-ai|thirdreality-voice--music-assistant|respeaker-xvf3800"
           }
         ],
         "tokens": [
@@ -208,7 +208,7 @@
             "title": {
               "en": "Device"
             },
-            "filter": "driver_id=home-assistant-voice-preview-edition|xiaozhi-ai"
+            "filter": "driver_id=home-assistant-voice-preview-edition|xiaozhi-ai|respeaker-xvf3800"
           }
         ],
         "tokens": [
@@ -247,7 +247,7 @@
             "title": {
               "en": "Device"
             },
-            "filter": "driver_id=home-assistant-voice-preview-edition|xiaozhi-ai"
+            "filter": "driver_id=home-assistant-voice-preview-edition|xiaozhi-ai|respeaker-xvf3800"
           }
         ],
         "tokens": [
@@ -286,7 +286,7 @@
             "title": {
               "en": "Device"
             },
-            "filter": "driver_id=home-assistant-voice-preview-edition|xiaozhi-ai"
+            "filter": "driver_id=home-assistant-voice-preview-edition|xiaozhi-ai|respeaker-xvf3800"
           }
         ],
         "tokens": [
@@ -324,7 +324,7 @@
             "title": {
               "en": "Device"
             },
-            "filter": "driver_id=home-assistant-voice-preview-edition|thirdreality-voice--music-assistant"
+            "filter": "driver_id=home-assistant-voice-preview-edition|thirdreality-voice--music-assistant|respeaker-xvf3800"
           }
         ],
         "id": "is-muted"
@@ -343,7 +343,7 @@
             "title": {
               "en": "Device"
             },
-            "filter": "driver_id=home-assistant-voice-preview-edition|xiaozhi-ai"
+            "filter": "driver_id=home-assistant-voice-preview-edition|xiaozhi-ai|respeaker-xvf3800"
           }
         ],
         "id": "timer-is-running"
@@ -367,7 +367,7 @@
             "title": {
               "en": "Device"
             },
-            "filter": "driver_id=home-assistant-voice-preview-edition|xiaozhi-ai|thirdreality-voice--music-assistant"
+            "filter": "driver_id=home-assistant-voice-preview-edition|xiaozhi-ai|thirdreality-voice--music-assistant|respeaker-xvf3800"
           },
           {
             "type": "text",
@@ -408,7 +408,7 @@
             "title": {
               "en": "Device"
             },
-            "filter": "driver_id=home-assistant-voice-preview-edition|xiaozhi-ai|thirdreality-voice--music-assistant"
+            "filter": "driver_id=home-assistant-voice-preview-edition|xiaozhi-ai|thirdreality-voice--music-assistant|respeaker-xvf3800"
           },
           {
             "type": "text",
@@ -437,7 +437,7 @@
             "title": {
               "en": "Device"
             },
-            "filter": "driver_id=home-assistant-voice-preview-edition|xiaozhi-ai"
+            "filter": "driver_id=home-assistant-voice-preview-edition|xiaozhi-ai|respeaker-xvf3800"
           }
         ],
         "id": "cancel-timer"
@@ -459,7 +459,7 @@
             "title": {
               "en": "Device"
             },
-            "filter": "driver_id=home-assistant-voice-preview-edition|xiaozhi-ai|thirdreality-voice--music-assistant"
+            "filter": "driver_id=home-assistant-voice-preview-edition|xiaozhi-ai|thirdreality-voice--music-assistant|respeaker-xvf3800"
           },
           {
             "type": "text",
@@ -491,7 +491,7 @@
             "title": {
               "en": "Device"
             },
-            "filter": "driver_id=home-assistant-voice-preview-edition|xiaozhi-ai|thirdreality-voice--music-assistant"
+            "filter": "driver_id=home-assistant-voice-preview-edition|xiaozhi-ai|thirdreality-voice--music-assistant|respeaker-xvf3800"
           },
           {
             "type": "text",
@@ -523,7 +523,7 @@
             "title": {
               "en": "Device"
             },
-            "filter": "driver_id=home-assistant-voice-preview-edition|xiaozhi-ai"
+            "filter": "driver_id=home-assistant-voice-preview-edition|xiaozhi-ai|respeaker-xvf3800"
           },
           {
             "type": "number",
