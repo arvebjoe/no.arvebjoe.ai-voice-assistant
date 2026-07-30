@@ -196,8 +196,21 @@ and the test-firmware note are archived in [`COMPLETED.md` §11](./COMPLETED.md)
          it; original volume restored after the test. Note: volume_set read null at boot
          (PE hadn't echoed its volume state yet) — cosmetic, values flow once set.
 28. [x] Audio-file TTL cleanup on the Homey (serving/playback already verified implicitly)
-29. [ ] Internet drop mid-session (cloud providers) recovers (satellite power-cycle side
-         already verified 2026-07-19)
+29. [x] Internet drop mid-session (cloud providers) recovers DONE 2026-07-31 (emulator +
+         real PE, REAL router-WAN pulls, scripted probe-every-25s harness — two runs).
+         **Run 1 caught a real bug:** during the outage everything failed gracefully
+         (clean errors, no crash, ESP + OpenAI reconnect campaigns with backoff), and the
+         websocket + session reconfiguration recovered on their own — but every post-restore
+         flow-card TEXT request timed out forever. Root cause: `sendSessionUpdate()` (the
+         reconnect path) puts the SERVER in audio mode but didn't resync the client-side
+         `outputMode` cache, so `setOutputMode("text")`'s early-return no-opped and the
+         audio-mode session never sends the `text.done` the request waits on. Voice turns
+         were unaffected. Fix: one-line cache resync in sendSessionUpdate
+         (openai-realtime-agent.mts) + 2 regression tests
+         (tests/openai-agent-output-mode.test.mts). **Run 2 (with fix): PASS** — probes
+         failed cleanly during the pull, first probe after restore succeeded (t+189s,
+         ~outage end + one backoff), RECOVERY CONFIRMED. (Satellite power-cycle side was
+         already verified 2026-07-19.)
 30. [ ] **Build the custom-pipeline matrix-runner** — the repeatable way to test every
          backend implementation (items 31–46). A script (emulator side, no Homey needed)
          that exercises each backend client in isolation against the real endpoint: feed
