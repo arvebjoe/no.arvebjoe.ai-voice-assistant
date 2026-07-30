@@ -144,7 +144,10 @@ You pick the devices to add (and the zone) in the terminal; they are saved to
 Notes:
 
 - Only identified voice satellites can be added. Devices with API encryption
-  enabled fail the probe — the client is plaintext-only (same as the app).
+  enabled fail the probe — the discover flow has no key to offer, so they are
+  listed with a clear error and can't be added from the console. (The app's
+  client itself supports Noise encryption; encrypted devices pair on a real
+  Homey via manual IP entry with the key.)
 - Re-discovering a known satellite refreshes its `address`/`port` in
   `settings.json` (DHCP moved it?) but keeps your tuned fields (zone, settings).
 - If the scan finds nothing, check that the machine is on the same LAN/VLAN as
@@ -223,6 +226,10 @@ the command line still takes precedence.
   need an elevated/Administrator terminal.
 - Audio files are written to the OS-resolved `/userdata/audio` (e.g.
   `C:\userdata\audio` on Windows), matching what the app's file-helper uses.
-- **Not supported:** Noise/encrypted ESPHome API (plaintext only, same as the
-  app). Discovery here is the emulator's own console flow, not Homey's pairing
-  UI — but the real settings page IS hosted (see "Settings web UI").
+- **Encrypted (Noise) satellites:** the `discover` probe is plaintext-only, so
+  encrypted devices can't be identified or added from the console. The app's
+  ESP client does support Noise, so a hand-written satellite entry with
+  `"settings": { "encryption_key": "..." }` in settings.json passes the key
+  through to the real device code. Discovery here is the emulator's own console
+  flow, not Homey's pairing UI — but the real settings page IS hosted (see
+  "Settings web UI").

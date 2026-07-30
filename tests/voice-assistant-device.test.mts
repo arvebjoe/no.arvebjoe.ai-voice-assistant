@@ -7,11 +7,15 @@ vi.mock('../src/llm/voice-provider-factory.mjs', () => import('./mocks/mock-voic
 vi.mock('../src/helpers/audio-encoders.mjs', () => ({
     pcmToFlacBuffer: async (b: any) => (Buffer.isBuffer(b) ? b : Buffer.from(b)),
 }));
-// Keep the pure PCM helpers real; only stub the /userdata-writing one so tests
+// Keep the pure PCM helpers real; only stub the /userdata-writing ones so tests
 // never touch the filesystem and the reopen path still carries the chime URL.
+// Both ensure* helpers must be stubbed: the real ones only resolve when
+// /userdata/audio exists on the host, which made chime-dependent assertions
+// pass or fail depending on the machine.
 vi.mock('../src/helpers/listening-chime.mjs', async (importOriginal) => ({
     ...(await importOriginal() as object),
     ensureListeningChime: async () => 'listening_chime.flac',
+    ensureMicClosedChime: async () => 'mic_closed_chime.flac',
 }));
 
 import { createHarness, Harness } from './mocks/device-harness.mjs';
@@ -427,7 +431,11 @@ describe('VoiceAssistantDevice (harness)', () => {
             await h.settle(10);
 
             expect(h.esp.countOf('send_voice_assistant_request')).toBe(0);
-            expect(h.esp.countOf('run_end')).toBe(1);
+            // Two run_ends: the turn's own, then the mic-closed chime cue —
+            // playUrl wraps the chime announce in its own run_start/run_end pair.
+            expect(h.esp.countOf('run_end')).toBe(2);
+            const plays = h.esp.calls.filter(c => c.method === 'playAudioFromUrl');
+            expect(plays[plays.length - 1].args[0]).toBe('http://x/mic_closed_chime.flac');
             expect((h.device as any).turn.peConversationActive).toBe(false);
         });
     });

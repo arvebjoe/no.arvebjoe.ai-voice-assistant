@@ -169,7 +169,13 @@ class Logger {
                 // Mask secret-looking fields on the error path too — error payloads
                 // (option/config snapshots, request headers) are exactly what gets
                 // written to the Homey log. info() already masks via its own path.
-                Logger.homey.error(message, maskSecrets(details));
+                // Detail-less calls must not pass the null through — Homey.error
+                // renders every argument, turning "message" into "message null".
+                if (details === null || details === undefined) {
+                    Logger.homey.error(message);
+                } else {
+                    Logger.homey.error(message, maskSecrets(details));
+                }
             } else {
                 this.write(message, 'ERROR', details);
             }
