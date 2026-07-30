@@ -183,9 +183,18 @@ and the test-firmware note are archived in [`COMPLETED.md` §11](./COMPLETED.md)
          re-pairing, new settings keys get sane defaults (especially what
          `initial_audio_skip` ends up as on *existing* devices after the 350→0 default
          change), provider still connects
-26. [ ] XiaoZhi pairing through Homey's real pairing UI (only untested device type)
-27. [ ] Device tile: active timer name + time remaining shown; volume/mute changes from
-         the Homey UI reach the satellite
+26. [x] XiaoZhi pairing through Homey's real pairing UI DONE 2026-07-30 (owner tested
+         on the real Homey before this session).
+27. [x] Device tile: active timer name + time remaining shown; volume/mute changes from
+         the Homey UI reach the satellite DONE 2026-07-30 (emulator, real factory PE at
+         192.168.0.50): tile capabilities correct at every step — start-timer 65 "pasta"
+         → timer_active=true / timer_name="pasta" / timer_remaining=62, counting down on
+         the 1 s tick (57 five seconds later), cancel → false/0/"" — these are the values
+         the tile binds to. Homey-UI direction verified by invoking the real capability
+         listeners (`press`): volume_set 0.2 vs 0.7 audibly different on the PE
+         (speak-text A/B), volume_mute true showed the PE muted (red) and false restored
+         it; original volume restored after the test. Note: volume_set read null at boot
+         (PE hadn't echoed its volume state yet) — cosmetic, values flow once set.
 28. [x] Audio-file TTL cleanup on the Homey (serving/playback already verified implicitly)
 29. [ ] Internet drop mid-session (cloud providers) recovers (satellite power-cycle side
          already verified 2026-07-19)
