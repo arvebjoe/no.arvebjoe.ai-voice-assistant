@@ -159,7 +159,26 @@ and the test-firmware note are archived in [`COMPLETED.md` §11](./COMPLETED.md)
          fetched; pinning `HE_HOST_IP=192.168.0.58` in settings.json → `env` fixed it
          ([EMU-AUDIO][SERVE] line is the tell). (TR `button-pressed` already verified in
          a real flow 2026-07-19)
-24. [ ] Emulator `discover` finds and correctly types PE vs Nabu Casa vs TR
+24. [x] Emulator `discover` finds and correctly types PE vs Nabu Casa vs TR
+         DONE 2026-07-30 (emulator console, real LAN): factory Nabu Casa PE
+         (192.168.0.50) → 'pe' with the already-in-settings.json dedup flag; TR
+         (192.168.0.56, "3RSPK-…") → 'tr' across multiple scans; Calex ESP8266
+         plugs correctly never listed addable. The custom-firmware PE
+         (192.168.0.52) has Noise encryption enabled — discover finds it via
+         mDNS and correctly refuses the plaintext probe ("encrypted API is not
+         supported", listed not-addable, documented emulator limitation); a
+         direct keyed probe (real client + the device's PSK, Noise path) typed
+         it 'pe' with 1/1/1 voice capabilities, so both PE firmware variants
+         are verified in the same sniff branch. Fixed along the way: (1)
+         `Logger.error()` appended a literal "null" to every detail-less error
+         line (homey.error renders all args); (2) stale emulator README claim
+         that the plaintext-only probe is "same as the app" (app has Noise
+         since M2); (3) `ensureMicClosedChime` was never stubbed in the device
+         harness tests — the real one writes to /userdata/audio, so the
+         empty-transcript test passed or failed depending on whether that dir
+         exists on the host (it started existing after this session's emulator
+         runs). Now stubbed like its sibling and the test asserts the chime
+         playback (second run_start/run_end pair) deterministically.
 25. [x] **Upgrade path**: install this build over a real 1.4.0 — devices survive without
          re-pairing, new settings keys get sane defaults (especially what
          `initial_audio_skip` ends up as on *existing* devices after the 350→0 default
