@@ -34,5 +34,8 @@
   },
   "1.4.5": {
     "en": "Important fix: in rare cases the assistant could \"hear\" a command nobody said during a silent pause and act on it — that can no longer happen. Listening now ends after 10 seconds of silence with a soft descending chime so you know the microphone has closed. New experimental device: Seeed ReSpeaker XVF3800. New advanced settings: per-device microphone gain and speech-detection tuning. The Gemini engine now shows the listening LED correctly."
+  },
+  "1.4.6": {
+    "en": "Fix: after a brief internet outage, the 'Ask assistant. Output as text' flow card could keep failing until the app was restarted — the assistant now recovers fully on its own once the connection returns. Voice conversations were unaffected. Also removes a stray 'null' that was appended to some error log lines."
   }
 }
