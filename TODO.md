@@ -70,8 +70,9 @@ each choice: [`docs/respeaker-xvf3800/README.md`](./docs/respeaker-xvf3800/READM
 ## Feature ideas — 2026-07-10 brainstorm (owner-approved, not yet started)
 
 Ordered roughly by wow-per-effort. None are started; pick one and spec it before coding.
-Explicitly avoids the items dropped in the 2026-07-07 triage (flows-by-voice, multi-timers,
-image analysis — see [`COMPLETED.md` §6](./COMPLETED.md)).
+Avoids the items dropped in the 2026-07-07 triage (multi-timers, image analysis — see
+[`COMPLETED.md` §6](./COMPLETED.md)), **except start-flows-by-voice, which the owner
+un-dropped 2026-07-31** (see "Start a Homey flow by voice" below).
 
 ### Easy wins (fit the existing architecture almost directly)
 
@@ -83,9 +84,32 @@ image analysis — see [`COMPLETED.md` §6](./COMPLETED.md)).
 - [ ] **Household memory** — *"remember that the spare key is in the blue cabinet"* →
       `remember`/`recall`/`forget` tools persisted in app settings, stored facts injected into
       the system prompt. Makes the assistant feel personal rather than generic.
+- [ ] **Start a Homey flow by voice** — *"kjør kveldsrutinen"*, *"start movie night"*. Owner
+      request 2026-07-31; this **un-drops** the start-flows-by-voice idea from the 2026-07-07
+      triage ([`COMPLETED.md` §6](./COMPLETED.md) — note the recorded objection there was
+      really about its bundle-mate *unchunked flow-triggered replies*, which touches the
+      announce race; nothing technical was held against flows themselves). Two tools:
+      `get_flows` (list: id + name + folder, so the LLM can match a spoken name) and
+      `start_flow(id)`.
+      - **API side:** `homey:manager:api` is already granted and the HomeyAPI instance is
+        live in `ApiHelper` — but it only exposes `devices` and `zones` today, so add a
+        `flow` accessor (or go through `getApi()`) next to them. Homey has **two** flow
+        kinds — standard Flows and Advanced Flows — with separate list/trigger calls;
+        cover both or the feature will look broken for anyone on Advanced Flows. Confirm
+        the exact homey-api method names and whether triggering needs the flow to carry a
+        *"This flow is started"* trigger card before speccing.
+      - **Prompt cost:** do NOT inject the flow list into the system prompt — a real Homey
+        has hundreds of flows. List on demand via the tool, exactly like devices/zones
+        (cost-of-growth rule 1). Gate the whole thing behind a `flows_enabled` setting
+        (default off) with a `FEATURE_TOOLS` entry + a `refreshFlowTools()` reconciler, and
+        add it to `/feature-costs`.
+      - **Product decision needed:** a flow can do anything the user built into it —
+        unlock doors, disarm alarms. Decide whether every flow is voice-startable or only
+        opted-in ones (a folder, a name convention, or a per-flow allowlist in settings).
+        The H4 `allow_unlock_via_voice` precedent is the model to follow if a gate is wanted.
 - [ ] **Moods** — Homey has native Moods and there is no mood tool today. `list_moods` +
       `set_mood` via `ApiHelper`, same pattern as the zone/device tools. Covers the "scenes"
-      ask without touching the dropped start-flows-by-voice idea.
+      ask; pairs naturally with the flow tools above (same `ApiHelper` extension).
 - [ ] **Presence** — *"is anyone home?"*, *"is Anna home yet?"*. Read-only tool over Homey's
       user/presence API.
 - [ ] **Accept full URLs (https) in the custom-pipeline host fields** — forum request
