@@ -1092,3 +1092,56 @@ is archived separately in §11.
          every value a UUID ("Paul - Neutral (EN-US)" …), zero preset names. Piper
          backend correctly falls back to "Piper server voice" when the server has no
          /voices endpoint.
+
+---
+
+## 13. libflacjs decode corruption in the emulator (2026-08-04)
+
+`tests/emulator-recordings.test.mts` → *"decodes a FLAC clip back to 16 kHz mono PCM"* failed on
+a new machine (macOS, Node 24.19.0, clean reinstall): a 200 ms clip decoded to 600–800 ms, with
+repeated `FLAC__STREAM_DECODER_ERROR_STATUS_LOST_SYNC` in the log. Surfaced alongside the npm 12
+`allow-git` install fix (`.npmrc`, commit `c0378af`) but **unrelated to it** — `package-lock.json`
+was untouched and `libflacjs` was the pinned `5.4.0` in both places.
+
+**Root cause — a latent bug in libflacjs 5.4.0, not in our code.** `Decoder._createReadFunc()`
+(`node_modules/libflacjs/src/decoder.ts:360`) sizes the stream from
+`binData.buffer.byteLength` — the whole **enclosing** `ArrayBuffer` — instead of the view's
+`byteLength`. `subarray()` clamps the buffer it hands back, so the data is never wrong, but the
+callback keeps reporting the inflated `readDataLength` to libFLAC. libFLAC then parses stale
+**emscripten-heap** bytes as extra frames, re-decoding its own leftover buffer.
+
+`readFileSync` returns a pooled buffer for any file under `Buffer.poolSize / 2`, so a small clip
+is a *view* into a shared pool rather than its own ArrayBuffer — which is what trips the bug. The
+severity scales with the pool size, and **that** is what changed between machines:
+
+| enclosing ArrayBuffer | LOST_SYNC | decoded | test |
+|---|---|---|---|
+| 8192 — Node ≤22 (the old Windows box) | 1 | 4800 samples (correct) | **passes** |
+| 65536 — Node 24 (`Buffer.poolSize` was raised) | 4 | 19200 samples (4×) | **fails** |
+| exact-size buffer (the fix) | 0 | 4800 samples | passes, silent |
+
+So the bug was **always present on Windows too** — the owner confirmed seeing `LOST_SYNC` there —
+but the smaller over-read let the decoder resync before it produced extra frames, so the
+assertion stayed green and the error line was written off as noise. Node 24's larger pool
+escalated it from "logs noise, still works" to "silently returns 4× the audio".
+
+Ruled out along the way (all were wrong guesses in the first pass): macOS/clean-reinstall, the
+npm 12 blocked-postinstall-scripts gate, a stale shared `Flac` singleton, residual JS pool
+garbage (trailing bytes 0x00/0xFF/0x41 all behaved identically — it is fully deterministic, not
+luck), and any fault in `pcmToFlacBuffer` (the **encoder** is fine; its output decodes perfectly
+from an exact-size buffer).
+
+**Fix:** `emulator/runtime/recordings.mts` now passes `new Uint8Array(flacData)` — a real copy
+into an exactly-sized ArrayBuffer — instead of a zero-copy view. One line, with a comment warning
+against "optimizing" the copy away. Suite green: 686 passed / 15 skipped, and the decoder is now
+completely silent (0 errors, on both pool sizes).
+
+**Blast radius: emulator only.** `new Decoder` appears in exactly one place —
+`emulator/runtime/recordings.mts` (the console `mic` clip-injection command). Shipped `src/` code
+only ever *encodes* FLAC (`src/helpers/audio-encoders.mts` uses `Encoder`), so real device audio
+was never affected. Worth remembering if FLAC decoding is ever added to the app itself: the
+underlying libflacjs bug is still there, and any `Buffer` from `readFileSync` will be pooled.
+
+**Also worth knowing:** `npm test` has never run in CI — the GitHub workflows only run
+`homey app validate`. This test's only prior verification was a local run on the owner's machine,
+which is why a latent failure could sit unnoticed.

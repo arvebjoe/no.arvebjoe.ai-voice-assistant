@@ -87,7 +87,16 @@ async function decodeFlac(flacData: Buffer): Promise<{ samples: Int16Array; samp
 
   const decoder = new Decoder(Flac, { verify: false });
   try {
-    if (!decoder.decode(new Uint8Array(flacData.buffer, flacData.byteOffset, flacData.byteLength))) {
+    // `new Uint8Array(buf)` COPIES into a fresh, exactly-sized ArrayBuffer — do
+    // not "optimize" this into a zero-copy view over flacData.buffer. libflacjs
+    // 5.4.0's read callback sizes the stream from `binData.buffer.byteLength`
+    // (the whole enclosing ArrayBuffer) instead of the view's byteLength, then
+    // reports that inflated length back to libFLAC while handing over a shorter
+    // buffer — so libFLAC re-parses stale emscripten-heap bytes as extra frames.
+    // readFileSync pools any file under Buffer.poolSize/2, so a small clip is a
+    // view into a 64 KB pool on Node 24 and decodes to 4x its real length
+    // (LOST_SYNC in the log). Copying makes buffer.byteLength === byteLength.
+    if (!decoder.decode(new Uint8Array(flacData))) {
       throw new Error('FLAC decode failed (corrupt file?)');
     }
     const meta = decoder.metadata;

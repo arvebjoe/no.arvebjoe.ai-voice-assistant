@@ -49,15 +49,6 @@ each choice: [`docs/respeaker-xvf3800/README.md`](./docs/respeaker-xvf3800/READM
 
 ## Watch items (no action unless they recur)
 
-- **libflacjs decode corruption on Node 24 (2026-08-04, `tests/emulator-recordings.test.mts`):**
-  the `loadRecording` FLAC-roundtrip test fails — decoding a clip encoded by our own
-  `pcmToFlacBuffer` (`src/helpers/audio-encoders.mts`) yields a `durationMs` 3x too long (600ms
-  vs 200ms) and the decoder logs repeated `FLAC__STREAM_DECODER_ERROR_STATUS_LOST_SYNC` /
-  `BAD_HEADER`. Reproduces every run (not flaky), pure JS/WASM lib so unrelated to the
-  `allow-git`/blocked-postinstall-scripts npm 12 changes made the same day. Not yet root-caused;
-  candidate angles: Node 24 compat, a stale/shared `Flac`/decoder instance across calls, or a
-  genuine encoder bug in `pcmToFlacBuffer`. Check whether this affects real device audio (not
-  just the test) before treating it as test-only.
 - **Timer-tool phrasing miss (2026-07-28, live test, Norwegian):** "START nedtelling ett
   minutt" did not trigger `set_timer` — the LLM said it can't do countdowns and called
   `get_local_time` instead; "SETT nedtelling ett minutt" worked. If it recurs, consider a
