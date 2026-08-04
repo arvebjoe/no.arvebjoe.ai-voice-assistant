@@ -37,5 +37,8 @@
   },
   "1.4.6": {
     "en": "Fix: after a brief internet outage, the 'Ask assistant. Output as text' flow card could keep failing until the app was restarted — the assistant now recovers fully on its own once the connection returns. Voice conversations were unaffected. Also removes a stray 'null' that was appended to some error log lines."
+  },
+  "1.4.7": {
+    "en": "Fix: Seeed ReSpeaker XVF3800 devices could not be picked in Flow cards — 'Say', 'Ask assistant', 'Playback audio from URL', the timer cards and the assistant triggers now all offer them, just like the other voice devices. Also gives the ReSpeaker a clearer device icon."
   }
 }
