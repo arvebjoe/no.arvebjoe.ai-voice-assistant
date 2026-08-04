@@ -89,7 +89,7 @@ Vitest with `globals: true`, node environment. Tests live in `tests/**/*.test.mt
 Two files describe the app to end users and **must be updated whenever a user-visible feature changes** (new provider/backend, new flow card, new setting, new supported device, changed behavior):
 
 - `README.md` — the full GitHub-facing doc (features, hardware setup, engine choice, settings, flow cards, how-it-works overview).
-- `README.txt` — the Homey App Store description. Plain text, no markdown, keep it short and non-technical; it must stay consistent with README.md.
+- `README.txt` — the Homey App Store description. Plain text, no markdown, non-technical, and it must stay consistent with README.md. **Keep it very short: two paragraphs on the core value proposition, plus the smart-lock safety note (verbatim — voice-unlocking is off by default and limited to one lock per command) and a closing pointer to the GitHub repo and Community topic.** Do NOT grow it back into feature lists — no per-engine breakdown, supported-device list, pairing instructions, requirements, Flow cards or settings detail; all of that belongs in README.md. App Store certification rejected the app once for a README.txt that had accumulated exactly those sections (App Store Guidelines 1.3), so when a new feature lands, update README.md and leave README.txt alone unless the core pitch itself changed.
 
 When finishing a feature, check both before committing — stale READMEs have already happened once (the local pipeline shipped without either file mentioning it).
 
