@@ -93,6 +93,16 @@ Two files describe the app to end users and **must be updated whenever a user-vi
 
 When finishing a feature, check both before committing — stale READMEs have already happened once (the local pipeline shipped without either file mentioning it).
 
+## Releasing
+
+The app version lives in **three** places and they must be bumped together:
+
+1. `.homeycompose/app.json` — the source of truth. Everything else follows this.
+2. `app.json` — generated; refresh it with `homey app build` after step 1 and commit the regenerated file.
+3. `package.json` — **purely cosmetic, keep it in sync by hand.** Nothing reads it: the Homey CLI only looks at `devDependencies.typescript`, `type: "module"` and the dependency list, and no app code reads a version. It drifted to `1.0.0` for 1.4.x once already because `homey app publish` bumps the manifest and never touches it. Edit the field directly — do NOT run `npm version`, which also makes a commit and a git tag.
+
+Then add the release's entry to `.homeychangelog.json` (user-facing wording — what changed for the user, not the commit subjects; skip anything that only touches `emulator/` or docs) and run `homey app validate --level publish` before committing. The `homey:manager:api` permission warning it prints is expected and not an error.
+
 ## Outstanding work
 
 **`TODO.md` (repo root) is the single source of truth for what's left to do** — check it at the start of each session. It indexes everything outstanding (release testing checklist, ESP client, OpenAI Realtime, agent tools, firmware, local AI, Phase 2) with status markers. Finished items are archived with their full context (root causes, gotchas, verification notes) in `COMPLETED.md` — check there before re-investigating anything that sounds familiar. Two detailed reference docs feed into the TODO list: `OPENAI_API_IMPROVEMENTS.md` (OpenAI Realtime audit) and `docs/home-assistant-voice-preview-edition/implementation-gap-analysis.md` (ESPHome native-API coverage).
