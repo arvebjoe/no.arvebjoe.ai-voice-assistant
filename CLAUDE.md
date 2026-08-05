@@ -93,6 +93,30 @@ Two files describe the app to end users and **must be updated whenever a user-vi
 
 When finishing a feature, check both before committing — stale READMEs have already happened once (the local pipeline shipped without either file mentioning it).
 
+## Branching workflow
+
+- **`main`** — the released / in-certification line. Only certification fixes and release commits land here directly.
+- **`dev`** — the integration branch for new work. Branched from `main`; merged back into `main` once certification is done.
+- **`feature/*`** — branched from `dev`, merged back into `dev`. Never branch a feature off `main`.
+
+**Merge `main` into `dev` immediately after every commit to `main`.** One small fix resolved today is trivial; weeks of accumulated certification fixes resolved at the end is not. Done consistently, the eventual `dev` → `main` merge is a fast-forward.
+
+If a fix belongs on both branches, fix it **once on `main`** and merge down — never apply the same fix twice on both branches, that is what produces genuinely nasty conflicts.
+
+### Conflict hotspots
+
+`.homeycompose/app.json`, `app.json`, `package.json` (all three version fields) and `.homeychangelog.json` conflict whenever both branches touch them. Two rules keep that surface near zero:
+
+- **Do version bumps and changelog entries only on `main`** while a certification is in flight. `dev` stays on the current version and receives those changes one-way via the merge down.
+- **Never hand-merge `app.json`** — it is generated. Take either side and regenerate:
+  ```bash
+  git checkout --theirs app.json   # --ours works equally well
+  homey app build
+  git add app.json
+  ```
+
+`TODO.md` and `COMPLETED.md` churn on both branches too; the same one-way principle applies where practical.
+
 ## Releasing
 
 The app version lives in **three** places and they must be bumped together:
