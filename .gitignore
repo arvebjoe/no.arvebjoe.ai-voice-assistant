@@ -4,7 +4,7 @@
 /coverage/
 *.bat
 /.idea/
-
+.DS_Store
 # Emulator local config (holds the OpenAI API key)
 /emulator/settings.json
 
