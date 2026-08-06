@@ -36,6 +36,7 @@ just speak naturally:
 * **Ask anything** — general questions answered by the AI.
 * **Search the web** — *"what's playing at the cinema today?"*, *"when does the next bus leave?"* —
   current and local information via OpenAI web search or the Brave Search API (pick one in settings).
+  It checks its own results and searches again if the first pass only found something vaguely related.
 * **Manage your Bring! shopping list** — *"what's on the shopping list?"*, *"add milk"*, *"take bread
   off the list"*. If you add something that's already there, the assistant asks whether to increase
   the amount or leave it. Opt-in — enable it and enter your Bring! account details in settings.
@@ -390,7 +391,13 @@ loaded at all: no tools, no prompt text, no cost.
   also needs a long-lived API token from the MA web UI) to enable the music tools (see
   [Playing music](#playing-music-music-assistant)).
 * **Web search** — **OpenAI web search** (uses your OpenAI key) or **Brave Search API** (its own
-  free-tier key); switch the feature off to remove the tool entirely.
+  free-tier key); switch the feature off to remove the tool entirely. On the OpenAI backend,
+  **Search attempts** (default 2) controls how hard it digs. The search model rates its own answer,
+  and if it only found something vaguely related it searches again with a better query instead of
+  reading out a near-miss; when the attempts run out it says it could not find it, or asks you to
+  narrow the question down. Every question gets the same thorough first search, so extra attempts
+  only cost time on the questions that actually needed them. Searches take a while, so the assistant
+  says something like *"let me look that up"* while it works instead of going silent.
 
 **Custom pipeline** *(Custom provider only)* — per-stage backend choice plus host/port or
 URL/key/model for each, with Test buttons, and the Ollama context-window size (num_ctx).

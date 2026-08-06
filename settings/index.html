@@ -1183,6 +1183,19 @@
               </div>
               <div class="help-text">Visit https://api.search.brave.com to get one (free tier available).</div>
             </div>
+            <div class="homey-form-group" id="web_search_attempts_group">
+              <label class="homey-form-label" for="web_search_max_attempts">Search attempts</label>
+              <select class="homey-form-input" id="web_search_max_attempts">
+                <option value="1">1 — never retry (fastest)</option>
+                <option value="2">2 — one retry (recommended)</option>
+                <option value="3">3 — two retries</option>
+                <option value="4">4 — three retries (slowest)</option>
+              </select>
+              <div class="help-text">Every question gets the same thorough first search. If the assistant judges its
+                own answer to have missed what you asked, it searches again with a better query rather than reading out
+                a near-miss — so extra attempts only cost time on the questions that needed them. When the attempts run
+                out it tells you it could not find it, or asks you to narrow the question down. OpenAI backend only.</div>
+            </div>
           </div>
         </div>
       </section>
@@ -1743,6 +1756,10 @@
       function refreshWebSearchVisibility() {
         document.getElementById("brave_key_group").style.display =
           webSearchSelectElement.value === "brave" ? "" : "none";
+        // Verification + retry is an OpenAI-backend feature: Brave returns raw
+        // snippets with nothing to judge them against.
+        document.getElementById("web_search_attempts_group").style.display =
+          webSearchSelectElement.value === "brave" ? "none" : "";
       }
       webSearchSelectElement.addEventListener("change", refreshWebSearchVisibility);
       Homey.get("web_search_provider", function (err, backend) {
@@ -1755,6 +1772,10 @@
       Homey.get("brave_api_key", function (err, key) {
         if (err) return Homey.alert(err);
         if (key) document.getElementById("brave_api_key").value = key;
+      });
+      Homey.get("web_search_max_attempts", function (err, attempts) {
+        if (err) return Homey.alert(err);
+        if (attempts) document.getElementById("web_search_max_attempts").value = String(attempts);
       });
 
       // Bring! shopping list credentials.
@@ -1963,6 +1984,7 @@
           // 'disabled' so the tool is not registered at all.
           ["web_search_provider", webSearchEnabledElement.checked ? webSearchSelectElement.value : "disabled"],
           ["brave_api_key", document.getElementById("brave_api_key").value.trim()],
+          ["web_search_max_attempts", parseInt(document.getElementById("web_search_max_attempts").value, 10)],
           // Weather + timers feature gates
           ["weather_enabled", document.getElementById("weather_enabled").checked],
           ["timers_enabled", document.getElementById("timers_enabled").checked],
