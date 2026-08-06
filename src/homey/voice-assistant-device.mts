@@ -117,6 +117,20 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
   private timerTickInterval: NodeJS.Timeout | null = null;
 
   /**
+   * Safety net for a turn nobody speaks into. Server VAD only reports the END
+   * of speech, so a wake followed by silence produces no event at all: the mic
+   * stays open indefinitely, and because a turn in 'listening' also arms the
+   * duplicate-wake guard, EVERY later wake is dropped — the satellite stops
+   * responding until it reconnects. Cleared the moment VAD hears speech, after
+   * which the normal silence path owns the turn.
+   *
+   * 15 s matches Home Assistant's own VoiceCommandSegmenter timeout, which is
+   * what ends a silent turn when the same satellite runs against HA.
+   */
+  private readonly NO_SPEECH_TIMEOUT_MS: number = 15_000;
+  private noSpeechTimeout: NodeJS.Timeout | null = null;
+
+  /**
    * onInit is called when the device is initialized.
    */
   async onInit(): Promise<void> {
@@ -351,6 +365,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       // speech (see the provider 'speech' handler), so the PE's waiting phase
       // (mic open, nothing heard yet) stays distinct from its listening phase.
       this.esp.begin_mic_capture();
+      this.armNoSpeechTimeout();
     });
 
     // There is some audio data available from the microphone
@@ -697,6 +712,9 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     // tripping server VAD (the spurious-turn case). Best-effort — not every
     // provider emits it (see VoiceProviderEvents).
     this.provider.on('speech', (source: string) => {
+      // Somebody is talking — the turn now ends the normal way (VAD silence or
+      // an empty transcript), so stand the no-speech net down.
+      this.clearNoSpeechTimeout();
       if (!this.turn.isListening) return;
       this.convo.info(`User started speaking (${source} VAD)`, 'MIC');
       this.esp.stt_vad_start();
@@ -704,6 +722,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
     // The agent has detected that the user has stopped speaking.
     this.provider.on('silence', async (source: string) => {
+      this.clearNoSpeechTimeout();
       this.convo.info(`User stopped speaking (${source} VAD) — mic closed`, 'MIC');
       this.logger.info(`Silence detected by agent (${source}), closing microphone.`);
       this.turn.micClosed();
@@ -898,7 +917,63 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
    * duplicate-wake guard — the "wake-death" that previously required a PE
    * power-cycle to recover. Idempotent and safe to call when idle.
    */
+  /** Start the no-speech net for the turn that just opened the mic. */
+  private armNoSpeechTimeout(): void {
+    this.clearNoSpeechTimeout();
+    this.noSpeechTimeout = this.homey.setTimeout(
+      () => this.closeSilentTurn(),
+      this.NO_SPEECH_TIMEOUT_MS,
+    );
+  }
+
+  private clearNoSpeechTimeout(): void {
+    if (this.noSpeechTimeout) {
+      this.homey.clearTimeout(this.noSpeechTimeout);
+      this.noSpeechTimeout = null;
+    }
+  }
+
+  /**
+   * Nothing was ever spoken into this turn. Close it the way an empty
+   * transcript closes one — a plain STT_END/RUN_END plus the mic-closed cue,
+   * NOT an abort: the user simply said nothing, so the device should go quietly
+   * idle rather than fire its error trigger.
+   */
+  private closeSilentTurn(): void {
+    this.noSpeechTimeout = null;
+    if (!this.turn.isListening) {
+      return;
+    }
+
+    this.convo.info(
+      `Heard nothing for ${Math.round(this.NO_SPEECH_TIMEOUT_MS / 1000)}s — closing the mic`,
+      'MIC',
+    );
+    this.logger.info('No speech detected — closing the turn');
+
+    // Clears every turn/session flag, so the next wake starts a fresh
+    // conversation and is no longer swallowed by the duplicate-wake guard.
+    this.turn.abort();
+    this.audioOutput.abort();
+    this.reSampler?.reset();
+
+    this.esp.closeMic();
+    this.esp.stt_end('');
+    this.esp.run_end();
+    this.setCapabilityValue('onoff', false).catch(err => {
+      this.logger.error('Failed to reset onoff capability after a silent turn', err);
+    });
+
+    // Same descending cue the empty-transcript path plays: the user needs to
+    // know the mic is no longer open, and the LED alone doesn't tell them.
+    if (this.micClosedChimeFilename) {
+      this.playUrl(this.webServer.buildStaticUrl(this.micClosedChimeFilename));
+    }
+  }
+
+
   private abortCurrentTurn(reason: string, playError: boolean = false): void {
+    this.clearNoSpeechTimeout();
     // ONE reset each: the machine clears every turn/session flag, the pipeline
     // invalidates queued and in-flight segment work (generation bump) and drops
     // its buffers. Both report whether anything was actually in flight.
@@ -1635,6 +1710,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
     // Stop any running countdown so its setTimeout can't fire after teardown.
     try {
+      this.clearNoSpeechTimeout();
       this.stopTimerCapabilityTick();
       this.timerManager?.dispose();
     } catch (err) {

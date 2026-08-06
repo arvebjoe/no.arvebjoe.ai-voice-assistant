@@ -45,11 +45,20 @@ so the device received the bare event type all along. They now use the repeated
 `vaEvent()` only accepts that array so the trap can't come back
 (`tests/esp-voice-assistant-events.test.mts` asserts on the encoded bytes).
 
+Also fixed 2026-08-06, found the same way: **a turn nobody spoke into never
+closed.** Server VAD only reports the END of speech, so total silence produced no
+event at all — the mic stayed open indefinitely and, because a turn in
+'listening' arms the duplicate-wake guard, every later wake was dropped: the
+satellite went deaf until it reconnected. A 15 s no-speech timeout (Home
+Assistant's own VoiceCommandSegmenter value) now closes the turn the way an
+empty transcript does — STT_END/RUN_END plus the mic-closed cue, no error event.
+Cleared as soon as VAD hears speech, so a slow talker is unaffected.
+
 - [ ] **Watch one real turn on a PE.** Two triggers that could never fire before
       now do: `on_stt_end` (the firmware used to bail with "No text in STT_END
       event") and `on_error` with a real code/message instead of empty strings.
-      Both are expected to be harmless — this is what Home Assistant sends —
-      but it's device-side behaviour we've never actually exercised. Run
+      Both are expected to be harmless — this is what Home Assistant sends — but
+      it's device-side behaviour we've never actually exercised. Run
       `homey app run --remote` and check the PE's own log for anything new
       around STT_END, plus that a wake with no API key still just plays the
       error sound.

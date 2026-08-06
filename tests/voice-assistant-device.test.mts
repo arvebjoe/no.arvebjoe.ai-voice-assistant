@@ -110,6 +110,85 @@ describe('VoiceAssistantDevice (harness)', () => {
         });
     });
 
+    describe('no-speech timeout — a turn nobody speaks into', () => {
+        // Server VAD only reports the END of speech, so total silence produces
+        // no event at all. Without the net the mic stays open forever AND the
+        // duplicate-wake guard above then swallows every later wake — the
+        // satellite goes deaf until it reconnects.
+        it('closes the turn and lets the next wake through', async () => {
+            const h = await createHarness();
+            vi.useFakeTimers();
+            try {
+                startTurn(h);
+                expect((h.device as any).turn.isListening).toBe(true);
+
+                await vi.advanceTimersByTimeAsync(15_000);
+
+                expect((h.device as any).turn.isListening).toBe(false);
+                // Closed like an empty transcript, not like a failure: the user
+                // simply said nothing, so no error event reaches the device.
+                expect(h.esp.countOf('stt_end')).toBe(1);
+                expect(h.esp.countOf('pipeline_error')).toBe(0);
+
+                const runStarts = h.esp.countOf('run_start');
+                startTurn(h);
+                expect(h.esp.countOf('run_start')).toBeGreaterThan(runStarts);
+                expect((h.device as any).turn.isListening).toBe(true);
+            } finally {
+                vi.useRealTimers();
+            }
+        });
+
+        it('plays the mic-closed cue so the user knows the mic shut', async () => {
+            const h = await createHarness();
+            vi.useFakeTimers();
+            try {
+                startTurn(h);
+                await vi.advanceTimersByTimeAsync(15_000);
+
+                const played = h.esp.calls.filter((c: any) => c.method === 'playAudioFromUrl');
+                expect(played).toHaveLength(1);
+                expect(played[0].args[0]).toContain('mic_closed_chime.flac');
+            } finally {
+                vi.useRealTimers();
+            }
+        });
+
+        it('stands down once VAD hears speech, however long the user then talks', async () => {
+            const h = await createHarness();
+            vi.useFakeTimers();
+            try {
+                startTurn(h);
+                h.provider.emit('speech', 'server');
+
+                await vi.advanceTimersByTimeAsync(60_000);
+
+                // Still listening: ending a long sentence is the silence
+                // handler's job, not the net's.
+                expect((h.device as any).turn.isListening).toBe(true);
+                expect(h.esp.countOf('stt_end')).toBe(0);
+            } finally {
+                vi.useRealTimers();
+            }
+        });
+
+        it('does not fire against a turn that already ended', async () => {
+            const h = await createHarness();
+            vi.useFakeTimers();
+            try {
+                startTurn(h);
+                h.esp.emit('Unhealthy');            // turn aborted mid-listen
+                const sttEnds = h.esp.countOf('stt_end');
+
+                await vi.advanceTimersByTimeAsync(15_000);
+
+                expect(h.esp.countOf('stt_end')).toBe(sttEnds);
+            } finally {
+                vi.useRealTimers();
+            }
+        });
+    });
+
     describe('M3 — onSettings applies the NEW values', () => {
         it('recomputes audio-skip from newSettings, not the stale getSettings()', async () => {
             const h = await createHarness({ settings: { initial_audio_skip: 300 } });
