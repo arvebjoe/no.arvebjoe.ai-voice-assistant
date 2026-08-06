@@ -43,6 +43,15 @@ function resolveLogLevel(value: string | number | undefined): number {
   return LOG_LEVELS[String(value).toUpperCase().replace(/[\s-]/g, '_')] ?? 0;
 }
 
+/**
+ * One entry of VoiceAssistantEventResponse.data — the message's only payload
+ * carrier (see vaEvent).
+ */
+interface VaEventData {
+  name: string;
+  value: string;
+}
+
 /** A wake word the satellite has on board (VoiceAssistantConfigurationResponse). */
 export interface EspWakeWord {
   id: string;
@@ -82,7 +91,6 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
   private homey: any;
   private host: string;
   private readonly apiPort: number;
-  private streamId: number;
   private rxBuf: Buffer;
   private connected: boolean;
   private tcp: net.Socket | null;
@@ -181,7 +189,6 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
     // Discovery probes are one-shot; never reconnect them.
     this.autoReconnect = !discoveryMode;
 
-    this.streamId = 1;
     this.rxBuf = Buffer.alloc(0);
     this.connected = false;
     this.tcp = null;
@@ -939,36 +946,51 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
   }
 
   run_start(): void {
-    this.vaEvent(VA_EVENT.VOICE_ASSISTANT_RUN_START, {}, 'RUN_START');
+    this.vaEvent(VA_EVENT.VOICE_ASSISTANT_RUN_START, [], 'RUN_START');
   }
 
   run_end(): void {
-    this.vaEvent(VA_EVENT.VOICE_ASSISTANT_RUN_END, {}, 'RUN_END');
-    this.streamId++;
+    this.vaEvent(VA_EVENT.VOICE_ASSISTANT_RUN_END, [], 'RUN_END');
   }
 
+  // The firmware reads `code` and `message` off this event and passes both to
+  // its on_error trigger (which is what drives the error chime / red ring).
+  // Note it treats the code 'duplicate_wake_up_detected' specially — it goes
+  // idle instead of erroring — so never reuse that string for anything else.
   pipeline_error(code: string, message: string): void {
-    this.vaEvent(VA_EVENT.VOICE_ASSISTANT_ERROR, { code, message }, 'ERROR');
+    this.vaEvent(VA_EVENT.VOICE_ASSISTANT_ERROR, [
+      { name: 'code', value: code },
+      { name: 'message', value: message },
+    ], 'ERROR');
   }
 
   wake_word_end(): void {
-    this.vaEvent(VA_EVENT.VOICE_ASSISTANT_WAKE_WORD_END, {}, 'WAKE_WORD_END');
+    this.vaEvent(VA_EVENT.VOICE_ASSISTANT_WAKE_WORD_END, [], 'WAKE_WORD_END');
   }
 
   stt_start(): void {
-    this.vaEvent(VA_EVENT.VOICE_ASSISTANT_STT_START, {}, 'STT_START');
+    this.vaEvent(VA_EVENT.VOICE_ASSISTANT_STT_START, [], 'STT_START');
   }
 
+  // Carries the transcript. A text-less STT_END is discarded by the firmware
+  // ("No text in STT_END event") and its on_stt_end trigger never fires, so an
+  // empty transcript is sent as the bare event on purpose — that is exactly
+  // what an empty turn means.
   stt_end(text: string): void {
-    this.vaEvent(VA_EVENT.VOICE_ASSISTANT_STT_END, { text }, 'STT_END');
+    this.vaEvent(VA_EVENT.VOICE_ASSISTANT_STT_END,
+      text ? [{ name: 'text', value: text }] : [], 'STT_END');
   }
 
   intent_start(): void {
-    this.vaEvent(VA_EVENT.VOICE_ASSISTANT_INTENT_START, {}, 'INTENT_START');
+    this.vaEvent(VA_EVENT.VOICE_ASSISTANT_INTENT_START, [], 'INTENT_START');
   }
 
+  // The streaming reply, one chunk at a time. `chat_log_delta` is the name Home
+  // Assistant uses; the firmware ignores it (only `tts_start_streaming` means
+  // anything to it) and the event itself is what lets it react early.
   intent_progress(text: string): void {
-    this.vaEvent(VA_EVENT.VOICE_ASSISTANT_INTENT_PROGRESS, { text }, 'INTENT_PROGRESS');
+    this.vaEvent(VA_EVENT.VOICE_ASSISTANT_INTENT_PROGRESS,
+      [{ name: 'chat_log_delta', value: text }], 'INTENT_PROGRESS');
   }
 
   // INTENT_END is the ONLY event the firmware parses `continue_conversation` from:
@@ -988,7 +1010,7 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
     if (continueConversation !== undefined) {
       data.push({ name: 'continue_conversation', value: continueConversation ? '1' : '0' });
     }
-    this.vaEvent(VA_EVENT.VOICE_ASSISTANT_INTENT_END, data.length > 0 ? { data } : {}, 'INTENT_END');
+    this.vaEvent(VA_EVENT.VOICE_ASSISTANT_INTENT_END, data, 'INTENT_END');
   }
 
   // The firmware DISCARDS a TTS_START without a `text` data entry ("No text in
@@ -998,8 +1020,8 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
   // firmware's announcement handler fires tts_start_trigger_ by itself; in-band
   // (TTS_END url) replies have no announcement, so they NEED this text.
   tts_start(text?: string): void {
-    const extra = text ? { data: [{ name: 'text', value: text }] } : {};
-    this.vaEvent(VA_EVENT.VOICE_ASSISTANT_TTS_START, extra, 'TTS_START');
+    this.vaEvent(VA_EVENT.VOICE_ASSISTANT_TTS_START,
+      text ? [{ name: 'text', value: text }] : [], 'TTS_START');
   }
 
   // Optionally carries the reply audio URL. In the start_conversation follow-up
@@ -1009,16 +1031,20 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
   // URL goes in the repeated `data` field as {name:'url', value:url}, NOT a spread
   // property (which protobufjs would drop as an unknown field).
   tts_end(url?: string): void {
-    const extra = url ? { data: [{ name: 'url', value: url }] } : {};
-    this.vaEvent(VA_EVENT.VOICE_ASSISTANT_TTS_END, extra, 'TTS_END');
+    this.vaEvent(VA_EVENT.VOICE_ASSISTANT_TTS_END,
+      url ? [{ name: 'url', value: url }] : [], 'TTS_END');
   }
 
   stt_vad_start(): void {
-    this.vaEvent(VA_EVENT.VOICE_ASSISTANT_STT_VAD_START, {}, 'STT_VAD_START');
+    this.vaEvent(VA_EVENT.VOICE_ASSISTANT_STT_VAD_START, [], 'STT_VAD_START');
   }
 
+  // The VAD events carry no payload of their own (the transcript belongs to
+  // STT_END); the parameter is always '' today and only travels if something
+  // ever passes one.
   stt_vad_end(text: string): void {
-    this.vaEvent(VA_EVENT.VOICE_ASSISTANT_STT_VAD_END, { text }, 'STT_VAD_END');
+    this.vaEvent(VA_EVENT.VOICE_ASSISTANT_STT_VAD_END,
+      text ? [{ name: 'text', value: text }] : [], 'STT_VAD_END');
   }
 
 
@@ -1240,12 +1266,26 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
 
 
 
-  vaEvent(type: number, extra: Record<string, any> = {}, name: string): void {
+  /**
+   * Send a VoiceAssistantEventResponse.
+   *
+   * EVERY value must travel in the repeated `data` field as a {name, value}
+   * pair: the message has only `event_type` and `data`, so a spread property
+   * like `{ text }` is dropped by protobufjs as an unknown field and never
+   * reaches the device — silently, since proto3 has no strictness to complain
+   * with. That trap swallowed the STT_END transcript and the ERROR code/message
+   * for a long time, so this signature takes the data array explicitly and
+   * there is no other way to put something on the wire.
+   *
+   * The names are the ones Home Assistant sends (see the event table in
+   * docs/home-assistant-voice-preview-edition/esphome-native-api.md); the
+   * firmware looks each one up by name and ignores what it doesn't know.
+   */
+  vaEvent(type: number, data: VaEventData[], name: string): void {
 
     const payload = {
       eventType: type,
-      streamId: this.streamId,
-      ...extra
+      ...(data.length > 0 ? { data } : {}),
     };
 
     this.logger.info(`VoiceAssistantEvent: ${name}`, "TX", payload);

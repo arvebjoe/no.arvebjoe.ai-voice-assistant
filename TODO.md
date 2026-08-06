@@ -35,6 +35,25 @@ each choice: [`docs/respeaker-xvf3800/README.md`](./docs/respeaker-xvf3800/READM
       top-view rendering of the board (drawn, not photographed — deliberately not a reused photo
       of another device). Swap in real product images before the store release.
 
+## VoiceAssistantEvent payloads — needs a check on a real PE
+
+Fixed 2026-08-06: `stt_end`, `pipeline_error`, `intent_progress` and
+`stt_vad_end` built their payload as a spread property (`{ text }`), which
+`VoiceAssistantEventResponse` has no field for — protobufjs dropped it silently,
+so the device received the bare event type all along. They now use the repeated
+`data` name/value field like `intent_end`/`tts_start`/`tts_end` already did, and
+`vaEvent()` only accepts that array so the trap can't come back
+(`tests/esp-voice-assistant-events.test.mts` asserts on the encoded bytes).
+
+- [ ] **Watch one real turn on a PE.** Two triggers that could never fire before
+      now do: `on_stt_end` (the firmware used to bail with "No text in STT_END
+      event") and `on_error` with a real code/message instead of empty strings.
+      Both are expected to be harmless — this is what Home Assistant sends —
+      but it's device-side behaviour we've never actually exercised. Run
+      `homey app run --remote` and check the PE's own log for anything new
+      around STT_END, plus that a wake with no API key still just plays the
+      error sound.
+
 ## Deferred with a deadline
 
 - [ ] **Re-attempt the gpt-realtime-2.1 migration (deadline: before Jan 20, 2027).** The

@@ -730,10 +730,15 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       // any mid-reply "?" — a joke's setup line ("Hvorfor kan ikke sykler stå
       // oppreist?") opened a follow-up even though the reply ended in a punchline.
 
-      const text = (delta ?? '').trim();
-      // Send INTENT_PROGRESS to the PE so it can start streaming TTS earlier
-      if (text) {
-        this.esp.intent_progress(text);
+      // Send INTENT_PROGRESS to the PE so it can start streaming TTS earlier.
+      // The delta goes out verbatim, whitespace included: it is a
+      // chat_log_delta, so anything dropped here is dropped from the reply
+      // text. Both cheats have been tried and both glue words together —
+      // trimming the delta ("Klokka er" -> "Klokkaer"), and skipping
+      // whitespace-only deltas, which misses the lone " " the model emits
+      // between words ("Klokka er 19" -> "Klokka er19").
+      if (delta) {
+        this.esp.intent_progress(delta);
       }
     });
 
