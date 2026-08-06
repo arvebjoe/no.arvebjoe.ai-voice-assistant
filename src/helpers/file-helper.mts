@@ -5,18 +5,33 @@ import { createLogger } from './logger.mjs';
 
 const log = createLogger('FILE', true);
 
+/**
+ * Where reply/chime audio is written. On a Homey this is always the app's
+ * /userdata volume. The emulator can point it somewhere writable with
+ * HE_AUDIO_DIR — a plain user cannot create /userdata on macOS or Linux.
+ * The playback URL path (/app/<id>/userdata/audio/...) is unaffected: that is
+ * Homey's public mapping, not the location on disk.
+ */
+export function audioDir(): string {
+    return process.env.HE_AUDIO_DIR?.trim() || '/userdata/audio';
+}
+
+export function audioFilePath(filename: string): string {
+    return `${audioDir()}/${filename}`;
+}
+
 
 export async function initAudioFolder() {
 
     try {
         // Create the directory if it doesn't exist
-        await fs.mkdir('/userdata/audio', { recursive: true });
+        await fs.mkdir(audioDir(), { recursive: true });
 
         // Read and empty the folder
-        const files = await fs.readdir('/userdata/audio');
+        const files = await fs.readdir(audioDir());
         await Promise.all(files.map(file => {
-            log.info(`/userdata/audio/${file}`, 'DELETING');
-            return fs.unlink(`/userdata/audio/${file}`)
+            log.info(audioFilePath(file), 'DELETING');
+            return fs.unlink(audioFilePath(file))
         }));
         log.info('Audio folder initialized successfully');
     } catch (error) {
@@ -29,7 +44,7 @@ export async function initAudioFolder() {
 export async function saveAudioData(homey: any, audioData: AudioData): Promise<FileInfo> {
     const uniqueFilename = `${audioData.prefix}_${uuidv4()}.${audioData.extension}`;
 
-    const filePath = '/userdata/audio/' + uniqueFilename;
+    const filePath = audioFilePath(uniqueFilename);
 
     await fs.writeFile(filePath, audioData.data);
 

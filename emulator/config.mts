@@ -1,9 +1,10 @@
 // Loads the emulator configuration (settings.json) once, synchronously, at
 // module evaluation. Both the fake Homey context and the fake device world
 // read from this. Override the path with HE_SETTINGS=<path>.
-import { readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { dirname, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 
 export interface EmulatorZone {
   id: string;
@@ -26,12 +27,21 @@ export interface EmulatorDevice {
 export interface EmulatorSatellite {
   name: string;
   mac: string;
-  address: string;
+  /** LAN address of the real device. Ignored (and optional) when `fake`. */
+  address?: string;
   port?: number;
   /** Zone id (from `zones`) the satellite lives in. */
   zone: string;
   /** Which driver to boot it with: 'pe' (default) or 'xiaozhi'. */
   type?: 'pe' | 'xiaozhi';
+  /**
+   * Virtual satellite: there is no device on the network. The emulator borrows
+   * the microphone and speaker of the machine it runs on, through the satellite
+   * page it hosts alongside the settings UI (`/satellite`). Everything else —
+   * driver, device, provider, tools, reply path — is the real app code. Wake it
+   * from the page's button or the console `wake` command; there is no wake word.
+   */
+  fake?: boolean;
   settings?: Record<string, any>;
 }
 
@@ -84,13 +94,33 @@ export function getSatellites(): EmulatorSatellite[] {
   const list = (config.satellites && config.satellites.length > 0)
     ? config.satellites
     : (config.pe ? [config.pe] : []);
-  return list.map((s) => ({ ...s, type: s.type ?? 'pe', port: s.port ?? 6053 }));
+  return list.map((s) => ({
+    ...s,
+    type: s.type ?? 'pe',
+    port: s.port ?? 6053,
+    // Virtual satellites have nowhere to connect to; the placeholder only ever
+    // shows up in listings.
+    address: s.address ?? (s.fake ? 'this computer' : ''),
+  }));
 }
 
 // Mark this process as emulator-hosted. App code uses this to authorize
 // dev-only features that must never activate on a real Homey — e.g.
 // `input_buffer_debug` (serves raw mic audio over the LAN audio URL).
 process.env.HE_EMULATOR = '1';
+
+// Reply and chime audio normally goes to Homey's /userdata volume. A plain user
+// can't create that path on macOS or Linux, which would leave every reply
+// unwritable, so fall back to a temp folder when it isn't available. An explicit
+// HE_AUDIO_DIR (env or the settings.json `env` block, applied just below) wins.
+function resolveAudioDir(): void {
+  if (process.env.HE_AUDIO_DIR?.trim()) return;
+  try {
+    mkdirSync('/userdata/audio', { recursive: true });
+  } catch {
+    process.env.HE_AUDIO_DIR = join(tmpdir(), 'he-audio');
+  }
+}
 
 // Push settings.json `env` values into process.env so the app code (which reads
 // process.env.HE_HOST_IP, process.env.ESP_LOG_LEVEL, ...) picks them up without
@@ -104,3 +134,5 @@ if (config.env) {
     process.env[key] = String(value);
   }
 }
+
+resolveAudioDir();

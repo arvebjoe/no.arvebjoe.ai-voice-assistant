@@ -1,6 +1,6 @@
 import Homey from 'homey';
 import { WebServer } from '../helpers/webserver.mjs';
-import { EspVoiceAssistantClient } from '../voice_assistant/esp-voice-assistant-client.mjs';
+import { EspVoiceAssistantClient, EspVoiceClientOptions } from '../voice_assistant/esp-voice-assistant-client.mjs';
 import { NoiseFrameCodec } from '../voice_assistant/noise-frame-codec.mjs';
 import { TimerManager, TimerSummary } from '../voice_assistant/timer-manager.mjs';
 import { DeviceManager } from '../helpers/device-manager.mjs';
@@ -207,7 +207,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     // Created before the tool manager because the timer tools drive it.
     // Encryption key: the user-editable setting wins, the pair-time store
     // value is the fallback (so manual-entry pairing with a key just works).
-    this.esp = new EspVoiceAssistantClient(this.homey, {
+    this.esp = this.createEspClient({
       host: store.address,
       apiPort: store.port,
       encryptionKey: (settings.encryption_key as string)?.trim() || store.encryptionKey,
@@ -631,6 +631,17 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     await this.provider.start();
 
     this.logger.info('Initialized');
+  }
+
+
+  /**
+   * Build the client that talks to the physical satellite. Its own method purely
+   * so a subclass can swap in a stand-in: the emulator's virtual satellite
+   * implements the same surface on top of the host machine's mic and speaker,
+   * with no device on the LAN. Never overridden by the shipped drivers.
+   */
+  protected createEspClient(options: EspVoiceClientOptions): EspVoiceAssistantClient {
+    return new EspVoiceAssistantClient(this.homey, options);
   }
 
 

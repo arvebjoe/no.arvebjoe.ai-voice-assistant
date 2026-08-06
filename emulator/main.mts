@@ -18,6 +18,8 @@ import { runDiscovery } from './runtime/discovery.mjs';
 import { listRecordings, loadRecording, resolveRecording, recordingsDir } from './runtime/recordings.mjs';
 import { injectRecording } from './runtime/mic-injector.mjs';
 import { flowCards } from './runtime/flow-cards.mjs';
+import { satelliteHub } from './runtime/virtual-satellite/hub.mjs';
+import { createVirtualDeviceClass } from './runtime/virtual-satellite/virtual-device.mjs';
 
 import App from '../app.mjs';
 import PEDriver from '../drivers/home-assistant-voice-preview-edition/driver.mjs';
@@ -39,6 +41,12 @@ interface BootedSatellite {
 // listeners are registered once, guarded inside VoiceAssistantDriver).
 const driverCache: Record<string, any> = {};
 
+// Where the settings web server ended up (null when it couldn't bind). The
+// virtual satellite page is hosted there too.
+let webUiUrl: string | null = null;
+const satellitePageUrl = (): string =>
+  webUiUrl ? `${webUiUrl}satellite` : 'the satellite page (the settings web UI is not running)';
+
 async function getDriver(type: string): Promise<any> {
   if (!driverCache[type]) {
     const DriverClass: any = type === 'xiaozhi' ? XiaozhiDriver : PEDriver;
@@ -52,7 +60,10 @@ async function getDriver(type: string): Promise<any> {
 async function bootSatellite(sat: EmulatorSatellite): Promise<BootedSatellite> {
   const type = sat.type ?? 'pe';
   const driver = await getDriver(type);
-  const DeviceClass: any = type === 'xiaozhi' ? XiaozhiDevice : PEDevice;
+  const BaseDeviceClass: any = type === 'xiaozhi' ? XiaozhiDevice : PEDevice;
+  // A `fake` satellite runs the very same device class; only its ESP client is
+  // swapped for the one bound to this computer's mic and speaker.
+  const DeviceClass: any = sat.fake ? createVirtualDeviceClass(BaseDeviceClass, sat) : BaseDeviceClass;
 
   const device = new DeviceClass({
     driver,
@@ -69,7 +80,9 @@ async function bootSatellite(sat: EmulatorSatellite): Promise<BootedSatellite> {
     capabilities: SAT_CAPABILITIES,
   });
   await device.onInit();
-  console.log(`Booted satellite: ${sat.name} (${type}) @ ${sat.address}:${sat.port ?? 6053}`);
+  console.log(sat.fake
+    ? `Booted virtual satellite: ${sat.name} (${type}) — this computer's mic and speaker`
+    : `Booted satellite: ${sat.name} (${type}) @ ${sat.address}:${sat.port ?? 6053}`);
   return { sat, device };
 }
 
@@ -83,7 +96,9 @@ async function main(): Promise<void> {
     console.warn('⚠  No openai_api_key in settings.json — the agent will not connect.');
   }
 
-  await startAudioServer();
+  // Only a real device on the LAN needs the :80 audio server; a session with
+  // just virtual satellites survives without it (they play through the page).
+  await startAudioServer(getSatellites().some((s) => !s.fake));
 
   // 1. App — builds settingsManager, GeoHelper, WeatherHelper, WebServer,
   //    ApiHelper and DeviceManager onto the instance.
@@ -94,6 +109,7 @@ async function main(): Promise<void> {
   // 2. The settings web UI — the app's real settings page in a browser,
   //    saving through to the fake homey.settings AND settings.json.
   const settingsWebUrl = await startSettingsWeb(homey);
+  webUiUrl = settingsWebUrl;
 
   // 3. One driver + device per configured satellite.
   const booted: BootedSatellite[] = [];
@@ -112,11 +128,16 @@ function printBanner(booted: BootedSatellite[], settingsWebUrl: string | null): 
   if (settingsWebUrl) {
     console.log(`Settings UI: ${settingsWebUrl}  (saves write back to settings.json)`);
   }
+  if (!satelliteHub.isEmpty && settingsWebUrl) {
+    console.log(`Satellite  : ${settingsWebUrl}satellite  ← open this to lend the assistant your mic and speaker`);
+  }
   if (booted.length === 0) {
     console.log('No satellites configured — run `discover` to find and add one.');
   } else {
     for (const { sat } of booted) {
-      console.log(`Satellite  : ${sat.name} (${sat.type})  @ ${sat.address}:${sat.port ?? 6053}  (mac ${sat.mac})`);
+      console.log(sat.fake
+        ? `Satellite  : ${sat.name} (${sat.type}, virtual)  — this computer's mic and speaker  (mac ${sat.mac})`
+        : `Satellite  : ${sat.name} (${sat.type})  @ ${sat.address}:${sat.port ?? 6053}  (mac ${sat.mac})`);
     }
     console.log('The ESP client will keep retrying if a satellite is unreachable.');
     console.log("Wait for 'Agent connection opened' before using ask/say/mic.");
@@ -133,6 +154,8 @@ Commands:
   speak <text>      Direct TTS of <text> to the satellite (no LLM)
   mic <file>        Feed a recording (emulator/recordings/*.flac|wav) into the mic pipeline, as if spoken
   mic               List available recordings
+  wake [sat]        Start a turn on a satellite — the stand-in for the wake word.
+                    On a virtual satellite, speak into this computer's mic (page open)
   discover [sec]    Scan the LAN for ESPHome voice satellites and add them to settings.json
   sats              List configured satellites; the ▶ marks the one ask/say/speak/mic target
   use <name|#>      Switch the active satellite
@@ -243,6 +266,30 @@ function startRepl(booted: BootedSatellite[], homey: any): void {
             : `Cannot inject: ${result.reason}`);
           break;
         }
+        case 'wake': {
+          const idx = arg ? findSat(arg) : activeIndex;
+          if (idx < 0 || !booted[idx]) {
+            console.log(arg ? `No satellite matching '${arg}' (see 'sats')` : 'No satellite configured.');
+            break;
+          }
+          const target = booted[idx];
+          const virtual = satelliteHub.find(target.sat.mac);
+          if (virtual && !virtual.hasPage) {
+            console.log(`⚠  ${target.sat.name} has no browser page attached — open ${satellitePageUrl()}`);
+            console.log('   (waking anyway: the turn starts, but nothing will be heard or played)');
+          }
+          if (!target.device.provider?.isConnected?.()) {
+            console.log('Agent is not connected — wait for "Agent connection opened" (check the API key).');
+            break;
+          }
+          // The same event the firmware sends on a wake word (VoiceAssistantRequest),
+          // which is exactly what the mic injector uses too.
+          target.device.esp.emit('starting');
+          console.log(virtual
+            ? `🎙  ${target.sat.name} is listening — speak into the microphone.`
+            : `🎙  Wake sent to ${target.sat.name}.`);
+          break;
+        }
         case 'discover':
         case 'discovery': {
           const seconds = arg ? Number(arg) : 4;
@@ -272,7 +319,11 @@ function startRepl(booted: BootedSatellite[], homey: any): void {
           booted.forEach((b, i) => {
             const mark = i === activeIndex ? '▶' : ' ';
             const avail = b.device.getAvailable?.() ? 'online' : 'offline';
-            console.log(` ${mark} [${i + 1}] ${b.sat.name} (${b.sat.type})  @ ${b.sat.address}:${b.sat.port ?? 6053}  — ${avail}`);
+            const virtual = satelliteHub.find(b.sat.mac);
+            const where = virtual
+              ? `virtual — ${virtual.hasPage ? 'page attached' : 'no page open'}`
+              : `${b.sat.address}:${b.sat.port ?? 6053}`;
+            console.log(` ${mark} [${i + 1}] ${b.sat.name} (${b.sat.type})  @ ${where}  — ${avail}`);
           });
           break;
         }

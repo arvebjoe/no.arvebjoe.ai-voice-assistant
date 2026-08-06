@@ -1,0 +1,26 @@
+<component name="ProjectRunConfigurationManager">
+  <!--
+    Runs the Homey Emulator (see emulator/README.md) — the same command as
+    `npm run emulator`, but as a Node.js configuration so Debug works: set
+    breakpoints anywhere in src/ or emulator/ and they hit, tsx maps them back
+    to the .mts sources.
+
+    The emulator is an interactive console (`ask`, `wake`, `sats`, ...) — type
+    the commands straight into the Run tool window.
+
+    Optional environment variables (Edit Configurations -> Environment):
+      HE_SETTINGS       alternate settings file (default emulator/settings.json)
+      HE_SETTINGS_PORT  settings UI + virtual satellite page port (default 8060)
+      HE_HOST_IP        host IP advertised in playback URLs
+      ESP_LOG_LEVEL     ESPHome native-API client verbosity, e.g. DEBUG
+    They can also live in the `env` block of emulator/settings.json.
+  -->
+  <configuration default="false" name="Emulator" type="NodeJSConfigurationType"
+                 application-parameters=""
+                 node-parameters="--import tsx --import ./emulator/register.mjs"
+                 path-to-js-file="$PROJECT_DIR$/emulator/main.mts"
+                 working-dir="$PROJECT_DIR$">
+    <envs />
+    <method v="2" />
+  </configuration>
+</component>

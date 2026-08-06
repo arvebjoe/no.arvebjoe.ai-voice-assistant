@@ -9,11 +9,21 @@ import http from 'node:http';
 import { createReadStream, existsSync, statSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { createLogger } from '../../src/helpers/logger.mjs';
+import { audioDir } from '../../src/helpers/file-helper.mjs';
 
 const log = createLogger('EMU-Audio', false);
-const AUDIO_ROOT = resolve('/userdata/audio');
+// Resolved lazily: config.mts may redirect the folder (HE_AUDIO_DIR) after this
+// module is loaded.
+const audioRoot = () => resolve(audioDir());
 
-export function startAudioServer(): Promise<void> {
+/**
+ * @param required Whether a satellite actually needs this server. A real device
+ *   on the LAN fetches its reply audio here, so failing to bind is fatal. The
+ *   virtual satellite plays through the browser page instead, which is served
+ *   the same files by the settings web server — so a session with only virtual
+ *   satellites keeps running (macOS and Linux need root for port 80).
+ */
+export function startAudioServer(required: boolean = true): Promise<void> {
   return new Promise((done) => {
     const server = http.createServer((req, res) => {
       try {
@@ -21,8 +31,9 @@ export function startAudioServer(): Promise<void> {
         const m = url.pathname.match(/\/userdata\/audio\/([^/]+)$/);
         if (!m) { res.statusCode = 404; res.end('Not found'); return; }
 
-        const file = join(AUDIO_ROOT, decodeURIComponent(m[1]));
-        if (!file.startsWith(AUDIO_ROOT) || !existsSync(file)) {
+        const root = audioRoot();
+        const file = join(root, decodeURIComponent(m[1]));
+        if (!file.startsWith(root) || !existsSync(file)) {
           res.statusCode = 404; res.end('Not found'); return;
         }
 
@@ -37,6 +48,15 @@ export function startAudioServer(): Promise<void> {
     });
 
     server.on('error', (err: any) => {
+      if (!required) {
+        log.warn(
+          `Could not bind port 80 (${err?.code ?? err}) — continuing without it. ` +
+          'Only virtual satellites are configured, and they play their audio through ' +
+          'the satellite page instead.',
+        );
+        done();
+        return;
+      }
       if (err?.code === 'EADDRINUSE') {
         log.error(
           'Port 80 is already in use — free it and restart the emulator. ' +
@@ -55,7 +75,7 @@ export function startAudioServer(): Promise<void> {
     });
 
     server.listen(80, () => {
-      log.info(`serving ${AUDIO_ROOT} on :80`, 'AUDIO');
+      log.info(`serving ${audioRoot()} on :80`, 'AUDIO');
       done();
     });
   });

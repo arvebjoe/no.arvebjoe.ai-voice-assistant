@@ -21,13 +21,23 @@
     "ESP_LOG_LEVEL": "",
     "_AUDIO_FILE_TTL_MS": "ms a played audio file lingers before deletion; default 30000. Raise to keep debug recordings around longer.",
     "AUDIO_FILE_TTL_MS": "",
-    "_HE_SETTINGS": "settings web UI: port (default 8060) and bind interface (default 127.0.0.1 — localhost only; 0.0.0.0 exposes it, and your API keys, to the LAN)",
+    "_HE_SETTINGS": "settings web UI + virtual satellite page: port (default 8060) and bind interface (default 127.0.0.1 — localhost only; 0.0.0.0 exposes it, and your API keys, to the LAN)",
     "HE_SETTINGS_PORT": "",
-    "HE_SETTINGS_HOST": ""
+    "HE_SETTINGS_HOST": "",
+    "_HE_AUDIO_DIR": "where reply/chime audio is written; default /userdata/audio like a real Homey, falling back to <tmp>/he-audio when that can't be created (macOS/Linux without root)",
+    "HE_AUDIO_DIR": ""
   },
   "geolocation": { "latitude": 59.9139, "longitude": 10.7522 },
   "timezone": "Europe/Oslo",
   "satellites": [
+    {
+      "_comment": "fake:true = a virtual satellite. No device on the network: it borrows this computer's mic and speaker through the page the emulator hosts at /satellite. Wake it there or with the console `wake` command.",
+      "name": "Desk (virtual)",
+      "type": "pe",
+      "fake": true,
+      "mac": "AA:BB:CC:00:00:01",
+      "zone": "z-living"
+    },
     {
       "name": "Living Room PE",
       "type": "pe",

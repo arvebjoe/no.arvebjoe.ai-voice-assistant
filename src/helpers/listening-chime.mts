@@ -1,6 +1,7 @@
 import { promises as fs } from 'fs';
 import { pcmToFlacBuffer } from './audio-encoders.mjs';
 import { createLogger } from './logger.mjs';
+import { audioFilePath } from './file-helper.mjs';
 
 const log = createLogger('CHIME', true);
 
@@ -116,7 +117,7 @@ function ensureChimeFile(filename: string, synthesize: () => Buffer): Promise<st
                 channels: 1,
                 bitsPerSample: 16,
             });
-            await fs.writeFile('/userdata/audio/' + filename, flac);
+            await fs.writeFile(audioFilePath(filename), flac);
             log.info(`Chime written: ${filename} (${flac.length} bytes FLAC)`);
             return filename;
         })().catch((err) => {

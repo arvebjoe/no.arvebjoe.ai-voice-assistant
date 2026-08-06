@@ -9,6 +9,9 @@ Use it to:
 
 - **Test LLM tool-calling** against the dummy devices from an interactive console
   (`ask <text>`) — no satellite and no microphone required.
+- **Talk to the assistant with no hardware at all** — a *virtual satellite*
+  borrows this computer's microphone and speaker through a page HE hosts
+  (`http://localhost:8060/satellite`).
 - **Talk to a real satellite** over the network (full voice round-trip) if it
   is reachable.
 - **Replay recorded voice clips** through the whole pipeline (`mic <file>`) to
@@ -38,6 +41,12 @@ npm run emulator
 `emulator/settings.json` is git-ignored (it holds your API key). The committed
 template is `settings.example.json`.
 
+**From Rider / WebStorm:** the **Emulator** run configuration
+(`.run/Emulator.run.xml`) runs the same command as a Node.js configuration, so
+**Debug** works — breakpoints in `src/` and `emulator/` hit, and the interactive
+console takes its commands in the Run tool window. `.idea/` is git-ignored here,
+which is why the profile lives in `.run/` (JetBrains' shared location).
+
 ## settings.json
 
 | field          | meaning                                                            |
@@ -46,7 +55,7 @@ template is `settings.example.json`.
 | `geolocation`  | Lat/long handed to GeoHelper (drives weather/time tools).          |
 | `timezone`     | IANA timezone string returned by the fake `homey.clock`.           |
 | `env`          | Emulator-only env vars (`HE_HOST_IP`, `ESP_LOG_LEVEL`) applied to `process.env` at load so you don't have to export them yourself. A real env var on the command line still wins. Leave a value empty/omit to ignore it. |
-| `satellites`   | The voice satellites to boot: `name`, `type` (`pe` default, or `xiaozhi`), `mac`, `address`, `port`, `zone`, optional device `settings`. The `discover` command appends here. Each is auto-added to the device list so zone lookup resolves. (The old single-`pe` field still works as a fallback and is migrated into `satellites` on the first `discover` save.) |
+| `satellites`   | The voice satellites to boot: `name`, `type` (`pe` default, or `xiaozhi`), `mac`, `address`, `port`, `zone`, optional device `settings`, and `fake` (see [Virtual satellite](#virtual-satellite-fake-true) — no `address` needed). The `discover` command appends here. Each is auto-added to the device list so zone lookup resolves. (The old single-`pe` field still works as a fallback and is migrated into `satellites` on the first `discover` save.) |
 | `zones`        | Dummy zones (`id`, `name`, `parent`).                              |
 | `devices`      | Dummy devices (`id`, `name`, `zone`, `class`, `capabilities` map). |
 
@@ -58,6 +67,8 @@ say <text>        Send text; the spoken reply plays on the satellite
 speak <text>      Direct TTS to the satellite (no LLM)
 mic <file>        Feed a recording (emulator/recordings/) into the mic pipeline, as if spoken
 mic               List available recordings
+wake [sat]        Start a turn — the stand-in for the wake word. On a virtual
+                  satellite: speak into this computer's microphone
 discover [sec]    Scan the LAN for ESPHome voice satellites and add them to settings.json
 sats              List configured satellites; ▶ marks the one ask/say/speak/mic target
 use <name|#>      Switch the active satellite
@@ -106,6 +117,63 @@ HE> and timer-is-running         → true
                                  ⚡ WHEN [timer-finished] …  (5 s later)
 HE> then cancel                  ⚡ WHEN [timer-cancelled] …
 ```
+
+## Virtual satellite (`fake: true`)
+
+A satellite with `"fake": true` has no device on the network: it borrows the
+**microphone and speaker of the machine running HE**, through a page HE hosts
+next to the settings UI. Everything else is the real app — same driver, same
+device class, same provider, tools, turn state machine and reply path. Only the
+ESPHome TCP client is swapped for one wired to the browser page
+(`VoiceAssistantDevice.createEspClient` is the seam; see
+`runtime/virtual-satellite/`).
+
+```json
+{
+  "name": "Desk (virtual)",
+  "type": "pe",
+  "fake": true,
+  "mac": "AA:BB:CC:00:00:01",
+  "zone": "z-living"
+}
+```
+
+Then open the URL printed in the startup banner —
+`http://localhost:8060/satellite` — click **Enable microphone**, and:
+
+```
+HE> wake                      # or press Wake on the page (or the space bar)
+🎙  Desk (virtual) is listening — speak into the microphone.
+```
+
+Speak; server VAD ends the turn on its own, the reply plays through your
+speakers, and the page shows the phase (`listening → hearing → thinking →
+replying`), the transcript, the reply, volume/mute and any running timer.
+
+**There is no wake word** — a wake-word model is out of scope, so a turn is
+started explicitly: the page's **Wake** button, the space bar, or the console
+`wake` command. Everything that follows is real firmware behaviour, reproduced
+faithfully because the device code depends on it: a reply that ends in a
+question reopens the mic for a follow-up, the listening chime plays on the
+reopen, and the conversation closes on a final reply (see
+`tests/emulator-virtual-satellite.test.mts`).
+
+Notes:
+
+- **Open the page on `localhost`.** Browsers only grant microphone access in a
+  secure context, so `http://192.168.x.x:8060/satellite` from another machine
+  will not get a mic (`HE_SETTINGS_HOST=0.0.0.0` still exposes the page itself).
+- **Use headphones, or expect the odd self-trigger.** The page asks for echo
+  cancellation and stops sending mic audio while a reply is playing, but open
+  speakers next to an open mic remain open speakers next to an open mic.
+- With no page open, the satellite still boots and `ask` / `say` / `speak` /
+  `mic <file>` all work; playback is skipped (logged, not stalled) and a wake
+  warns that nothing will be heard.
+- Multiple virtual satellites are fine — the page has a picker, and
+  `?sat=<mac>` opens a specific one, so you can put two tabs side by side.
+- Reply audio is served to the page by HE itself (`/he/audio/...`), so a virtual
+  satellite does **not** need the port-80 audio server (see the notes at the
+  bottom).
 
 ## Settings web UI
 
@@ -235,7 +303,9 @@ node --import tsx --import ./emulator/register.mjs ./emulator/main.mts
   `emulator/shims/`. It runs *after* tsx, so it wins for those specifiers.
 - `main.mts` constructs the fake `homey` context, the `App`, and one `Driver` +
   `Device` per configured satellite, calls their `onInit()` in order, then
-  starts the console.
+  starts the console. A `fake` satellite gets the same device class with
+  `createEspClient()` overridden, so it drives the host mic/speaker instead of a
+  device on the LAN.
 
 ## Environment variables
 
@@ -243,13 +313,14 @@ node --import tsx --import ./emulator/register.mjs ./emulator/main.mts
 |--------------|---------------------------------------------------------------------|
 | `HE_SETTINGS`| Path to an alternate settings file (defaults to `emulator/settings.json`). |
 | `HE_HOST_IP` | Override the host IP the app advertises in playback URLs. Set this when auto-detection picks the wrong interface (VPN/Docker/WSL/virtual adapter) and the satellite can't fetch the FLAC URL. Use the dev machine's LAN IP reachable by the satellite, e.g. `HE_HOST_IP=192.168.1.50 npm run emulator`. |
-| `HE_SETTINGS_PORT` | Port for the settings web UI (default `8060`). |
+| `HE_SETTINGS_PORT` | Port for the settings web UI **and the virtual satellite page** (default `8060`). |
 | `HE_SETTINGS_HOST` | Interface the settings web UI binds (default `127.0.0.1` — localhost only, since the page exposes your API keys; `0.0.0.0` opens it to the LAN). |
+| `HE_AUDIO_DIR` | Where reply/chime audio is written. Defaults to `/userdata/audio` like a real Homey, falling back to `<tmp>/he-audio` when that can't be created (macOS/Linux without root). |
 | `ESP_LOG_LEVEL` | Verbosity of the ESPHome native-API client log (e.g. `DEBUG`). |
 | `AUDIO_FILE_TTL_MS` | How long (ms) a played audio file lingers before deletion. Defaults to `30000`; raise it (the emulator ships `999000`) so `input_buffer_debug` recordings stick around long enough to inspect. |
 
-`HE_HOST_IP`, `ESP_LOG_LEVEL`, `AUDIO_FILE_TTL_MS`, `HE_SETTINGS_PORT`, and
-`HE_SETTINGS_HOST` can instead be set under the `env` block in `settings.json`
+`HE_HOST_IP`, `ESP_LOG_LEVEL`, `AUDIO_FILE_TTL_MS`, `HE_SETTINGS_PORT`,
+`HE_SETTINGS_HOST` and `HE_AUDIO_DIR` can instead be set under the `env` block in `settings.json`
 (see above) so you don't have to export them on every run; an env var set on
 the command line still takes precedence.
 
@@ -257,14 +328,18 @@ the command line still takes precedence.
 
 - **Internet is required** — the app uses the OpenAI Realtime API (and open-meteo
   for weather). Put a valid `openai_api_key` in `settings.json`.
-- **Satellite audio playback needs port 80.** The app builds playback URLs without
-  a port (`http://<ip>/app/.../userdata/audio/<file>`), so HE serves the audio
-  folder on `:80`. If binding `:80` fails HE logs the reason and **quits**:
-  `EADDRINUSE` means another process holds the port (on Windows this is often
-  IIS — stop it with `net stop w3svc` or `iisreset /stop`); `EACCES` means you
-  need an elevated/Administrator terminal.
+- **A REAL satellite's audio playback needs port 80.** The app builds playback
+  URLs without a port (`http://<ip>/app/.../userdata/audio/<file>`), so HE serves
+  the audio folder on `:80`. If binding `:80` fails HE logs the reason and
+  **quits**: `EADDRINUSE` means another process holds the port (on Windows this
+  is often IIS — stop it with `net stop w3svc` or `iisreset /stop`); `EACCES`
+  means you need an elevated/Administrator terminal. **Virtual satellites don't
+  need it** — they fetch their audio from the settings web server instead — so a
+  session with only virtual satellites logs a warning and keeps running.
 - Audio files are written to the OS-resolved `/userdata/audio` (e.g.
   `C:\userdata\audio` on Windows), matching what the app's file-helper uses.
+  Creating that folder needs root on macOS and Linux; when it can't be created
+  HE falls back to `<tmp>/he-audio` (override with `HE_AUDIO_DIR`).
 - **Encrypted (Noise) satellites:** the `discover` probe is plaintext-only, so
   encrypted devices can't be identified or added from the console. The app's
   ESP client does support Noise, so a hand-written satellite entry with

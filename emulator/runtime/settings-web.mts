@@ -19,6 +19,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { createLogger } from '../../src/helpers/logger.mjs';
 import { saveGlobalSetting } from './settings-store.mjs';
+import { satelliteHub } from './virtual-satellite/hub.mjs';
 
 const log = createLogger('EMU-Settings', false);
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -128,6 +129,12 @@ export interface SettingsWebDeps {
   apiRoutes: Record<string, ApiRoute>;
   /** Called after each settings write; the real one persists to settings.json. */
   persist?: (key: string, value: any) => void;
+  /**
+   * Routes owned by someone else, tried before the 404 — the virtual satellite
+   * hub hangs its page, audio proxy and satellite list here so the emulator
+   * only ever binds one port. Returns true when it handled the request.
+   */
+  extraHandler?: (req: http.IncomingMessage, res: http.ServerResponse) => boolean;
 }
 
 /** Match `/voices` against a declared path like `/voices` or `/thing/:id`. */
@@ -163,7 +170,7 @@ function sendJson(res: http.ServerResponse, status: number, payload: any): void 
  * drive it with injected fakes.
  */
 export function createRequestHandler(deps: SettingsWebDeps): http.RequestListener {
-  const { homey, apiHandlers, apiRoutes, persist } = deps;
+  const { homey, apiHandlers, apiRoutes, persist, extraHandler } = deps;
 
   return async (req, res) => {
     try {
@@ -243,6 +250,10 @@ export function createRequestHandler(deps: SettingsWebDeps): http.RequestListene
         return;
       }
 
+      if (extraHandler?.(req, res)) {
+        return;
+      }
+
       res.statusCode = 404;
       res.end('Not found');
     } catch (e: any) {
@@ -274,10 +285,13 @@ export async function startSettingsWeb(homey: any): Promise<string | null> {
     apiHandlers,
     apiRoutes: homey.manifest?.api ?? {},
     persist: saveGlobalSetting,
+    extraHandler: (req, res) => satelliteHub.handleHttp(req, res),
   });
 
   return new Promise((done) => {
     const server = http.createServer(handler);
+    // The virtual satellites' page and audio socket share this server.
+    satelliteHub.attachWebSocket(server);
     server.on('error', (err: any) => {
       log.error(
         `Could not start the settings web UI on ${host}:${port} (${err?.code ?? err}). ` +

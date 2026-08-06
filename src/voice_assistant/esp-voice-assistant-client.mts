@@ -6,7 +6,7 @@ import { NoiseFrameCodec } from './noise-frame-codec.mjs';
 import { createLogger } from '../helpers/logger.mjs';
 
 
-interface EspVoiceClientOptions {
+export interface EspVoiceClientOptions {
   host: string;
   apiPort?: number;
   discoveryMode?: boolean;
@@ -1295,4 +1295,4 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
 
 }
 
-export { EspVoiceAssistantClient, EspVoiceClientOptions };
+export { EspVoiceAssistantClient };
