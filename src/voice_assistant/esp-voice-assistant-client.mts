@@ -587,6 +587,19 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
       } else if (rawMessage.includes('xiaozhi')) {
         this.deviceType = 'xiaozhi';
         this.discoveryMode = false;
+      } else if (rawMessage.includes('atoms3r')
+        || rawMessage.includes('echo-base')
+        || rawMessage.includes('echo base')
+        || rawMessage.includes('m5stack')) {
+        // M5Stack AtomS3R + Atomic Echo Base running M5Stack's official
+        // ESPHome voice-assistant config (name "atoms3r-with-echo-base",
+        // friendly name "AtomS3R Echo Base Voice Assistant", no project
+        // block). User-flashed firmware, so match product tokens rather than
+        // exact names. Checked AFTER xiaozhi: an identity carrying both
+        // tokens is RealDeco XiaoZhi firmware on M5 hardware, and the
+        // firmware shape — not the board — decides the driver.
+        this.deviceType = 'm5stack';
+        this.discoveryMode = false;
       }
     }
 

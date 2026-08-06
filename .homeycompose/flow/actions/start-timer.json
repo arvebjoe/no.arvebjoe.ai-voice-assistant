@@ -15,7 +15,7 @@
       "title": {
         "en": "Device"
       },
-      "filter": "driver_id=home-assistant-voice-preview-edition|xiaozhi-ai|respeaker-xvf3800"
+      "filter": "driver_id=home-assistant-voice-preview-edition|xiaozhi-ai|respeaker-xvf3800|m5stack-atoms3r"
     },
     {
       "type": "number",

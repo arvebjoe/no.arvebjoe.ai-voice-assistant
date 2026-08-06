@@ -35,6 +35,32 @@ each choice: [`docs/respeaker-xvf3800/README.md`](./docs/respeaker-xvf3800/READM
       top-view rendering of the board (drawn, not photographed — deliberately not a reused photo
       of another device). Swap in real product images before the store release.
 
+## M5Stack AtomS3R driver — needs hardware verification
+
+Driver written 2026-08-06 from M5Stack's official ESPHome config alone (**no hardware was
+available**) for [issue #44](https://github.com/arvebjoe/no.arvebjoe.ai-voice-assistant/issues/44);
+the reporter owns three units and volunteered to test. Research and reasoning:
+[`docs/m5stack-atoms3r/README.md`](./docs/m5stack-atoms3r/README.md).
+
+- [ ] **Pair a real device end to end** — mDNS scan, manual IP, and the encrypted (Noise) path
+      (likely relevant: the reporter's units were adopted by Home Assistant, so they probably
+      carry an API encryption key). Confirm it lists as *"AtomS3R Echo Base Voice Assistant"*.
+- [ ] **Confirm the identity sniff fires.** We match `atoms3r` / `echo base` / `echo-base` /
+      `m5stack` in HelloResponse/DeviceInfoResponse, ordered after `xiaozhi`.
+- [ ] **Check `voice_assistant_feature_flags`** — TIMERS and ANNOUNCE are certain from the
+      config; START_CONVERSATION is assumed, not verified.
+- [ ] **Verify mic levels with `mic_gain` at 0 (1×).** The config runs on-device
+      `auto_gain: 31dBFS` + `volume_multiplier: 2.0`, so it should be PE-like — but that AGC is
+      aggressive; watch for clipping on close-up speech as well as missed distant speech.
+- [ ] **Tune `initial_audio_skip` / `followup_audio_skip`** against the wake sound; both
+      default to 0 and were never measured on this hardware.
+- [ ] **Confirm the mute switch is `mute_microphone`** ("Mute Microphone" template switch) and
+      that `volume_mute` actually mutes the mic.
+- [ ] **Check the volume clamp.** The media player has `volume_min: 0.5` / `volume_max: 0.8`;
+      verify Homey's 0–1 `volume_set` maps sensibly onto that window.
+- [ ] **Replace the stand-in artwork.** `drivers/m5stack-atoms3r/assets/` holds a drawn
+      stylised front view, not a product photo. Swap in real images before the store release.
+
 ## Deferred with a deadline
 
 - [ ] **Re-attempt the gpt-realtime-2.1 migration (deadline: before Jan 20, 2027).** The

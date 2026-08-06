@@ -1,6 +1,6 @@
 {
   "name": "no.arvebjoe.ai-voice-assistant",
-  "version": "1.4.7",
+  "version": "1.4.8",
   "type": "module",
   "scripts": {
     "build": "tsc",
