@@ -15,6 +15,14 @@ Driver written 2026-07-28 from the community ESPHome config alone (**no hardware
 available**), so everything below is a documented best guess. Research and the reasoning behind
 each choice: [`docs/respeaker-xvf3800/README.md`](./docs/respeaker-xvf3800/README.md).
 
+**Tester feedback 2026-08-07 — first real-hardware report.** A tester with a board reports it
+"seems to be working". Encouraging but NOT yet a tick for anything below: he confirmed nothing
+item by item, so treat these as still open until he answers specifics. His board has **no
+speaker**, which is why he cannot verify anything on the playback side at all — he wants the
+reply handed to a Sonos speaker as a URL instead (see *Reply audio as a URL for speakerless
+devices* under "High value, more work"). Ask him explicitly about mic levels at `mic_gain` 0,
+the listed device name, the mute switch, and whether his unit carries an API encryption key.
+
 - [ ] **Pair a real device end to end** — mDNS scan, manual IP, and the encrypted (Noise) path.
       Confirm it lists as *"reSpeaker XVF3800 Assistant"* (that name is derived from the YAML,
       not observed).
@@ -181,14 +189,83 @@ un-dropped 2026-07-31** (see "Start a Homey flow by voice" below).
 
 ### High value, more work
 
+- [ ] **Reply audio as a URL for speakerless devices (Sonos hand-off)** — ReSpeaker tester
+      request 2026-08-07. His board has **no speaker**: he wants our TTS delivered as a URL so
+      a flow can hand it to the Sonos app's *"Play URL `<url>` at volume `<volume>`"* action.
+      Distinct from (and much easier than) the voice-input-only entry below: he still wants
+      **our** TTS — our voice, our language — so none of the `LocalPipelineProvider`
+      TTS-optional work applies and this can ship independently.
+      Findings from a full code read 2026-08-07 (all line refs verified, not guesses):
+      - **The unchunked path already exists — do not build a third one.** He asked whether
+        chunking could be made optional; `AudioOutputPipeline` has had two reply modes since
+        the Org-1 refactor: `announce` (one FLAC per speech segment, played back-to-back —
+        what he is seeing) and `inband`, which accumulates the whole reply's PCM and
+        `buildReplyFile()` (`audio-output-pipeline.mts:125`) emits **one** FLAC URL for it.
+        The mode is a single per-turn switch at `voice-assistant-device.mts:336`
+        (`beginTurn(started.followUp ? 'inband' : 'announce')`). URL mode = force `inband`.
+      - **Chunking only buys time-to-first-word on the device's own speaker** (segment 1 plays
+        while the model still generates the rest). A flow fires once with one URL, so that
+        benefit is zero here — forcing `inband` costs nothing but latency already being paid on
+        the Sonos round trip.
+      - **Expose it as one setting, not a raw "chunk / don't chunk" toggle** — chunking is an
+        implementation detail. Per-device dropdown, e.g. *"Reply audio: play on this device /
+        send as URL to a Flow"*, default **play on this device**; URL mode forces `inband`
+        internally. Open question for the owner: all five drivers, or only the speakerless ones
+        (ReSpeaker, AtomS3R without Echo Base)?
+      - **Use a NEW trigger card, not a `url` token on `assistant-thinking`.** Sequencing rules
+        the existing card out: it fires from the `response.done` handler
+        (`voice-assistant-device.mts:805`) and `audioOutput.flush()` only runs at `:809`, so at
+        trigger time nothing is encoded and there is no URL. Moving the fire point would change
+        timing for every existing user. Add e.g. **"Reply audio ready"** with `url` + `text` +
+        `duration` tokens, fired from the `reply-done` handler (`:488`) after `buildReplyFile()`.
+        Extra reasons: `assistant-thinking` also fires per tool call (`type: 'tool'`) where a
+        `url` token is always empty, and empty for every locally-playing device too — a footgun
+        in the flow editor; its own hint calls it a debug card; and existing flows piping `text`
+        to a Sonos *Say* card keep working untouched.
+      - **BLOCKER he has not hit yet — Sonos will not play our 24 kHz FLAC.** Reply files are
+        24 kHz mono 16-bit FLAC (`audio-output-pipeline.mts:128-132`). Sonos supports mono and
+        "up to 48 kHz", but the documented/tested FLAC rates are 44.1 and 48 kHz; 24000 Hz is
+        non-standard and Sonos is historically fussy — expect refusal or silent failure. Fix is
+        cheap, both pieces already exist in `src/helpers/wav.mts`:
+        `resamplePcm16Mono(pcm, 24000, 48000)` (exact 2× upsample, no quality question) then
+        encode with `sampleRate: 48_000`. `pcmToWav()` is the fallback if his player still balks
+        (Sonos definitely handles 16-bit WAV; the file lives 30 s so size is irrelevant).
+        Needs a target-sample-rate parameter on `buildReplyFile()`.
+        Refs: [Sonos supported audio formats](https://support.sonos.com/en-us/article/supported-audio-formats-for-sonos-music-library),
+        [community thread on FLAC 24/48](https://en.community.sonos.com/controllers-and-music-services-228995/playing-flac-over-24-48-6842145).
+      - **File TTL is too tight for a flow round trip.** Files are deleted 30 s after creation
+        (`file-helper.mts:47`), extended by playback length only when *we* play them
+        (`playUrlByFileInfo`, `:1152-1157`). `buildReplyFile()` does schedule with the
+        extension, so the basics hold — but 30 s of grace is thin if the flow groups speakers,
+        saves/restores the queue or ramps volume first. Raise the base grace (≈2 min) in URL mode.
+      - **Build URL mode on `inband`, never on `announce`.** The announce path ends a turn on
+        the device's `announce_finished` ack (`:432`), which is what calls
+        `finishAnnouncePlayback()`; with nothing playing locally that ack never arrives and the
+        turn hangs in `speaking`. The in-band path waits for no ack — it sends `tts_end` +
+        `run_end` immediately — and its null-file branch (`:525-528`) already does the right ESP
+        sequencing (`tts_end()` with no URL) so the LED ring still runs replying → idle. URL
+        mode is essentially "in-band with the URL diverted to a flow token".
+      - **Skip the baked-in listening chime in URL mode.** `appendChimeToPcm` at `:513` is only
+        appended to keep-open replies; in URL mode `keepOpen` must be forced false, otherwise
+        Sonos plays a "speak now" beep for a mic that is not reopening.
+      - **Trade-off to tell the tester:** with chunking off he hears nothing until the *entire*
+        reply is generated, then the Sonos hand-off on top — several seconds of silence on a
+        long answer. The LED ring still shows thinking/replying, but it will feel slower than
+        the PE does.
+      - **Change set** (small, mostly one file): new dropdown in `driver.settings.compose.json`;
+        mode force + URL branch in `voice-assistant-device.mts`; sample-rate param on
+        `buildReplyFile()`; new `.homeycompose/flow/triggers/` card; `README.md` update — and
+        **not** `README.txt` (App Store rule in CLAUDE.md).
 - [ ] **Voice-input-only mode (reply spoken by some other speaker)** — forum request
       2026-07-29, owner-approved in principle. User wants the satellite as a *microphone only*
       and the answer spoken by the Sonos app's *Say* card, with no TTS container at all.
       Design: a per-device setting (e.g. "Play response on this device", default **on**);
-      when off, skip playback entirely.
+      when off, skip playback entirely. Related but NOT the same as the URL hand-off above —
+      that one keeps our TTS, this one removes it. If both ship, they are two values of the
+      same per-device "reply audio" setting.
       - **The flow side already works** — no new trigger card needed. `assistant-thinking`
         fires with the finished reply and `type: 'reply'`
-        (`voice-assistant-device.mts:790`). Flows MUST filter on that token: the same card
+        (`voice-assistant-device.mts:805`). Flows MUST filter on that token: the same card
         also fires per tool call with `type: 'tool'`, so an unfiltered flow speaks
         "Using tool get_devices".
       - **Real work item:** make the TTS stage optional. `LocalPipelineProvider` currently
