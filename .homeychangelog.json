@@ -42,6 +42,9 @@
     "en": "Fix: Seeed ReSpeaker XVF3800 devices could not be picked in Flow cards — 'Say', 'Ask assistant', 'Playback audio from URL', the timer cards and the assistant triggers now all offer them, just like the other voice devices. Also gives the ReSpeaker a clearer device icon."
   },
   "1.4.8": {
-    "en": "New experimental device: M5Stack AtomS3R with Atomic Echo Base, running M5Stack's official ESPHome voice-assistant firmware. Adding it by IP address is the most reliable route for now — paste its API encryption key there too, if it has one; a device you renamed in ESPHome now pairs that way as well. Web search now checks its own answer and searches again when it comes back vague, and says \"let me look that up\" while it works. Fixes: a wake word followed by silence could leave the device deaf until it reconnected, and the Voice PE now receives the transcript and real error details from the app."
+    "en": "New experimental device: M5Stack AtomS3R with Atomic Echo Base, running M5Stack's official ESPHome voice-assistant firmware. Pair it via the network scan (paste the API encryption key if it was previously set up with Home Assistant) or by entering its IP address."
+  },
+  "1.4.9": {
+    "en": "Web search now checks its own answer and searches again when it comes back vague, and says \"let me look that up\" while it works. Fixes: a wake word followed by silence could leave the device deaf until it reconnected; the Voice PE now receives the transcript and real error details from the app; and an M5Stack AtomS3R you renamed in ESPHome no longer fails to pair — add it by entering its IP address."
   }
 }
