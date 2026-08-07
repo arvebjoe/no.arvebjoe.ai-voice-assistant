@@ -157,6 +157,26 @@ un-dropped 2026-07-31** (see "Start a Homey flow by voice" below).
 - [ ] **Household memory** — *"remember that the spare key is in the blue cabinet"* →
       `remember`/`recall`/`forget` tools persisted in app settings, stored facts injected into
       the system prompt. Makes the assistant feel personal rather than generic.
+- [ ] **Weather for any location, not just home** — *"what's the weather in Paris?"*,
+      *"will it rain in Bergen tomorrow?"*. Verified state 2026-08-07: weather is hard-wired to
+      the Homey's own coordinates. `GeoHelper` reads lat/lon from `homey.geolocation`
+      (`geo-helper.mts:83`), `WeatherHelper` injects exactly those into every Open-Meteo call
+      (`weather-helper.mts:155`, `:230`, `:303`) and throws `No location data available from
+      GeoHelper` when they're missing — no fallback location input. None of the five weather
+      tools (`get_current_weather`, `get_weather_forecast`, `will_it_rain`,
+      `get_weather_summary`, `get_outside_illumination`, `tool-manager.mts:1388`) expose a
+      location parameter; the only arg any of them takes is `hours`. So an away-from-home
+      question either falls through to `web_search` or gets answered from model knowledge.
+      - **Fix:** optional `location` string on the weather tools → geocode via Open-Meteo's
+        free `geocoding-api.open-meteo.com/v1/search` (no key, same provider) → pass those
+        coordinates instead of GeoHelper's. Omitted `location` keeps today's home behavior.
+      - **Cache:** `WeatherHelper` has a single global slot per query type (10 min validity,
+        `weather-helper.mts:83`) — must become location-keyed or a Paris lookup will answer
+        the next "what's it like outside?".
+      - **Prompt cost:** five tool descriptions grow by a parameter each; check the delta in
+        the `/feature-costs` meter before landing (cost-of-growth rule 1). Also drop the
+        "at the user's location" wording from the descriptions and the "for the home's
+        location" phrasing in `get_assistant_capabilities` (`tool-manager.mts:641`).
 - [ ] **Start a Homey flow by voice** — *"kjør kveldsrutinen"*, *"start movie night"*. Owner
       request 2026-07-31; this **un-drops** the start-flows-by-voice idea from the 2026-07-07
       triage ([`COMPLETED.md` §6](./COMPLETED.md) — note the recorded objection there was
