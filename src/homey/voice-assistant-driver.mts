@@ -301,7 +301,8 @@ export default abstract class VoiceAssistantDriver extends Homey.Driver {
     /**
      * Probe a manually-entered IP/port (mDNS-free path). Connects directly, waits
      * for the capabilities handshake, and — if the device answers as this
-     * driver's model — builds a PairDevice from the handshake identity
+     * driver's model, or as no known model at all (see onCapabilities) — builds
+     * a PairDevice from the handshake identity
      * (DeviceInfoResponse), deriving a stable id from the MAC so it matches the
      * mDNS discovery id ({{txt.mac}}) and DHCP moves are still tracked if the
      * device later appears over mDNS. Returns null (with a reason) when the host
@@ -333,15 +334,35 @@ export default abstract class VoiceAssistantDriver extends Homey.Driver {
             };
 
             const onCapabilities = async (mediaPlayersCount: number, subscribeVoiceAssistantCount: number, voiceAssistantConfigurationCount: number, deviceType: string | null) => {
-                const isMatch = this.thisAssistantType === deviceType
-                    && mediaPlayersCount > 0
+                // Structural check: does it actually speak the voice-assistant API?
+                // This part is non-negotiable on every path.
+                const isVoiceCapable = mediaPlayersCount > 0
                     && subscribeVoiceAssistantCount > 0
                     && voiceAssistantConfigurationCount > 0;
 
-                if (!isMatch) {
-                    this.pairLogger.info(`Manual entry ${address}:${port} answered but is not a matching device`, undefined, { deviceType });
+                // Identity check, deliberately laxer here than in discovery. A null
+                // deviceType means the sniff found no product token — which is the
+                // NORMAL outcome for renamed DIY firmware: the M5Stack and ReSpeaker
+                // configs carry no project: block and no board:, so their only
+                // identifying strings are the user-editable name/friendly_name (a
+                // device renamed "Mikro EG" is unidentifiable). Typing an IP into
+                // this view IS the user asserting the model, so accept an
+                // unidentified-but-capable device rather than reject it with a
+                // message the user has no way to act on. A device that positively
+                // identified as a DIFFERENT model is still rejected — that is a real
+                // mismatch (wrong driver), not missing information.
+                // Discovery stays strict: there, listing unidentified devices under
+                // every driver is exactly the confusion the sniff exists to prevent.
+                const identityConflicts = deviceType !== null && deviceType !== this.thisAssistantType;
+
+                if (!isVoiceCapable || identityConflicts) {
+                    this.pairLogger.info(`Manual entry ${address}:${port} answered but is not a matching device`, undefined, { deviceType, mediaPlayersCount, subscribeVoiceAssistantCount, voiceAssistantConfigurationCount });
                     await finish(null, 'not_a_match');
                     return;
+                }
+
+                if (deviceType === null) {
+                    this.pairLogger.info(`Manual entry ${address}:${port} carries no recognisable model token — accepting it as '${this.thisAssistantType}' on the user's say-so (voice-capable)`);
                 }
 
                 const mac = client?.getMacAddress() || '';
@@ -355,7 +376,11 @@ export default abstract class VoiceAssistantDriver extends Homey.Driver {
                         address,
                         port,
                         mac: mac || undefined,
-                        deviceType,
+                        // Record the model the device is paired AS: the sniffed type
+                        // when it identified itself, otherwise the driver the user
+                        // chose. Nothing reads this at runtime today, but a null here
+                        // would be a trap for anything that later does.
+                        deviceType: deviceType ?? this.thisAssistantType,
                         // The key the probe just succeeded with — every future
                         // connection to this device needs it.
                         encryptionKey: encryptionKey || undefined,

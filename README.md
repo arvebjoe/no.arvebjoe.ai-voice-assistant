@@ -107,6 +107,15 @@ setups that multicast never reaches the Homey — most commonly a **Wi-Fi-only H
 or a network where multicast isn't forwarded between the Homey and the device. The device
 is fully reachable, but the scan finds nothing and ends with a timeout.
 
+A second case: the scan works, but your device doesn't appear. To keep each driver's list
+free of other people's hardware, the search only lists devices it can positively identify as
+that model — and for the DIY-firmware devices below (M5Stack, ReSpeaker) the *only* thing
+identifying the model is the device's own **name** / **friendly name** in its ESPHome config.
+Rename one to something without a product word in it (say "Mikrofon Wohnzimmer") and the
+search can no longer tell what it is. Manual entry doesn't have that problem: by typing the
+address you've already said which model it is, so it accepts any renamed device that speaks
+the voice-assistant API.
+
 For these cases the pairing wizard offers **Enter IP address manually**. Type the device's
 **IP address** (and port, default **6053**); the app connects straight to its ESPHome native
 API, verifies it's a compatible voice device, and adds it — no discovery involved. If the

@@ -50,11 +50,22 @@ available**) for [issue #44](https://github.com/arvebjoe/no.arvebjoe.ai-voice-as
 the reporter owns three units and volunteered to test. Research and reasoning:
 [`docs/m5stack-atoms3r/README.md`](./docs/m5stack-atoms3r/README.md).
 
-- [ ] **Pair a real device end to end** — mDNS scan, manual IP, and the encrypted (Noise) path
-      (likely relevant: the reporter's units were adopted by Home Assistant, so they probably
-      carry an API encryption key). Confirm it lists as *"AtomS3R Echo Base Voice Assistant"*.
-- [ ] **Confirm the identity sniff fires.** We match `atoms3r` / `echo base` / `echo-base` /
-      `m5stack` in HelloResponse/DeviceInfoResponse, ordered after `xiaozhi`.
+**First hardware report, 2026-08-07:** the reporter's unit is adopted by Home Assistant and
+does carry an encryption key — it listed as *"needs encryption key"*, and the Noise handshake,
+entity list and DeviceInfo/VA-config exchange all **succeeded**. It then failed the identity
+check with `not_a_match`, because he had renamed the device ("Mikro EG") and the M5Stack
+config exposes no other identifying string (no `project:`, no `board:` → `model` is just
+`esp32-s3-devkitc-1`). Manual entry now accepts an unidentified-but-voice-capable device; see
+[`docs/m5stack-atoms3r/README.md`](./docs/m5stack-atoms3r/README.md#identity-defaults--user-editable).
+
+- [ ] **Pair a real device end to end** — mDNS scan, manual IP, and the encrypted (Noise) path.
+      Encrypted manual entry is the closest to confirmed (everything up to the identity check
+      worked); the **mDNS scan on a stock-named unit is still completely unverified**, as is
+      whether the device works once added.
+- [ ] **Confirm the identity sniff fires** on a device with its **stock** name. We match
+      `atoms3r` / `echo base` / `echo-base` / `m5stack` in HelloResponse/DeviceInfoResponse,
+      ordered after `xiaozhi`. The one field report so far came from a renamed device, so this
+      is still untested — and a renamed device will not appear in the network scan at all.
 - [ ] **Check `voice_assistant_feature_flags`** — TIMERS and ANNOUNCE are certain from the
       config; START_CONVERSATION is assumed, not verified.
 - [ ] **Verify mic levels with `mic_gain` at 0 (1×).** The config runs on-device

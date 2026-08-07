@@ -26,6 +26,13 @@ export class EspVoiceAssistantClient extends EventEmitter {
 
     isConnected(): boolean { return this.started; }
 
+    // Identity captured from the handshake; the pair flow reads these to build
+    // a PairDevice from a manually-entered IP.
+    public macAddress = '';
+    public friendlyName = '';
+    getMacAddress() { return this.macAddress; }
+    getFriendlyName() { return this.friendlyName; }
+
     run_start() { this.record('run_start'); }
     run_end() { this.record('run_end'); }
     wake_word_end() { this.record('wake_word_end'); }

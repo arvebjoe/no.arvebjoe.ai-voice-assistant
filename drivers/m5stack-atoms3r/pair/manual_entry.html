@@ -152,7 +152,7 @@
       case 'unreachable':
         return "Couldn't reach a device at that address. Check the IP and port, and that the device is powered on and on your Wi-Fi.";
       case 'not_a_match':
-        return 'A device answered, but it is not a compatible voice assistant for this driver.';
+        return "A device answered, but this driver can't use it. Either it's a different model — add it with its own driver — or its ESPHome config is missing the media_player or voice_assistant component.";
       case 'invalid_key':
         return 'The key should be the 32-byte base64 string from your ESPHome configuration.';
       case 'wrong_key':

@@ -54,6 +54,25 @@ ESPHome's own Espressif/board fields). The stable product tokens are **`atoms3r`
 **`echo base`/`echo-base`**; **`m5stack`** is added as a family token for renamed devices.
 The sniff branch in `esp-voice-assistant-client.mts` matches those → `deviceType = 'm5stack'`.
 
+**The board fields are no help, and this bit us** (found 2026-08-07 by the issue-#44 reporter
+on real hardware). The `esp32:` block sets only `variant: esp32s3` — there is **no `board:`** —
+so ESPHome fills `DeviceInfoResponse.model` with its own default board for that variant
+(`esp32-s3-devkitc-1`) and `manufacturer` with Espressif. Neither carries an M5Stack token.
+Combined with the missing `project:` block, that leaves **`name` and `friendly_name` as the
+only identifying strings on the whole device** — and both are user-editable substitutions.
+The reporter had renamed his to "Mikro EG", so the sniff returned `null` and the device was
+rejected as incompatible. The entity list still says "Echo Base Player", but the sniff
+deliberately ignores entity messages (S6: any string field anywhere must not be able to
+"validate" an identity), so that is not a signal we can use.
+
+The fix was to make **manual IP entry** accept an unidentified-but-voice-capable device
+(`probeManualEntry`, tested in `tests/pair-manual-entry.test.mts`): typing an address is the
+user asserting the model, so a null `deviceType` is accepted while a device positively
+identifying as a *different* model is still rejected. **Discovery stays strict** — listing
+unidentifiable devices under every driver is exactly the confusion the sniff exists to
+prevent — so a renamed AtomS3R still will not appear in the network scan, and manual entry
+is the documented route for it.
+
 **Ordering matters:** the branch sits **after** the `xiaozhi` match. RealDeco's XiaoZhi
 ESPHome configs also run on M5-family hardware; an identity carrying both tokens (e.g.
 `xiaozhi-m5stack-atom`) is XiaoZhi-shaped firmware and must pair through the XiaoZhi driver —
