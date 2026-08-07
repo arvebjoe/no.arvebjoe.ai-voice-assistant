@@ -4,8 +4,8 @@
 
 Talk to your smart home. This Homey app connects small, inexpensive voice devices
 (Home Assistant Voice Preview Edition, XiaoZhi AI, ThirdReality Voice & Music Assistant,
-Seeed ReSpeaker XVF3800) to an AI assistant that controls your Homey devices, answers questions,
-plays music, runs timers, and speaks back — in your language.
+Seeed ReSpeaker XVF3800, M5Stack AtomS3R + Echo Base) to an AI assistant that controls your
+Homey devices, answers questions, plays music, runs timers, and speaks back — in your language.
 
 You choose the brain: **OpenAI**, **Google Gemini**, **Mistral** (Voxtral), or a fully
 **local / self-hosted** pipeline (Whisper + Ollama + Piper and friends) where no audio ever
@@ -213,6 +213,37 @@ Notes specific to this device:
 
 Technical deep-dive: [docs/respeaker-xvf3800](./docs/respeaker-xvf3800/README.md).
 
+### 5) M5Stack AtomS3R + Atomic Echo Base
+
+<img src="./drivers/m5stack-atoms3r/assets/images/large.png" height="160" alt="M5Stack AtomS3R + Echo Base" />
+
+A tiny, affordable voice satellite: the [AtomS3R-AI Chatbot kit](https://docs.m5stack.com/en/core/AtomS3R-AI%20Chatbot)
+combines an AtomS3R controller (ESP32-S3, with a small square LCD) and an Atomic Echo Base with
+microphone and speaker. **Firmware:** M5Stack's own official ESPHome voice-assistant config —
+[setup guide](https://docs.m5stack.com/en/homeassistant/voice_assistant/atoms3r_with_atomic_echo_base_voice_assistant),
+[YAML](https://github.com/m5stack/esphome-yaml/blob/main/common/atoms3r-with-echo-base.yaml).
+On-device wake words (*"Okay Nabu"*, *"Hey Jarvis"*, *"Hey Mycroft"*), timers, and the little
+screen shows what the assistant is doing.
+
+> **Important:** the firmware the kit ships with (the "AI Chatbot" cloud firmware) is **not**
+> ESPHome and will not work with this app. Flash M5Stack's ESPHome config once over USB (see
+> their setup guide) — if you previously used the device with Home Assistant's voice assistant,
+> it is already running the right firmware.
+
+Notes specific to this device:
+
+* Wi-Fi credentials are baked in when you flash, so there is **no Bluetooth setup step** — pair
+  with *"Find it on my network"*, or enter its IP manually.
+* In the device's ESPHome settings, keep the **wake word engine** set to **"On device"** (the
+  default) — the *"In Home Assistant"* mode streams to an Assist pipeline instead of the API
+  this app uses.
+* The button behind the screen only stops a ringing timer; it is not exposed to Homey, so the
+  *button pressed* flow card never fires for this device.
+* Devices previously adopted by Home Assistant usually have an **API encryption key** — paste it
+  during pairing as usual.
+
+Technical deep-dive: [docs/m5stack-atoms3r](./docs/m5stack-atoms3r/README.md).
+
 ---
 
 ## Choosing an AI engine
@@ -328,8 +359,8 @@ Notes:
 * The queue lives in MA, so pause/next/previous also work on grouped/multi-room playback, and
   *"play music like X"* (radio mode) keeps the queue going with similar tracks.
 * Voice keeps working while music plays: announcements and replies duck the music on the device.
-* XiaoZhi devices have no Sendspin client, so they can't be music targets (controlling *other*
-  players by voice from a XiaoZhi still works).
+* XiaoZhi and M5Stack AtomS3R devices have no Sendspin client, so they can't be music targets
+  (controlling *other* players by voice from them still works).
 
 ---
 
@@ -420,7 +451,7 @@ Settings changes apply on the fly — no app restart needed.
 trim a few milliseconds from the start of each turn to swallow the wake-word sound / mic-open
 noise, should you ever hear the assistant react to itself. *Microphone gain* boosts the
 microphone audio in software before speech recognition — 0 means automatic (each device model's
-tuned default; the ThirdReality's quiet mic gets 4×, the Voice PE and ReSpeaker need none). Raise it if the
+tuned default; the ThirdReality's quiet mic gets 4×, the Voice PE, ReSpeaker and AtomS3R need none). Raise it if the
 assistant doesn't hear you from a distance; lower it if loud close-up speech gets misheard.
 
 ---
@@ -571,4 +602,5 @@ fixes — is archived in **[COMPLETED.md](./COMPLETED.md)**.
 
 * **ESPHome** and the Home Assistant community
 * **RealDeco** for the XiaoZhi ESPHome configs
+* **M5Stack** for their official ESPHome voice-assistant configs
 * Everyone experimenting with tiny ESP32 voice devices 💛

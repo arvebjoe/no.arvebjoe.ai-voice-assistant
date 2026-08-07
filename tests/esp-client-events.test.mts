@@ -67,6 +67,26 @@ describe('identity sniff (discovery probe)', () => {
         expect(await sniff({ name: 'kitchen-respeaker' })).toBe('respeaker');
         expect(await sniff({ name: 'xvf3800-hallway' })).toBe('respeaker');
     });
+
+    it('classifies the M5Stack AtomS3R + Echo Base as "m5stack" (stock M5Stack config identity)', async () => {
+        expect(await sniff({
+            name: 'atoms3r-with-echo-base',
+            friendlyName: 'AtomS3R Echo Base Voice Assistant',
+            manufacturer: 'Espressif',
+            model: 'esp32-s3',
+        })).toBe('m5stack');
+    });
+
+    it('matches a renamed AtomS3R as long as a product token survives', async () => {
+        // User-compiled firmware — only the product tokens are stable.
+        expect(await sniff({ name: 'office-atoms3r' })).toBe('m5stack');
+        expect(await sniff({ name: 'm5stack-desk' })).toBe('m5stack');
+        expect(await sniff({ friendlyName: 'Kitchen Echo Base' })).toBe('m5stack');
+    });
+
+    it('prefers xiaozhi over m5stack when both tokens are present (RealDeco firmware on M5 hardware)', async () => {
+        expect(await sniff({ name: 'xiaozhi-m5stack-atom' })).toBe('xiaozhi');
+    });
 });
 
 describe('mute switch discovery (ListEntitiesSwitchResponse)', () => {
