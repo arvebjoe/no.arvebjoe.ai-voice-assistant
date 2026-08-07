@@ -95,9 +95,21 @@ When finishing a feature, check both before committing — stale READMEs have al
 
 ## Branching workflow
 
+**Two branches, `main` and `dev`. That is the target steady state — commit new work straight to `dev`.**
+
 - **`main`** — the released / in-certification line. Only certification fixes and release commits land here directly.
-- **`dev`** — the integration branch for new work. Branched from `main`; merged back into `main` once certification is done.
-- **`feature/*`** — branched from `dev`, merged back into `dev`. Never branch a feature off `main`.
+- **`dev`** — the integration branch for new work. Branched from `main`; merged back into `main` once certification is done. **Default place to commit.**
+
+### Why two branches, and why a feature branch needs justifying
+
+Homey's App Store has **no per-branch or per-version test channel**. `homey app publish` **overwrites the previously published test version** — only the *certified* version survives alongside it, and it stays the live one until a newer test build itself gets certified. There is exactly one test slot, so parallel long-lived branches cannot be published or tested side by side. A feature branch therefore buys nothing on the testing side while still costing merge conflicts in the hotspots below.
+
+So: **`feature/*` branches need a good reason.** Legitimate ones are narrow —
+
+- work that must be **abandonable** (a spike / prototype that may never land), or
+- a change so invasive it would leave `dev` unpublishable for days, when `dev` must stay publishable for an unrelated test build.
+
+If neither applies — and usually neither does — commit to `dev`. When a feature branch genuinely is warranted: branch from `dev`, merge back into `dev`, **never branch off `main`**, and delete it as soon as it lands (`git branch -d`, which refuses anything unmerged — never `-D`). Do not let it outlive the reason it was created.
 
 **Merge `main` into `dev` immediately after every commit to `main`.** One small fix resolved today is trivial; weeks of accumulated certification fixes resolved at the end is not. Done consistently, the eventual `dev` → `main` merge is a fast-forward.
 
@@ -126,6 +138,8 @@ The app version lives in **three** places and they must be bumped together:
 3. `package.json` — **purely cosmetic, keep it in sync by hand.** Nothing reads it: the Homey CLI only looks at `devDependencies.typescript`, `type: "module"` and the dependency list, and no app code reads a version. It drifted to `1.0.0` for 1.4.x once already because `homey app publish` bumps the manifest and never touches it. Edit the field directly — do NOT run `npm version`, which also makes a commit and a git tag.
 
 Then add the release's entry to `.homeychangelog.json` (user-facing wording — what changed for the user, not the commit subjects; skip anything that only touches `emulator/` or docs) and run `homey app validate --level publish` before committing. The `homey:manager:api` permission warning it prints is expected and not an error.
+
+**There is only one test slot.** `homey app publish` **overwrites the previous published test version** — it is not additive, and there is no way to keep two test builds available at once. The certified version stays live alongside it until a newer test build is itself certified. Consequences: a publish discards whatever test build was there before, so don't publish speculatively while someone is mid-test on the old build; and this is the reason the repo runs on two branches (see "Branching workflow").
 
 ## Outstanding work
 
