@@ -519,6 +519,61 @@ describe('VoiceAssistantDevice (harness)', () => {
         });
     });
 
+    /**
+     * A turn that produces no reply audio at all. Reached when the pipeline's
+     * LLM stage is set to "None" (the transcript is handed to Flows instead of
+     * a model), when a model answers with nothing, or when a TTS backend
+     * returns no audio. On the announce path nothing is ever queued, so no
+     * announce_finished comes back and the run must be closed from here.
+     */
+    describe('a reply with no audio', () => {
+        it('hands the transcript to Flows and closes the run itself', async () => {
+            const h = await createHarness();
+            const triggered: Array<{ cardId: string; tokens: any }> = [];
+            h.homey.flow.getDeviceTriggerCard = (cardId: string) => ({
+                trigger: async (_device: any, tokens: any) => { triggered.push({ cardId, tokens }); },
+                registerRunListener: () => { },
+            });
+
+            h.esp.emit('starting');
+            h.provider.emit('silence', 'server');
+            h.provider.emit('transcript.done', 'slå på lyset');
+            await h.settle(5);
+            h.provider.emit('response.done'); // no audio.delta was ever emitted
+            await h.settle(10);
+
+            // What the user said reached Flow — the whole point of the mode.
+            expect(triggered.filter(t => t.cardId === 'assistant-heard')).toEqual([
+                { cardId: 'assistant-heard', tokens: { text: 'slå på lyset' } },
+            ]);
+            // Nothing was played as a reply, and the PE was walked back to idle:
+            // the INTENT_END the first reply segment would have sent, then
+            // TTS_END/RUN_END. The second run_end is the mic-closed cue's own
+            // announce (playUrl wraps it in a run_start/run_end pair).
+            expect(h.esp.countOf('intent_end')).toBe(1);
+            expect(h.esp.countOf('run_end')).toBe(2);
+            const plays = h.esp.calls.filter(c => c.method === 'playAudioFromUrl');
+            expect(plays).toHaveLength(1);
+            expect(plays[0].args[0]).toBe('http://x/mic_closed_chime.flac');
+            expect((h.device as any).turn.state).toBe('idle');
+        });
+
+        it('does not close a run that some other path already ended', async () => {
+            const h = await createHarness();
+            h.esp.emit('starting');
+            h.provider.emit('silence', 'server');
+            h.provider.emit('transcript.done', ''); // empty turn ends the run itself
+            await h.settle(10);
+            const runEndsBefore = h.esp.countOf('run_end');
+
+            // A stray flush after the run is over must not send a second ending.
+            (h.device as any).audioOutput.segmenter.emit('done');
+            await h.settle(10);
+
+            expect(h.esp.countOf('run_end')).toBe(runEndsBefore);
+        });
+    });
+
     describe('button-pressed trigger (ThirdReality top button)', () => {
         it('fires the button-pressed device trigger with the event type as token', async () => {
             const h = await createHarness();

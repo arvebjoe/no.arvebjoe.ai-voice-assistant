@@ -127,7 +127,9 @@ describe('AudioOutputPipeline', () => {
             p.pipeline.cancelInband();
             p.pipeline.segmenter.emit('done');
             await tick(5);
-            expect(p.replies[0]).toEqual({ mode: 'announce' });
+            // Not 'silent': a segment WAS produced this turn, so the device's
+            // silent-close path (which would double-end the run) stays out.
+            expect(p.replies[0]).toEqual({ mode: 'announce', silent: false });
         });
 
         it('buildReplyFile serves the file and schedules deletion extended by playback length (M2/M9)', async () => {
@@ -171,8 +173,11 @@ describe('AudioOutputPipeline', () => {
             p.pipeline.abort();
             p.pipeline.segmenter.emit('done');
             await tick(5);
-            // Mode reset to announce; the stale PCM is gone.
-            expect(p.replies[0]).toEqual({ mode: 'announce' });
+            // Mode reset to announce; the stale PCM is gone. abort() also
+            // clears the segment marker, so a stray 'done' afterwards reports
+            // the turn as silent — harmless, because the device only acts on
+            // that while a turn is still in flight and abort ends the turn.
+            expect(p.replies[0]).toEqual({ mode: 'announce', silent: true });
         });
     });
 });

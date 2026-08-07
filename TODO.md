@@ -299,11 +299,15 @@ un-dropped 2026-07-31** (see "Start a Homey flow by voice" below).
         (`voice-assistant-device.mts:805`). Flows MUST filter on that token: the same card
         also fires per tool call with `type: 'tool'`, so an unfiltered flow speaks
         "Using tool get_devices".
-      - **Real work item:** make the TTS stage optional. `LocalPipelineProvider` currently
-        hard-requires it at startup — `tts.hasCredentials()` / `isConfigured()` / `check()`
-        gates at lines 490, 498, 509, 572, 591 — so today you need a TTS container running
-        even if nothing is ever spoken. Also check the realtime providers: they should be
-        put in an audio→text mode rather than generating speech that gets thrown away.
+      - **DONE for the Custom pipeline (2026-08-07):** the TTS stage now accepts
+        `local_tts_provider: 'none'` (`providers/local/none-clients.mts`), so no TTS container
+        is needed — the None client satisfies the startup gates without touching the network,
+        and `textToSpeech()` throws so the *Say* card reports an error instead of serving
+        silence. Shipped alongside `local_llm_provider: 'none'` (forum request 2026-08-07: stop
+        after STT and hand the transcript to a Flow). **Still open:** the same for the three
+        realtime providers — they should be put in an audio→text mode rather than generating
+        speech that gets thrown away; and this is a GLOBAL setting, so it cannot be per-device
+        the way the original request imagined.
       - **Known trade-offs to document for the user** (both confirmed, not guesses):
         follow-up questions stop working, because continue-conversation keys off the device
         finishing its own playback — every turn needs the wake word again; and the external

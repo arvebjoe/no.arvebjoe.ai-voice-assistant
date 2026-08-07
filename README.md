@@ -309,8 +309,8 @@ local Whisper + cloud Mistral LLM + local Piper):
 | Stage | Options |
 |---|---|
 | **Speech-to-text** | Whisper over HTTP (whisper-asr-webservice, speaches, whisper.cpp) · Wyoming faster-whisper (the Home Assistant `rhasspy/wyoming-whisper` docker) · Mistral Voxtral (cloud) · Mistral Voxtral **Realtime** (cloud, streaming websocket, sub-500 ms) · any OpenAI-compatible server |
-| **Language model** | Ollama · LM Studio · Mistral (cloud) · any OpenAI-compatible server (Groq, OpenRouter, DeepSeek, llama.cpp, vLLM, …) |
-| **Text-to-speech** | Piper over HTTP · Wyoming Piper (the `rhasspy/wyoming-piper` docker) · Mistral Voxtral (cloud) · any OpenAI-compatible server (e.g. kokoro-fastapi) |
+| **Language model** | Ollama · LM Studio · Mistral (cloud) · any OpenAI-compatible server (Groq, OpenRouter, DeepSeek, llama.cpp, vLLM, …) · **None** (hand the transcript to a Flow) |
+| **Text-to-speech** | Piper over HTTP · Wyoming Piper (the `rhasspy/wyoming-piper` docker) · Mistral Voxtral (cloud) · any OpenAI-compatible server (e.g. kokoro-fastapi) · **None** (no speech) |
 
 Each stage has its own host/port (or URL/key/model) settings, and a **Test button** that runs a
 real mini-request from your Homey — wrong ports, model names, keys and voices show up immediately
@@ -331,6 +331,29 @@ model, and the app reads it back live so the token budget bar can tell you wheth
 
 Smart-home control, weather, timers and the rest of the tool set work the same on every
 engine.
+
+#### Switching a stage off: "None"
+
+The language-model and speech stages can also be set to **None**, which turns them off instead
+of pointing them at a backend. Two setups this makes possible:
+
+- **Your own assistant, my ears** — set the **LLM backend** to *None*. The turn stops after
+  speech-to-text: what you said goes out on the **Heard something** Flow trigger and your own
+  Flow decides what happens next. It can speak an answer back with the **Say** action card,
+  which still uses the speech backend below. Useful if you already run your own agent, LLM
+  orchestration or MCP setup and only want the satellite's microphone. The trade-off is real:
+  follow-up questions and every built-in skill (device control, weather, timers, shopping list,
+  music) are gone — the Flow is the assistant now — and the round trip through Flow adds
+  latency on top of whatever your own chain costs.
+- **Answers spoken somewhere else** — set the **TTS backend** to *None*. The model still
+  answers, but the reply only leaves as text on the **Assistant is thinking** trigger (filter
+  on `type = reply`), so a Flow can speak it on another speaker — a Sonos, for example. With no
+  speech backend the app cannot produce audio at all, so the **Say** card stops working too.
+
+If you want your own model *and* everything else to keep working, the better route is usually
+not *None* but the **OpenAI-compatible** LLM backend pointed at your own endpoint: your model
+answers, while the LED ring, streaming speech, follow-up questions and the built-in tools all
+stay.
 
 ---
 
@@ -440,7 +463,9 @@ loaded at all: no tools, no prompt text, no cost.
   says something like *"let me look that up"* while it works instead of going silent.
 
 **Custom pipeline** *(Custom provider only)* — per-stage backend choice plus host/port or
-URL/key/model for each, with Test buttons, and the Ollama context-window size (num_ctx).
+URL/key/model for each, with Test buttons, and the Ollama context-window size (num_ctx). The
+language-model and speech stages can also be set to **None** to switch them off — see
+[Switching a stage off](#switching-a-stage-off-none).
 
 **Logging** — stream the app's logs to any **syslog** server (RFC 5424 over UDP or TCP):
 rsyslog/syslog-ng, a Synology or QNAP log center, Grafana Alloy/Loki, Papertrail, and so on.

@@ -7,6 +7,11 @@
  * to the app's 24 kHz reply contract itself.
  */
 export interface ITtsClient {
+    /**
+     * True only for the "None" backend (none-clients.mts): speech synthesis is
+     * switched off, so replies stay text-only and the "Say" card cannot work.
+     */
+    readonly noOp?: boolean;
     /** Enough settings present to even try (host set / API key set). */
     isConfigured(): boolean;
     /** False only when the backend needs an API key and none is set. */

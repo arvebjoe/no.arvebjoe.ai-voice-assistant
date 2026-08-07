@@ -14,6 +14,7 @@ import { OpenAiTtsClient } from './openai-tts-client.mjs';
 import { WyomingSttClient } from './wyoming-stt-client.mjs';
 import { WyomingTtsClient } from './wyoming-tts-client.mjs';
 import { LmStudioClient } from './lmstudio-client.mjs';
+import { NoneLlmClient, NoneTtsClient } from './none-clients.mjs';
 import { normalizeOpenAiBaseUrl } from './openai-compat.mjs';
 import { LOCAL_DEFAULT_PORTS } from '../local-pipeline-provider.mjs';
 
@@ -146,6 +147,7 @@ export function buildLlmClient(req: StageTestRequest): ILlmClient {
         case 'lmstudio': return new LmStudioClient({ host: str(req.host), port: num(req.port, LOCAL_DEFAULT_PORTS.lmstudio), model: str(req.model) });
         case 'mistral': return new MistralClient({ apiKey: str(req.mistralApiKey), model: str(req.model) });
         case 'openai': return new OpenAiLlmClient({ baseUrl: str(req.url), apiKey: str(req.key), model: str(req.model) });
+        case 'none': return new NoneLlmClient();
         default: return new OllamaClient({ host: str(req.host), port: num(req.port, LOCAL_DEFAULT_PORTS.llm), model: str(req.model) });
     }
 }
@@ -159,6 +161,7 @@ export function buildTtsClient(req: StageTestRequest): ITtsClient {
             baseUrl: str(req.url), apiKey: str(req.key), model: str(req.model),
             voice: str(req.voice), voiceOverride: str(req.voiceOverride),
         });
+        case 'none': return new NoneTtsClient();
         default: return new PiperClient({ host: str(req.host), port: num(req.port, LOCAL_DEFAULT_PORTS.tts) });
     }
 }
@@ -179,6 +182,9 @@ async function runSttTest(req: StageTestRequest): Promise<string> {
 
 async function runLlmTest(req: StageTestRequest): Promise<string> {
     const client = buildLlmClient(req);
+    if (client.noOp) {
+        return 'No language model — what you say is transcribed and handed to your Flows ("Heard something"), and nothing else happens';
+    }
     if (!client.hasCredentials()) throw new Error('API key missing — enter it above first');
     if (!client.isConfigured()) throw new Error('Fill in the connection fields above first');
     await client.check();
@@ -193,6 +199,9 @@ async function runLlmTest(req: StageTestRequest): Promise<string> {
 
 async function runTtsTest(req: StageTestRequest): Promise<string> {
     const client = buildTtsClient(req);
+    if (client.noOp) {
+        return 'No speech synthesis — this device stays silent, and the "Say" flow card will report an error';
+    }
     if (!client.hasCredentials()) throw new Error('API key missing — enter it above first');
     if (!client.isConfigured()) throw new Error('Fill in the connection fields above first');
     await client.check();

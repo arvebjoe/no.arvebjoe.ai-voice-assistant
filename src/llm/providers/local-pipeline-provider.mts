@@ -27,6 +27,7 @@ import { OPENAI_TTS_VOICES } from "./local/openai-compat.mjs";
 import { WyomingSttClient, WyomingSttConfig } from "./local/wyoming-stt-client.mjs";
 import { WyomingTtsClient, WyomingTtsConfig } from "./local/wyoming-tts-client.mjs";
 import { LmStudioClient, LmStudioConfig } from "./local/lmstudio-client.mjs";
+import { NoneLlmClient, NoneTtsClient } from "./local/none-clients.mjs";
 
 // The app-wide reply-audio contract: audio.delta emits PCM16 mono 24 kHz
 // (see voice-provider.mts). Piper voices speak 16/22.05 kHz — resampled up.
@@ -54,8 +55,8 @@ export const LOCAL_DEFAULT_PORTS = { stt: 9000, llm: 11434, tts: 5000, wyomingSt
 
 /** Selectable backends per pipeline stage (settings: local_stt/llm/tts_provider). */
 export type LocalSttProviderId = 'whisper' | 'wyoming' | 'mistral' | 'mistral-realtime' | 'openai';
-export type LocalLlmProviderId = 'ollama' | 'lmstudio' | 'mistral' | 'openai';
-export type LocalTtsProviderId = 'piper' | 'wyoming' | 'mistral' | 'openai';
+export type LocalLlmProviderId = 'ollama' | 'lmstudio' | 'mistral' | 'openai' | 'none';
+export type LocalTtsProviderId = 'piper' | 'wyoming' | 'mistral' | 'openai' | 'none';
 
 type LocalConfigs = {
     sttProvider: LocalSttProviderId;
@@ -96,7 +97,7 @@ function readLocalConfigs(): LocalConfigs {
             host: s('wyoming_stt_host'),
             port: Number(g('wyoming_stt_port', LOCAL_DEFAULT_PORTS.wyomingStt)) || LOCAL_DEFAULT_PORTS.wyomingStt,
         },
-        llmProvider: stage('local_llm_provider', ['ollama', 'lmstudio', 'mistral', 'openai'], 'ollama') as LocalLlmProviderId,
+        llmProvider: stage('local_llm_provider', ['ollama', 'lmstudio', 'mistral', 'openai', 'none'], 'ollama') as LocalLlmProviderId,
         ollama: {
             host: s('local_llm_host'),
             port: Number(g('local_llm_port', LOCAL_DEFAULT_PORTS.llm)) || LOCAL_DEFAULT_PORTS.llm,
@@ -112,7 +113,7 @@ function readLocalConfigs(): LocalConfigs {
             apiKey: s('mistral_api_key'),
             model: s('mistral_model'),
         },
-        ttsProvider: stage('local_tts_provider', ['piper', 'wyoming', 'mistral', 'openai'], 'piper') as LocalTtsProviderId,
+        ttsProvider: stage('local_tts_provider', ['piper', 'wyoming', 'mistral', 'openai', 'none'], 'piper') as LocalTtsProviderId,
         piper: {
             host: s('local_tts_host'),
             port: Number(g('local_tts_port', LOCAL_DEFAULT_PORTS.tts)) || LOCAL_DEFAULT_PORTS.tts,
@@ -149,6 +150,7 @@ function buildLlmClient(configs: LocalConfigs): ILlmClient {
         case 'lmstudio': return new LmStudioClient(configs.lmstudio);
         case 'mistral': return new MistralClient(configs.mistral);
         case 'openai': return new OpenAiLlmClient(configs.openaiLlm);
+        case 'none': return new NoneLlmClient();
         default: return new OllamaClient(configs.ollama);
     }
 }
@@ -159,6 +161,7 @@ function buildTtsClient(configs: LocalConfigs, voice: string): ITtsClient {
         case 'wyoming': return new WyomingTtsClient(configs.wyomingTts);
         case 'mistral': return new MistralTtsClient({ apiKey: configs.mistral.apiKey, model: configs.mistralTtsModel, voice });
         case 'openai': return new OpenAiTtsClient({ ...configs.openaiTts, voice });
+        case 'none': return new NoneTtsClient();
         default: return new PiperClient({ ...configs.piper, voice });
     }
 }
@@ -326,6 +329,9 @@ export class LocalPipelineProvider extends (EventEmitter as new () => TypedEmitt
      */
     static async getAvailableVoices(ttsBackend?: string): Promise<{ value: string; name: string }[]> {
         const backend = ttsBackend ?? settingsManager.getGlobal<string>('local_tts_provider', 'piper');
+        // TTS switched off: nothing speaks, so there is no voice to pick. The
+        // dropdown must never be empty, so it gets one honest entry.
+        if (backend === 'none') return [{ value: '', name: 'No voice — speech is turned off' }];
         if (backend === 'mistral') {
             const apiKey = (settingsManager.getGlobal<string>('mistral_api_key', '') || '').trim();
             if (apiKey) {
@@ -732,6 +738,23 @@ export class LocalPipelineProvider extends (EventEmitter as new () => TypedEmitt
      * through Piper while it streams.
      */
     private async respond(userText: string, mode: 'audio' | 'text'): Promise<void> {
+        // LLM stage switched off ("None"): the transcript IS the product. It has
+        // already gone out on transcript.done — which is what fires the device's
+        // "Heard something" trigger card — so end the turn here without loading
+        // instructions, building tool definitions or touching the history. The
+        // device closes the run on the empty response; a Flow takes it from here
+        // and can speak an answer back through the "Say" card.
+        if (this.llm.noOp) {
+            this.logger.info(`No LLM backend — transcript handed to Flows: "${userText}"`);
+            if (mode === 'audio') {
+                this.emit("audio.done");
+                this.emit("response.done");
+            } else {
+                this.emit("text.done", { text: '', type: "local.text.done" });
+            }
+            return;
+        }
+
         await this.instructionState.ensureLoaded(this.instructionParams());
 
         const abort = new AbortController();
@@ -858,6 +881,12 @@ export class LocalPipelineProvider extends (EventEmitter as new () => TypedEmitt
 
     /** Direct TTS -> FLAC (the seam's contract for speakText). */
     async textToSpeech(text: string): Promise<Buffer> {
+        // Fail loudly rather than serving a silent file: with the TTS stage off
+        // there is nothing that can speak, and the "Say" flow card surfaces this
+        // message to the user in the Flow editor.
+        if (this.tts.noOp) {
+            throw new Error("TTS backend is set to 'None' — this device cannot speak. Choose a TTS backend in the app settings.");
+        }
         const { pcm, sampleRate } = await this.tts.synthesize(text);
         const pcm24k = resamplePcm16Mono(pcm, sampleRate, OUTPUT_SAMPLE_RATE);
         return pcmToFlacBuffer(pcm24k, { sampleRate: OUTPUT_SAMPLE_RATE, channels: 1, bitsPerSample: 16 });

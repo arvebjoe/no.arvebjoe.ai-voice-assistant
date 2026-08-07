@@ -785,6 +785,7 @@
               <option value="lmstudio">LM Studio (local)</option>
               <option value="mistral">Mistral (cloud API)</option>
               <option value="openai">OpenAI-compatible (cloud or custom)</option>
+              <option value="none">None — hand the transcript to a Flow</option>
             </select>
             <div class="help-text">Which model answers you. Ollama runs on your own machine; Mistral is a cloud API
               (only the text of the conversation goes to Mistral).</div>
@@ -875,6 +876,15 @@
                 appended automatically. Model is required.</div>
             </div>
           </div>
+          <div id="local_llm_none" style="display: none;">
+            <div class="help-text local-section-help">No model answers you — the turn stops after speech-to-text.
+              What you said goes out on the <b>Heard something</b> flow trigger, and your own Flow decides what
+              happens next; it can speak an answer back with the <b>Say</b> action card, which still uses the
+              speech backend below. Use this when you already run your own assistant or agent and only want the
+              satellite's microphone. Note that follow-up questions and every built-in skill (device control,
+              weather, timers, shopping list, music) are gone — the Flow is the assistant now.
+            </div>
+          </div>
           <div class="stage-test">
             <button type="button" class="stage-test-btn" data-stage="llm" id="llm_test_btn">Test</button>
             <span class="stage-test-result" id="llm_test_result"></span>
@@ -888,7 +898,15 @@
               <option value="wyoming">Wyoming — Piper (local)</option>
               <option value="mistral">Mistral Voxtral (cloud API)</option>
               <option value="openai">OpenAI-compatible (cloud or custom)</option>
+              <option value="none">None — no speech</option>
             </select>
+          </div>
+          <div id="local_tts_none" style="display: none;">
+            <div class="help-text local-section-help">Nothing is spoken by this app. The assistant still answers, but
+              the reply only leaves as text on the <b>Assistant is thinking</b> flow trigger (filter on
+              <code>type = reply</code>), so a Flow can speak it on another speaker — a Sonos, for example.
+              With no speech backend the <b>Say</b> flow card cannot work either and will report an error.
+            </div>
           </div>
           <div id="local_tts_piper">
             <div class="local-host-port">
@@ -1486,7 +1504,12 @@
           meterFill.style.width = "100%";
           meterFill.style.background = "#e4eae6";
           meterState.className = "meter-state none";
-          if (pipelineLlm === "lmstudio") {
+          if (pipelineLlm === "none") {
+            // No model, no prompt: the instructions and tools below are never
+            // sent anywhere, so a token budget would be nonsense.
+            meterState.textContent = "No language model";
+            meterBudget.textContent = "Nothing is sent to a model — what you say goes straight to your Flows";
+          } else if (pipelineLlm === "lmstudio") {
             // LM Studio has a real context window but it couldn't be read
             // (yet) — honest label instead of "No context limit".
             meterState.textContent = "Limit set in LM Studio";
@@ -1530,8 +1553,8 @@
         // (<lan default> / mistral / openai) based on its dropdown.
         var stages = [
           { select: sttProviderSelectElement, blocks: { whisper: "local_stt_whisper", wyoming: "local_stt_wyoming", mistral: "local_stt_mistral", "mistral-realtime": "local_stt_mistral_realtime", openai: "local_stt_openai" }, def: "whisper" },
-          { select: llmProviderSelectElement, blocks: { ollama: "local_llm_ollama", lmstudio: "local_llm_lmstudio", mistral: "local_llm_mistral", openai: "local_llm_openai" }, def: "ollama" },
-          { select: ttsProviderSelectElement, blocks: { piper: "local_tts_piper", wyoming: "local_tts_wyoming", mistral: "local_tts_mistral", openai: "local_tts_openai" }, def: "piper" }
+          { select: llmProviderSelectElement, blocks: { ollama: "local_llm_ollama", lmstudio: "local_llm_lmstudio", mistral: "local_llm_mistral", openai: "local_llm_openai", none: "local_llm_none" }, def: "ollama" },
+          { select: ttsProviderSelectElement, blocks: { piper: "local_tts_piper", wyoming: "local_tts_wyoming", mistral: "local_tts_mistral", openai: "local_tts_openai", none: "local_tts_none" }, def: "piper" }
         ];
         var anyMistral = false;
         stages.forEach(function (stage) {

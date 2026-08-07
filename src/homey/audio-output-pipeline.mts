@@ -20,8 +20,15 @@ type PipelineEvents = {
      * The provider's reply stream ended (segmenter flushed). In in-band mode the
      * accumulated reply PCM is handed over (and the mode resets to announce);
      * the device runs the TTS_END delivery protocol with it.
+     *
+     * `silent` on the announce path means the turn produced no reply audio at
+     * all — no segment was ever built, so no announcement will ever be played
+     * and no announce_finished will come back to end the run. The device must
+     * close the turn itself (see the handler in voice-assistant-device.mts).
+     * The in-band path needs no such flag: an empty pcm buffer says the same
+     * thing and that branch already handles it.
      */
-    'reply-done': (d: { mode: 'announce' } | { mode: 'inband'; pcm: Buffer }) => void;
+    'reply-done': (d: { mode: 'announce'; silent: boolean } | { mode: 'inband'; pcm: Buffer }) => void;
 };
 
 /**
@@ -48,6 +55,13 @@ export class AudioOutputPipeline extends (EventEmitter as new () => TypedEmitter
     readonly segmenter = new PcmSegmenter();
 
     private mode: ReplyMode = 'announce';
+    // Whether the segmenter produced anything at all since the turn began.
+    // Distinguishes "the reply is still being encoded" from "there is no reply
+    // audio and never will be" — the queue/playing pair cannot: at flush time
+    // an announce segment may still be in the async encode chain with the queue
+    // empty and nothing playing yet. Keyed on emitted segments rather than fed
+    // PCM because a segment is exactly what becomes an announcement.
+    private sawSegment = false;
     private inbandPcm: Buffer[] = [];
     private queue: FileInfo[] = [];
     private playing = false;
@@ -77,6 +91,7 @@ export class AudioOutputPipeline extends (EventEmitter as new () => TypedEmitter
     /** Start a turn: pick the reply route and drop any stale in-band PCM. */
     beginTurn(mode: ReplyMode): void {
         this.mode = mode;
+        this.sawSegment = false;
         this.inbandPcm = [];
     }
 
@@ -144,6 +159,7 @@ export class AudioOutputPipeline extends (EventEmitter as new () => TypedEmitter
         const wasActive = this.playing || this.queue.length > 0;
         this.playing = false;
         this.queue = [];
+        this.sawSegment = false;
         this.inbandPcm = [];
         this.mode = 'announce';
         this.generation++;
@@ -153,6 +169,8 @@ export class AudioOutputPipeline extends (EventEmitter as new () => TypedEmitter
     }
 
     private onSegmentPcm(chunk: Buffer): void {
+        this.sawSegment = true;
+
         // In-band: accumulate synchronously (the 'done' handler reads it) —
         // never through the async chain.
         if (this.mode === 'inband') {
@@ -202,7 +220,7 @@ export class AudioOutputPipeline extends (EventEmitter as new () => TypedEmitter
             this.inbandPcm = [];
             this.emit('reply-done', { mode: 'inband', pcm });
         } else {
-            this.emit('reply-done', { mode: 'announce' });
+            this.emit('reply-done', { mode: 'announce', silent: !this.sawSegment });
         }
     }
 }

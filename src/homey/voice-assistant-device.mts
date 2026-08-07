@@ -505,6 +505,42 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
         this.esp.closeMic();
 
         if (d.mode !== 'inband') {
+          // Announce turns normally end when the announce queue drains
+          // (announce_finished). A turn that produced NO reply audio never
+          // queues an announcement, so that ack never comes and the run would
+          // hang in 'speaking' with the LED ring stuck and onoff left true.
+          // Reached whenever the reply is silent: the LLM stage set to 'None'
+          // (the transcript went to Flows instead), a model that answered with
+          // nothing, or a TTS backend that returned no audio.
+          // Only when a turn is actually still in flight. An empty transcript
+          // (cancelInband + run_end) and an abort both leave the machine idle,
+          // and a flow-initiated "say" never started a run on the device at
+          // all — none of them may be closed a second time from here.
+          if (d.silent && this.turn.state !== 'idle') {
+            this.convo.info('Turn produced no reply audio — closing the run', 'END');
+            // The PE is still owed the INTENT_END that the first reply segment
+            // would have sent; without it the firmware stays in its intent phase.
+            if (this.turn.takeIntent()) {
+              this.esp.intent_end('');
+            }
+            this.esp.tts_end();
+            this.esp.run_end();
+            this.setCapabilityValue('onoff', false);
+            // Consume the question decision exactly like the drained-queue
+            // branch does, so the machine's session tracking cannot drift from
+            // what the PE was told (it can only be set by a non-empty reply —
+            // a text answer whose TTS produced nothing).
+            const { reopenMic } = this.turn.finishAnnouncePlayback();
+            if (reopenMic) {
+              this.homey.setTimeout(() => {
+                this.reopenMic();
+              }, 1);
+            } else if (this.micClosedChimeFilename) {
+              // Descending "mic closed" cue — without it a silent turn gives the
+              // user no signal at all that the device is done and won't answer.
+              this.playUrl(this.webServer.buildStaticUrl(this.micClosedChimeFilename));
+            }
+          }
           return;
         }
 

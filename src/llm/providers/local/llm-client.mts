@@ -41,6 +41,12 @@ export interface LlmChatResult {
 }
 
 export interface ILlmClient {
+    /**
+     * True only for the "None" backend (none-clients.mts): the stage is switched
+     * off and the provider must skip the round trip entirely rather than call
+     * chat() and speak an empty answer.
+     */
+    readonly noOp?: boolean;
     /** Enough settings present to even try (host set / API key set). */
     isConfigured(): boolean;
     /**

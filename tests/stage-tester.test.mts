@@ -120,6 +120,18 @@ describe('testLocalStage', () => {
         expect(res.message).toContain('rejected the API key');
     });
 
+    it('the None backends pass without a network call and explain what they do', async () => {
+        const llm = await testLocalStage({ stage: 'llm', backend: 'none' });
+        expect(llm.ok).toBe(true);
+        expect(llm.message).toContain('Heard something');
+
+        const tts = await testLocalStage({ stage: 'tts', backend: 'none' });
+        expect(tts.ok).toBe(true);
+        expect(tts.message).toContain('silent');
+
+        expect(fetchCalls.length).toBe(0);
+    });
+
     it('unknown stage is rejected without touching the network', async () => {
         const res = await testLocalStage({ stage: 'nope' as any, backend: 'whisper' });
         expect(res.ok).toBe(false);

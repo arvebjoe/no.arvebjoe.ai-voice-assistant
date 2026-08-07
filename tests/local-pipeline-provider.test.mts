@@ -589,6 +589,102 @@ describe('LocalPipelineProvider', () => {
         }
     });
 
+    /**
+     * The "None" stages: switching a stage off rather than pointing it at a
+     * backend. None-LLM stops the turn after speech-to-text and hands the
+     * transcript to Homey Flows; None-TTS removes speech entirely. Both stages
+     * are switched off in every case here so nothing reaches the network — the
+     * point of the setting is that no endpoint is needed.
+     */
+    describe('None backends', () => {
+        /** A provider with the real (None) LLM/TTS stages and only STT stubbed. */
+        async function makeNoneProvider(): Promise<LocalPipelineProvider> {
+            homey.setMockSetting('local_llm_provider', 'none');
+            homey.setMockSetting('local_tts_provider', 'none');
+            const p = new LocalPipelineProvider(homey as any, toolManager as any, { ...baseOpts });
+            (p as any).stt = {
+                isConfigured: () => true, hasCredentials: () => true,
+                describe: () => 'stub', check: async () => { },
+                transcribe: sttTranscribe,
+            };
+            (p as any).onGlobalSettings = () => { };
+            await p.start();
+            return p;
+        }
+
+        it('starts healthy with no LLM or TTS endpoint configured at all', async () => {
+            homey.setMockSetting('local_llm_host', '');
+            homey.setMockSetting('local_tts_host', '');
+            const p = await makeNoneProvider();
+            try {
+                expect(p.isConnected()).toBe(true);
+                expect(p.hasApiKey()).toBe(true);
+            } finally {
+                p.destroy();
+            }
+        });
+
+        it('ends a spoken turn after STT without calling the LLM or TTS', async () => {
+            const p = await makeNoneProvider();
+            try {
+                const chat = vi.spyOn((p as any).llm, 'chat');
+                const synthesize = vi.spyOn((p as any).tts, 'synthesize');
+                const events: string[] = [];
+                for (const e of ['transcript.done', 'transcript.delta', 'audio.delta', 'audio.done', 'response.done']) {
+                    (p as any).on(e, () => events.push(e));
+                }
+                const transcriptDone = once(p, 'transcript.done');
+                const responseDone = once(p, 'response.done');
+
+                feedAll(p, speech(600));
+                feedAll(p, silence(900));
+
+                // The transcript still goes out — it is what fires the device's
+                // "Heard something" flow trigger, which is the whole point.
+                expect((await transcriptDone)[0]).toBe('turn on the light');
+                await responseDone;
+
+                expect(chat).not.toHaveBeenCalled();
+                expect(synthesize).not.toHaveBeenCalled();
+                // No reply audio and no reply text: the turn ends silently, and
+                // the device closes the run on the empty response.
+                expect(events).toEqual(['transcript.done', 'audio.done', 'response.done']);
+                // Nothing to remember either — the conversation lives in the Flow.
+                expect((p as any).messages).toEqual([]);
+            } finally {
+                p.destroy();
+            }
+        });
+
+        it('answers the text flow card with an empty string instead of hanging', async () => {
+            const p = await makeNoneProvider();
+            try {
+                const chat = vi.spyOn((p as any).llm, 'chat');
+                const done = once(p, 'text.done');
+                p.sendTextForTextResponse('what is the weather');
+                expect((await done)[0]).toMatchObject({ text: '' });
+                expect(chat).not.toHaveBeenCalled();
+            } finally {
+                p.destroy();
+            }
+        });
+
+        it('fails the Say card loudly when speech is turned off', async () => {
+            const p = await makeNoneProvider();
+            try {
+                await expect(p.textToSpeech('hei')).rejects.toThrow(/None/);
+            } finally {
+                p.destroy();
+            }
+        });
+
+        it('offers a single honest voice entry when speech is turned off', async () => {
+            const voices = await LocalPipelineProvider.getAvailableVoices('none');
+            expect(voices).toHaveLength(1);
+            expect(voices[0].value).toBe('');
+        });
+    });
+
     it('marks unconnected and emits Unhealthy when a health probe fails', async () => {
         (provider as any).on('error', () => { }); // 'error' with no listener would throw
         (provider as any).stt.check = async () => { throw new Error('refused'); };
