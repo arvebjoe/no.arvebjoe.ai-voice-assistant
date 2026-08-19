@@ -79,6 +79,10 @@
       "method": "GET",
       "path": "/lmstudio-context"
     },
+    "getClaudeModels": {
+      "method": "POST",
+      "path": "/claude-models"
+    },
     "getFeatureCosts": {
       "method": "GET",
       "path": "/feature-costs"

@@ -866,11 +866,13 @@
             </div>
             <div class="homey-form-group">
               <label class="homey-form-label" for="claude_model">Model</label>
-              <input type="text" class="homey-form-input" id="claude_model" autocomplete="off"
-                placeholder="claude-opus-5" />
-              <div class="help-text">Empty = <code>claude-opus-5</code>. <code>claude-haiku-4-5</code> answers
-                fastest and costs least, which suits short spoken commands; <code>claude-sonnet-5</code> sits in
-                between.</div>
+              <!-- Populated live from GET /v1/models with the key above, so the
+                   list is whatever this account can actually use. -->
+              <select class="homey-form-input" id="claude_model"></select>
+              <div class="help-text" id="claude_model_help"></div>
+              <div class="help-text">The default (<code>claude-opus-5</code>) is the most capable;
+                <code>claude-haiku-4-5</code> answers fastest and costs least, which suits short spoken
+                commands, and <code>claude-sonnet-5</code> sits in between.</div>
             </div>
           </div>
           <div id="local_llm_openai" style="display: none;">
@@ -1600,6 +1602,73 @@
       });
       llmProviderSelectElement.addEventListener("change", refreshLmStudioContext);
 
+      /* ------------- Claude model dropdown (live from the key) -------------
+         Anthropic lists the models a key can use (GET /v1/models), so the
+         model is a dropdown rather than a typed id. Fetched via the app —
+         the webview has no key of its own — using the CURRENT (possibly
+         unsaved) key field, like the Test buttons.
+
+         The saved model is ALWAYS kept as an option even when the list can't
+         be loaded (no key yet, network down, key rejected): otherwise the
+         select would fall back to "" and silently change the user's model on
+         the next Save. */
+
+      var claudeModelElement = document.getElementById("claude_model");
+      var claudeModelHelpElement = document.getElementById("claude_model_help");
+      // The chosen model id, kept outside the <select> because the options
+      // arrive asynchronously: settings load sets it, the user's pick updates
+      // it, and every re-render restores it. "" means the app default.
+      var claudeSelectedModel = "";
+      var claudeModelsSeq = 0; // ignore out-of-order replies
+
+      function claudeDefaultOption() {
+        return [{ value: "", name: "Default (claude-opus-5)" }];
+      }
+
+      function renderClaudeModels(options, message) {
+        var list = (options || []).slice();
+        // Keep a saved-but-unlisted model selectable rather than losing it.
+        if (claudeSelectedModel && !list.some(function (o) { return o.value === claudeSelectedModel; })) {
+          list.push({ value: claudeSelectedModel, name: claudeSelectedModel });
+        }
+        claudeModelElement.innerHTML = "";
+        list.forEach(function (o) {
+          var opt = document.createElement("option");
+          opt.value = o.value;
+          opt.textContent = o.name;
+          claudeModelElement.appendChild(opt);
+        });
+        claudeModelElement.value = claudeSelectedModel;
+        claudeModelHelpElement.textContent = message || "";
+      }
+
+      function refreshClaudeModels() {
+        var seq = ++claudeModelsSeq;
+        var key = document.getElementById("claude_api_key").value.trim();
+        // Show something valid immediately; the fetch only ever widens the list.
+        renderClaudeModels(claudeDefaultOption(),
+          key ? "Loading models…" : "Enter your Anthropic API key above to list the models your account can use.");
+        if (!key) return;
+        Homey.api("POST", "/claude-models", { key: key }, function (err, result) {
+          if (seq !== claudeModelsSeq) return;
+          if (err) return renderClaudeModels(claudeDefaultOption(), String(err.message || err));
+          renderClaudeModels(result.options, result.message);
+        });
+      }
+
+      var claudeModelsTimer = null;
+      function refreshClaudeModelsSoon() {
+        clearTimeout(claudeModelsTimer);
+        claudeModelsTimer = setTimeout(refreshClaudeModels, 600);
+      }
+      claudeModelElement.addEventListener("change", function () {
+        claudeSelectedModel = claudeModelElement.value;
+      });
+      document.getElementById("claude_api_key").addEventListener("input", refreshClaudeModelsSoon);
+      llmProviderSelectElement.addEventListener("change", function () {
+        if (llmProviderSelectElement.value === "claude") refreshClaudeModels();
+      });
+
       // The Mistral provider's inputs in General edit the SAME settings as the
       // Custom pipeline's Mistral fields (one key/model for both) — the pipeline
       // element is the one that loads and saves; its *_rt twin mirrors it live.
@@ -1623,6 +1692,15 @@
           if (id === "local_stt_provider" || id === "local_llm_provider" || id === "local_tts_provider") {
             refreshStageVisibility();
           }
+          // The model dropdown's options arrive later (they depend on the
+          // key), so remember the saved id and re-render once both are known.
+          if (id === "claude_model") {
+            claudeSelectedModel = value || "";
+            renderClaudeModels(claudeDefaultOption(), "");
+          }
+          // Both the key and the model feed the same debounced fetch, so it
+          // runs once, after whichever of the two settings lands last.
+          if (id === "claude_model" || id === "claude_api_key") refreshClaudeModelsSoon();
           if (id === "local_llm_num_ctx" || id === "local_llm_provider") {
             refreshBudget();
           }

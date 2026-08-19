@@ -289,11 +289,12 @@ LM Studio has no such setting here — its context window is chosen in LM Studio
 model, and the app reads it back live so the token budget bar can tell you whether everything fits.
 
 **Claude** as the language model needs an Anthropic API key from
-[https://console.anthropic.com/](https://console.anthropic.com/) and, optionally, a model id
-(empty = `claude-opus-5`; `claude-haiku-4-5` is the fastest and cheapest, which suits short
-spoken commands, and `claude-sonnet-5` sits in between). Only the text of the conversation is
-sent to Anthropic — pair it with a local Whisper and a local Piper and the audio still never
-leaves your LAN.
+[https://console.anthropic.com/](https://console.anthropic.com/). Paste it in and the **Model**
+dropdown fills itself with the models your account can actually use — no model ids to type or
+keep up with. The default is `claude-opus-5`; `claude-haiku-4-5` is the fastest and cheapest,
+which suits short spoken commands, and `claude-sonnet-5` sits in between. Only the text of the
+conversation is sent to Anthropic — pair it with a local Whisper and a local Piper and the audio
+still never leaves your LAN.
 
 Smart-home control, weather, timers and the rest of the tool set work the same on every
 engine.

@@ -45,7 +45,7 @@ wrong IP, port, model or key shows up immediately with the actual error and late
 | **LLM** | Ollama (local) | Host, Port, Model, Context window | 11434 |
 | | LM Studio (local) | Host, Port, Model | 1234 |
 | | Mistral (cloud) | Mistral API key, Model | — |
-| | Claude — Anthropic (cloud) | Anthropic API key, Model | — |
+| | Claude — Anthropic (cloud) | Anthropic API key, Model (dropdown, live) | — |
 | | OpenAI-compatible (cloud/custom) | Base URL, API key, Model | — |
 | **TTS** | Piper — HTTP (local) | Host, Port | 5000 |
 | | Wyoming — Piper (local) | Host, Port | 10200 |
@@ -324,9 +324,12 @@ backend rather than going through 2e.
 1. Get a key at [console.anthropic.com](https://console.anthropic.com) and paste it into the
    **Anthropic API key** field that appears under this backend.
 2. LLM backend = **Claude — Anthropic (cloud API)**.
-3. Model — empty = `claude-opus-5`. For voice, `claude-haiku-4-5` answers fastest and costs
-   least; `claude-sonnet-5` sits in between. Every current Claude model does tool calling, so
-   smart-home control works on all of them.
+3. Model — the dropdown fills itself from `GET /v1/models` once the key is in, so it lists
+   exactly what your account can use (leave it on **Default** for `claude-opus-5`). For voice,
+   `claude-haiku-4-5` answers fastest and costs least; `claude-sonnet-5` sits in between. Every
+   current Claude model does tool calling, so smart-home control works on all of them. If the
+   list can't be loaded (no key yet, no internet, key rejected) the reason appears under the
+   dropdown and any model you already saved stays selected.
 
 Only the conversation text goes to Anthropic — with a local Whisper and a local Piper around it,
 the audio still never leaves your LAN.

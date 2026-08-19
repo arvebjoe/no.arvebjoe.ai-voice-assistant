@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { WhisperClient } from '../src/llm/providers/local/whisper-client.mjs';
 import { OllamaClient, DEFAULT_NUM_CTX } from '../src/llm/providers/local/ollama-client.mjs';
 import { MistralClient } from '../src/llm/providers/local/mistral-client.mjs';
-import { ClaudeClient, toAnthropicMessages, DEFAULT_CLAUDE_MODEL } from '../src/llm/providers/local/claude-client.mjs';
+import { ClaudeClient, claudeModelOptions, toAnthropicMessages, DEFAULT_CLAUDE_MODEL } from '../src/llm/providers/local/claude-client.mjs';
 import { MistralSttClient } from '../src/llm/providers/local/mistral-stt-client.mjs';
 import { MistralTtsClient, listMistralTtsVoices, mistralVoiceOptions } from '../src/llm/providers/local/mistral-tts-client.mjs';
 import { generateToolCallId, sanitizeToolCallId } from '../src/llm/providers/local/llm-client.mjs';
@@ -483,6 +483,56 @@ describe('ClaudeClient', () => {
             status: 401, headers: { 'content-type': 'application/json' },
         });
         await expect(client.check()).rejects.toThrow(/API key was rejected/);
+    });
+});
+
+describe('claudeModelOptions', () => {
+    // The model list is cached per API key, so every case uses its own key.
+    function modelsResponse(models: any[], status = 200) {
+        return new Response(JSON.stringify({ data: models, has_more: false, first_id: null, last_id: null }), {
+            status, headers: { 'content-type': 'application/json' },
+        });
+    }
+
+    it('lists the account\'s models behind the default sentinel', async () => {
+        fetchImpl = (url) => {
+            expect(url).toContain('/v1/models');
+            return modelsResponse([
+                { id: 'claude-opus-5', display_name: 'Claude Opus 5', type: 'model', created_at: '2026-01-01T00:00:00Z' },
+                { id: 'claude-haiku-4-5', display_name: 'Claude Haiku 4.5', type: 'model', created_at: '2025-10-01T00:00:00Z' },
+            ]);
+        };
+
+        const { options, message } = await claudeModelOptions('sk-ant-list');
+        expect(message).toBe('');
+        // "" first: it is what an unset claude_model already means.
+        expect(options[0]).toEqual({ value: '', name: `Default (${DEFAULT_CLAUDE_MODEL})` });
+        expect(options.slice(1)).toEqual([
+            { value: 'claude-opus-5', name: 'Claude Opus 5' },
+            { value: 'claude-haiku-4-5', name: 'Claude Haiku 4.5' },
+        ]);
+    });
+
+    it('caches per key so keystroke-settled edits do not re-fetch', async () => {
+        fetchImpl = () => modelsResponse([{ id: 'claude-opus-5', display_name: 'Claude Opus 5', type: 'model', created_at: '2026-01-01T00:00:00Z' }]);
+        await claudeModelOptions('sk-ant-cache');
+        const after = fetchCalls.length;
+        await claudeModelOptions('sk-ant-cache');
+        expect(fetchCalls.length).toBe(after);
+    });
+
+    it('asks for the key instead of calling out when none is set', async () => {
+        const { options, message } = await claudeModelOptions('  ');
+        expect(fetchCalls.length).toBe(0);
+        expect(options).toEqual([{ value: '', name: `Default (${DEFAULT_CLAUDE_MODEL})` }]);
+        expect(message).toMatch(/API key/i);
+    });
+
+    it('still offers the default when the key is rejected', async () => {
+        fetchImpl = () => modelsResponse({ error: { message: 'invalid x-api-key' } } as any, 401);
+        const { options, message } = await claudeModelOptions('sk-ant-bad');
+        expect(options).toEqual([{ value: '', name: `Default (${DEFAULT_CLAUDE_MODEL})` }]);
+        expect(message).toMatch(/API key was rejected/);
     });
 });
 

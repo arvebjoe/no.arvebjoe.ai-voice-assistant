@@ -1,6 +1,7 @@
 import { getVoicesForProvider, DEFAULT_VOICE_PROVIDER } from './src/llm/voice-provider-factory.mjs';
 import { testLocalStage, StageTestRequest, StageTestResult } from './src/llm/providers/local/stage-tester.mjs';
 import { getLmStudioContext, LmStudioContextResult } from './src/llm/providers/local/lmstudio-context.mjs';
+import { claudeModelOptions, ClaudeModelOption } from './src/llm/providers/local/claude-client.mjs';
 import { computeFeatureCosts, FeatureCostReport } from './src/settings/feature-costs.mjs';
 import { sendTestLogLine, RemoteLogTestRequest, RemoteLogTestResult } from './src/helpers/remote-log.mjs';
 
@@ -43,6 +44,18 @@ export default {
      */
     async getLmStudioContext({ query }: { query: Record<string, string> }): Promise<LmStudioContextResult> {
         return getLmStudioContext({ host: query?.host, port: query?.port, model: query?.model });
+    },
+
+    /**
+     * POST /claude-models { key } — the models the given Anthropic key can
+     * use (GET /v1/models), so the settings page can offer a dropdown instead
+     * of a free-text model id. POST rather than GET because the key would
+     * otherwise ride in a URL; it comes from the CURRENT (possibly unsaved)
+     * form value, like the Test buttons. Never throws — a missing or rejected
+     * key comes back as the lone "" default option plus a `message`.
+     */
+    async getClaudeModels({ body }: { body: { key?: string } }): Promise<{ options: ClaudeModelOption[]; message: string }> {
+        return claudeModelOptions(body?.key ?? '');
     },
 
     /**
