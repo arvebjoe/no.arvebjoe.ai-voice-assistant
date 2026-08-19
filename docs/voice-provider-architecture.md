@@ -133,6 +133,8 @@ Global settings (Homey app settings, `settings/index.html`):
   `mistral-realtime`, or `local`.
 - `openai_api_key`, `gemini_api_key`, `mistral_api_key` — one per provider
   (the Mistral key is shared with the custom pipeline's Mistral stages).
+- `claude_api_key` / `claude_model` — the custom pipeline's Claude LLM stage
+  (Anthropic Messages API); no top-level provider uses them.
 - Shared: `selected_voice`, `selected_language_code/name`, `ai_instructions`.
 
 `SettingsManager.getAvailableProviders()` lists the options for the UI; the

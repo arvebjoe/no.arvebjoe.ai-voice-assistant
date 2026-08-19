@@ -5,6 +5,7 @@ import { WhisperClient } from './whisper-client.mjs';
 import { OllamaClient } from './ollama-client.mjs';
 import { PiperClient } from './piper-client.mjs';
 import { MistralClient } from './mistral-client.mjs';
+import { ClaudeClient } from './claude-client.mjs';
 import { MistralSttClient } from './mistral-stt-client.mjs';
 import { MistralRealtimeSttClient } from './mistral-realtime-stt-client.mjs';
 import { MistralTtsClient } from './mistral-tts-client.mjs';
@@ -32,11 +33,12 @@ import { LOCAL_DEFAULT_PORTS } from '../local-pipeline-provider.mjs';
 /** Flat request shape posted by the settings page. */
 export interface StageTestRequest {
     stage: 'stt' | 'llm' | 'tts';
-    backend: string;        // whisper|ollama|piper | mistral | openai
+    backend: string;        // whisper|ollama|piper | mistral | claude | openai
     host?: string;          // LAN backends
     port?: number | string;
     model?: string;         // model for the selected backend (LAN or cloud)
     mistralApiKey?: string; // mistral backends
+    claudeApiKey?: string;  // claude backend
     url?: string;           // openai-compatible backends
     key?: string;
     language?: string;      // stt: transcription language
@@ -77,7 +79,7 @@ const num = (v: unknown, fallback: number): number => Number(v) || fallback;
  */
 const MAX_FIELD_CHARS = 2048;
 const STRING_FIELDS = [
-    'stage', 'backend', 'host', 'model', 'mistralApiKey',
+    'stage', 'backend', 'host', 'model', 'mistralApiKey', 'claudeApiKey',
     'url', 'key', 'language', 'voice', 'voiceOverride',
 ] as const;
 
@@ -145,6 +147,7 @@ export function buildLlmClient(req: StageTestRequest): ILlmClient {
     switch (req.backend) {
         case 'lmstudio': return new LmStudioClient({ host: str(req.host), port: num(req.port, LOCAL_DEFAULT_PORTS.lmstudio), model: str(req.model) });
         case 'mistral': return new MistralClient({ apiKey: str(req.mistralApiKey), model: str(req.model) });
+        case 'claude': return new ClaudeClient({ apiKey: str(req.claudeApiKey), model: str(req.model) });
         case 'openai': return new OpenAiLlmClient({ baseUrl: str(req.url), apiKey: str(req.key), model: str(req.model) });
         default: return new OllamaClient({ host: str(req.host), port: num(req.port, LOCAL_DEFAULT_PORTS.llm), model: str(req.model) });
     }

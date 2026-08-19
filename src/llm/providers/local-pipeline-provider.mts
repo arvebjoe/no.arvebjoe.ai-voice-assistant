@@ -16,6 +16,7 @@ import { WhisperClient, LocalSttConfig } from "./local/whisper-client.mjs";
 import { ChatMessage, ILlmClient } from "./local/llm-client.mjs";
 import { OllamaClient, LocalLlmConfig } from "./local/ollama-client.mjs";
 import { MistralClient, MistralConfig } from "./local/mistral-client.mjs";
+import { ClaudeClient, ClaudeConfig } from "./local/claude-client.mjs";
 import { MistralSttClient } from "./local/mistral-stt-client.mjs";
 import { MistralRealtimeSttClient } from "./local/mistral-realtime-stt-client.mjs";
 import { MistralTtsClient, listMistralTtsVoices, mistralVoiceOptions } from "./local/mistral-tts-client.mjs";
@@ -54,7 +55,7 @@ export const LOCAL_DEFAULT_PORTS = { stt: 9000, llm: 11434, tts: 5000, wyomingSt
 
 /** Selectable backends per pipeline stage (settings: local_stt/llm/tts_provider). */
 export type LocalSttProviderId = 'whisper' | 'wyoming' | 'mistral' | 'mistral-realtime' | 'openai';
-export type LocalLlmProviderId = 'ollama' | 'lmstudio' | 'mistral' | 'openai';
+export type LocalLlmProviderId = 'ollama' | 'lmstudio' | 'mistral' | 'claude' | 'openai';
 export type LocalTtsProviderId = 'piper' | 'wyoming' | 'mistral' | 'openai';
 
 type LocalConfigs = {
@@ -65,6 +66,7 @@ type LocalConfigs = {
     ollama: LocalLlmConfig;
     lmstudio: LmStudioConfig;
     mistral: MistralConfig;
+    claude: ClaudeConfig;
     ttsProvider: LocalTtsProviderId;
     piper: LocalTtsConfig;
     wyomingTts: WyomingTtsConfig;
@@ -96,7 +98,7 @@ function readLocalConfigs(): LocalConfigs {
             host: s('wyoming_stt_host'),
             port: Number(g('wyoming_stt_port', LOCAL_DEFAULT_PORTS.wyomingStt)) || LOCAL_DEFAULT_PORTS.wyomingStt,
         },
-        llmProvider: stage('local_llm_provider', ['ollama', 'lmstudio', 'mistral', 'openai'], 'ollama') as LocalLlmProviderId,
+        llmProvider: stage('local_llm_provider', ['ollama', 'lmstudio', 'mistral', 'claude', 'openai'], 'ollama') as LocalLlmProviderId,
         ollama: {
             host: s('local_llm_host'),
             port: Number(g('local_llm_port', LOCAL_DEFAULT_PORTS.llm)) || LOCAL_DEFAULT_PORTS.llm,
@@ -111,6 +113,10 @@ function readLocalConfigs(): LocalConfigs {
         mistral: {
             apiKey: s('mistral_api_key'),
             model: s('mistral_model'),
+        },
+        claude: {
+            apiKey: s('claude_api_key'),
+            model: s('claude_model'),
         },
         ttsProvider: stage('local_tts_provider', ['piper', 'wyoming', 'mistral', 'openai'], 'piper') as LocalTtsProviderId,
         piper: {
@@ -148,6 +154,7 @@ function buildLlmClient(configs: LocalConfigs): ILlmClient {
     switch (configs.llmProvider) {
         case 'lmstudio': return new LmStudioClient(configs.lmstudio);
         case 'mistral': return new MistralClient(configs.mistral);
+        case 'claude': return new ClaudeClient(configs.claude);
         case 'openai': return new OpenAiLlmClient(configs.openaiLlm);
         default: return new OllamaClient(configs.ollama);
     }

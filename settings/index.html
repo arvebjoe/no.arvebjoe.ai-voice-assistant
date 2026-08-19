@@ -784,10 +784,11 @@
               <option value="ollama">Ollama (local)</option>
               <option value="lmstudio">LM Studio (local)</option>
               <option value="mistral">Mistral (cloud API)</option>
+              <option value="claude">Claude — Anthropic (cloud API)</option>
               <option value="openai">OpenAI-compatible (cloud or custom)</option>
             </select>
-            <div class="help-text">Which model answers you. Ollama runs on your own machine; Mistral is a cloud API
-              (only the text of the conversation goes to Mistral).</div>
+            <div class="help-text">Which model answers you. Ollama runs on your own machine; Mistral and Claude are
+              cloud APIs (only the text of the conversation goes to them).</div>
           </div>
           <div id="local_llm_ollama">
             <div class="local-host-port">
@@ -850,6 +851,26 @@
                 placeholder="mistral-small-latest" />
               <div class="help-text">Empty = <code>mistral-small-latest</code>. Any tool-calling Mistral model works
                 (e.g. <code>mistral-medium-latest</code>, <code>mistral-large-latest</code>).</div>
+            </div>
+          </div>
+          <div id="local_llm_claude" style="display: none;">
+            <div class="homey-form-group">
+              <label class="homey-form-label" for="claude_api_key">Anthropic API key</label>
+              <div class="secret-wrap">
+                <input type="password" class="homey-form-input" id="claude_api_key" autocomplete="off"
+                  placeholder="Enter your Anthropic API key here..." />
+                <button type="button" class="secret-toggle" data-for="claude_api_key">Show</button>
+              </div>
+              <div class="help-text">Visit https://console.anthropic.com to get one. Only the text of the
+                conversation is sent to Anthropic — the speech never leaves your speech-to-text backend.</div>
+            </div>
+            <div class="homey-form-group">
+              <label class="homey-form-label" for="claude_model">Model</label>
+              <input type="text" class="homey-form-input" id="claude_model" autocomplete="off"
+                placeholder="claude-opus-5" />
+              <div class="help-text">Empty = <code>claude-opus-5</code>. <code>claude-haiku-4-5</code> answers
+                fastest and costs least, which suits short spoken commands; <code>claude-sonnet-5</code> sits in
+                between.</div>
             </div>
           </div>
           <div id="local_llm_openai" style="display: none;">
@@ -1285,6 +1306,7 @@
         "local_stt_provider", "local_stt_host", "local_stt_port", "mistral_stt_model", "mistral_stt_realtime_model",
         "wyoming_stt_host", "wyoming_stt_port",
         "local_llm_provider", "local_llm_host", "local_llm_port", "local_llm_model", "local_llm_num_ctx", "mistral_model",
+        "claude_api_key", "claude_model",
         "lmstudio_host", "lmstudio_port", "lmstudio_model",
         "local_tts_provider", "local_tts_host", "local_tts_port", "mistral_tts_model",
         "wyoming_tts_host", "wyoming_tts_port",
@@ -1517,7 +1539,7 @@
         // (<lan default> / mistral / openai) based on its dropdown.
         var stages = [
           { select: sttProviderSelectElement, blocks: { whisper: "local_stt_whisper", wyoming: "local_stt_wyoming", mistral: "local_stt_mistral", "mistral-realtime": "local_stt_mistral_realtime", openai: "local_stt_openai" }, def: "whisper" },
-          { select: llmProviderSelectElement, blocks: { ollama: "local_llm_ollama", lmstudio: "local_llm_lmstudio", mistral: "local_llm_mistral", openai: "local_llm_openai" }, def: "ollama" },
+          { select: llmProviderSelectElement, blocks: { ollama: "local_llm_ollama", lmstudio: "local_llm_lmstudio", mistral: "local_llm_mistral", claude: "local_llm_claude", openai: "local_llm_openai" }, def: "ollama" },
           { select: ttsProviderSelectElement, blocks: { piper: "local_tts_piper", wyoming: "local_tts_wyoming", mistral: "local_tts_mistral", openai: "local_tts_openai" }, def: "piper" }
         ];
         var anyMistral = false;
@@ -1654,9 +1676,10 @@
             host: llmBackend === "lmstudio" ? v("lmstudio_host") : v("local_llm_host"),
             port: llmBackend === "lmstudio" ? v("lmstudio_port") : v("local_llm_port"),
             model: llmBackend === "mistral" ? v("mistral_model")
-              : llmBackend === "openai" ? v("openai_llm_model")
-                : llmBackend === "lmstudio" ? v("lmstudio_model") : v("local_llm_model"),
-            mistralApiKey: v("mistral_api_key"),
+              : llmBackend === "claude" ? v("claude_model")
+                : llmBackend === "openai" ? v("openai_llm_model")
+                  : llmBackend === "lmstudio" ? v("lmstudio_model") : v("local_llm_model"),
+            mistralApiKey: v("mistral_api_key"), claudeApiKey: v("claude_api_key"),
             url: v("openai_llm_url"), key: v("openai_llm_key")
           };
         }

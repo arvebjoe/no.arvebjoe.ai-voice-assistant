@@ -19,6 +19,7 @@
     { "id": "llm-ollama", "stage": "llm", "backend": "ollama", "host": "127.0.0.1", "port": 11434, "model": "", "numCtx": 8192 },
     { "id": "llm-lmstudio", "stage": "llm", "backend": "lmstudio", "host": "127.0.0.1", "port": 1234, "model": "", "enabled": false },
     { "id": "llm-mistral", "stage": "llm", "backend": "mistral", "mistralApiKey": "", "model": "mistral-small-latest", "enabled": false },
+    { "id": "llm-claude", "stage": "llm", "backend": "claude", "claudeApiKey": "", "model": "claude-haiku-4-5", "enabled": false },
     { "id": "llm-openai-compat", "stage": "llm", "backend": "openai", "url": "http://127.0.0.1:11434/v1", "key": "", "model": "" },
 
     { "id": "tts-piper-http", "stage": "tts", "backend": "piper", "host": "127.0.0.1", "port": 5000 },

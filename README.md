@@ -7,9 +7,9 @@ Talk to your smart home. This Homey app connects small, inexpensive voice device
 Seeed ReSpeaker XVF3800) to an AI assistant that controls your Homey devices, answers questions,
 plays music, runs timers, and speaks back — in your language.
 
-You choose the brain: **OpenAI**, **Google Gemini**, **Mistral** (Voxtral), or a fully
-**local / self-hosted** pipeline (Whisper + Ollama + Piper and friends) where no audio ever
-leaves your network.
+You choose the brain: **OpenAI**, **Google Gemini**, **Mistral** (Voxtral), or a **custom
+pipeline** you assemble stage by stage — mix local Whisper/Ollama/Piper with cloud models like
+**Claude**, right down to a fully local setup where no audio ever leaves your network.
 
 > **Status:** Active development. Open work lives in [TODO.md](./TODO.md); finished work is
 > archived in [COMPLETED.md](./COMPLETED.md).
@@ -268,7 +268,7 @@ local Whisper + cloud Mistral LLM + local Piper):
 | Stage | Options |
 |---|---|
 | **Speech-to-text** | Whisper over HTTP (whisper-asr-webservice, speaches, whisper.cpp) · Wyoming faster-whisper (the Home Assistant `rhasspy/wyoming-whisper` docker) · Mistral Voxtral (cloud) · Mistral Voxtral **Realtime** (cloud, streaming websocket, sub-500 ms) · any OpenAI-compatible server |
-| **Language model** | Ollama · LM Studio · Mistral (cloud) · any OpenAI-compatible server (Groq, OpenRouter, DeepSeek, llama.cpp, vLLM, …) |
+| **Language model** | Ollama · LM Studio · Mistral (cloud) · **Claude / Anthropic (cloud)** · any OpenAI-compatible server (Groq, OpenRouter, DeepSeek, llama.cpp, vLLM, …) |
 | **Text-to-speech** | Piper over HTTP · Wyoming Piper (the `rhasspy/wyoming-piper` docker) · Mistral Voxtral (cloud) · any OpenAI-compatible server (e.g. kokoro-fastapi) |
 
 Each stage has its own host/port (or URL/key/model) settings, and a **Test button** that runs a
@@ -277,8 +277,8 @@ with the actual error and latency.
 
 > **Setup recipes:** [docs/custom-pipeline-setup-guide.md](./docs/custom-pipeline-setup-guide.md)
 > has a copy-paste Docker Compose for every backend of every stage (Whisper, Wyoming,
-> Voxtral, OpenAI-compatible for STT · Ollama, LM Studio, Jan, llama.cpp, vLLM, Mistral for
-> the LLM · Piper, Wyoming Piper, Kokoro, Voxtral for TTS), plus the desktop-app steps for
+> Voxtral, OpenAI-compatible for STT · Ollama, LM Studio, Jan, llama.cpp, vLLM, Mistral, Claude
+> for the LLM · Piper, Wyoming Piper, Kokoro, Voxtral for TTS), plus the desktop-app steps for
 > Ollama and LM Studio and the networking gotchas.
 
 For Ollama there is also a **Context window (num_ctx)** setting (default 8192). Ollama's own
@@ -287,6 +287,13 @@ silently "forget" their rules — leave this at the default unless you know you 
 trade-off between memory use and headroom (see [docs/cost-of-growth.md](./docs/cost-of-growth.md)).
 LM Studio has no such setting here — its context window is chosen in LM Studio when you load the
 model, and the app reads it back live so the token budget bar can tell you whether everything fits.
+
+**Claude** as the language model needs an Anthropic API key from
+[https://console.anthropic.com/](https://console.anthropic.com/) and, optionally, a model id
+(empty = `claude-opus-5`; `claude-haiku-4-5` is the fastest and cheapest, which suits short
+spoken commands, and `claude-sonnet-5` sits in between). Only the text of the conversation is
+sent to Anthropic — pair it with a local Whisper and a local Piper and the audio still never
+leaves your LAN.
 
 Smart-home control, weather, timers and the rest of the tool set work the same on every
 engine.
@@ -523,9 +530,11 @@ entirely on the engine you pick — with the local pipeline, nothing does.
 ## Privacy & security
 
 * Your API keys stay in your Homey app settings; sensitive values are masked in the app logs.
-* With a **cloud** engine, audio and text are sent to **OpenAI**, **Google** or **Mistral**
-  (whichever you selected — as the provider or for a Custom pipeline stage) to fulfil your
-  requests. Don't use those engines if that's not acceptable for your environment.
+* With a **cloud** engine, audio and text are sent to **OpenAI**, **Google**, **Mistral** or
+  **Anthropic** (whichever you selected — as the provider or for a Custom pipeline stage) to
+  fulfil your requests. Don't use those engines if that's not acceptable for your environment.
+  Anthropic's Claude is a Custom-pipeline language-model backend only, so it receives the text
+  of the conversation but never the audio.
 * With a fully **local** pipeline, audio and text stay on your own network.
 * **Smart locks:** unlocking by voice is disabled by default (enable *Allow unlocking by voice*
   in settings to allow it), and the app never unlocks more than one lock per command — a voice

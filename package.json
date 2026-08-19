@@ -28,6 +28,7 @@
     "vitest": "^3.2.6"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.117.1",
     "@google/genai": "^2.10.0",
     "homey-api": "^3.19.0",
     "homey-lib": "^2.50.2",
