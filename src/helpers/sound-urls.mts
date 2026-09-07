@@ -24,6 +24,14 @@ export const SOUND_URLS = {
   // Generic "something went wrong" — a turn failed mid-flight (agent error,
   // connection dropped) so the reply the user is waiting for will never arrive.
   error: `${SOUND_BASE}/error.flac`,
+  // Another API client (in practice Home Assistant) owns the satellite's voice
+  // assistant, so it will never hear us. Naming Home Assistant does not break
+  // the provider-agnostic rule above — that is about the AI engines; here it is
+  // the subject of the message and the thing the user has to go and change.
+  // NOTE: this clip must be played through the MEDIA PLAYER entity
+  // (esp.playMediaUrl), never the announce path, which is exactly what the
+  // device in this state discards.
+  voice_assistant_in_use: `${SOUND_BASE}/voice_assistant_in_use.flac`,
 } as const;
 
 export type SoundUrlKey = keyof typeof SOUND_URLS;
@@ -42,4 +50,5 @@ export const SOUND_TEXTS: Record<SoundUrlKey, string> = {
   api_key_missing: 'No API key is configured',
   agent_not_connected: 'The voice service is not reachable',
   error: 'Something went wrong',
+  voice_assistant_in_use: 'Another app is using this device',
 };

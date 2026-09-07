@@ -2431,10 +2431,10 @@ reconnects aggressively).** Two signals in `esp-voice-assistant-client.mts`, emi
   press and every follow-up reopen) that draws no `VoiceAssistantAnnounceFinished` and no
   `VoiceAssistantRequest` within 8 s. That is **proof**: an accepted announce always completes,
   because unplayable media is capped by the firmware's own 2 s `start_playback_timeout_`. This one
-  sets a device warning **and posts a Homey timeline notification** (one line — the timeline
-  truncates, so it carries cause and fix only and leaves the detail to the warning), both naming
-  Home Assistant and the fix (delete the ESPHome **config entry** — hiding entities is not enough, the integration
-  reconnects). The banner alone was not enough: it is only visible to someone who opens the device,
+  sets a device warning, **posts a Homey timeline notification** (one line — the timeline truncates,
+  so it carries cause and fix only and leaves the detail to the warning) **and speaks a clip on the
+  satellite itself**, all naming Home Assistant and the fix (delete the ESPHome **config entry** —
+  hiding entities is not enough, the integration reconnects). The banner alone was not enough: it is only visible to someone who opens the device,
   and the entire failure mode is that nothing looks wrong, so nobody opens it. The timeline is the
   same channel the other "your setup is misconfigured, here is the fix" conditions already use
   (missing API key, refused model, exhausted quota). Throttled to once per day per device, because
@@ -2451,6 +2451,27 @@ people to their network. A warning also cannot take a working satellite offline 
 Waiting for proof costs little in practice: the proof *is* the button press, so the warning lands at
 the moment the user is wondering why nothing happened.
 
-Tests: `tests/va-subscription-ownership.test.mts` (both signals, off real protobuf frames) and the
-warning/log-dump cases in `tests/device-availability-reason.test.mts`. README gained a troubleshooting
-entry.
+**The spoken clip needed a second transport.** Every existing feedback sound goes out through
+`playUrl()` → `VoiceAssistantAnnounceRequest`, wrapped in `run_start`/`run_end`
+(`VoiceAssistantEventResponse`) — all three owner-gated, so the obvious implementation would have
+been discarded by the exact device it is meant for. `EspVoiceAssistantClient.playMediaUrl()` sends
+`MediaPlayerCommandRequest` instead: `on_media_player_command_request()` is an ordinary entity
+command, the same class of message as a switch, and carries no
+`check_voice_assistant_api_connection_()` gate. It is fire-and-forget by construction — an announce
+acks with `VoiceAssistantAnnounceFinished`, while this reports only `MediaPlayerStateResponse`
+playing→idle edges that cannot be told apart from the other client's playback (issue #54's log had
+77 of them, all Home Assistant's). **Never sequence a turn on it.** `announcement: true` puts it on
+the ducking pipeline, which the PE advertises a dedicated mono FLAC format for (`purpose: 1`).
+
+Timing works in the feature's favour: `taken` is proven 8 s after a mic-open the user just
+triggered, so the clip lands while they are standing there wondering why the button did nothing.
+Clip and notification share one throttle — three surfaces, one report.
+
+`.sounds/voice_assistant_in_use.flac` ships as a **copy of `wake_word_triggered.flac`**, matching the
+placeholders `device_connected`/`api_key_missing`/`error` already are; the intended line is in
+`.sounds/README.md`. Note `SOUND_BASE` points at `raw/refs/heads/main`, so the clip 404s on a device
+until this lands on `main`.
+
+Tests: `tests/va-subscription-ownership.test.mts` (both signals plus the media-player transport, off
+real protobuf frames) and the warning/notification/clip/log-dump cases in
+`tests/device-availability-reason.test.mts`. README gained a troubleshooting entry.

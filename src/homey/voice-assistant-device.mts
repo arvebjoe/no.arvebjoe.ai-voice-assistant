@@ -818,7 +818,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     // Assistant answering every question on the same satellite.
     this.esp.on('voice_assistant_owner', (state: VaOwnerState) => {
       this.vaOwner = state;
-      this.updateVoiceAssistantWarning();
+      this.reportVoiceAssistantOwnership();
     });
 
     // The satellite reported its wake-word configuration (fires on every
@@ -1652,9 +1652,22 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
    * Fire-and-forget: every call site is a failure path that must not wait on a
    * fetch/encode, and a clip we cannot produce is logged, not thrown.
    */
-  private playFeedbackSound(key: SoundUrlKey): void {
+  /**
+   * @param bypassVoiceAssistant route the clip through the media player entity
+   *   instead of the announce path. Needed for exactly one clip: the one that
+   *   says another client owns the voice assistant, which the announce path
+   *   cannot deliver because that is the condition being reported. See
+   *   EspVoiceAssistantClient.playMediaUrl.
+   */
+  private playFeedbackSound(key: SoundUrlKey, bypassVoiceAssistant: boolean = false): void {
     if (!this.replyToFlowUrl) {
-      this.playUrl(SOUND_URLS[key]);
+      if (bypassVoiceAssistant) {
+        // No run_start/run_end around it: those are VoiceAssistantEventResponse
+        // and would be discarded by the same gate the clip is bypassing.
+        this.esp.playMediaUrl(SOUND_URLS[key]);
+      } else {
+        this.playUrl(SOUND_URLS[key]);
+      }
       return;
     }
 
@@ -2084,9 +2097,10 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
   }
 
   /**
-   * Report "another client owns this satellite's voice assistant": a warning on
-   * the device, and — once, then at most daily — a Homey timeline notification.
-   * Both texts have to carry the fix, because the user cannot see the
+   * Report "another client owns this satellite's voice assistant" on three
+   * surfaces: a warning on the device, and — once, then at most daily — a Homey
+   * timeline notification plus a spoken clip on the satellite itself.
+   * Every text has to carry the fix, because the user cannot see the
    * device-side ESP_LOGE that is the only other trace of this failure — and
    * the fix is counter-intuitive: the satellite works fine, it is simply
    * already spoken for, and Home Assistant has to let go of it.
@@ -2103,7 +2117,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
    * its button — which is the mic-open. The warning then lands at the exact
    * moment they are wondering why nothing happened.
    */
-  private updateVoiceAssistantWarning(): void {
+  private reportVoiceAssistantOwnership(): void {
     const warning = this.vaOwner === 'taken'
       ? 'This satellite never answered a microphone open. Another client — almost certainly Home Assistant — is using its voice assistant, and a device can only have one. Remove it from Home Assistant (delete the ESPHome config entry), then restart this device.'
       : null;
@@ -2141,6 +2155,14 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       excerpt: `AI Assistant: **${this.getName()}** won't listen — Home Assistant is using its voice assistant, and only one app can. Remove it from Home Assistant, then restart it in Homey.`,
     })?.catch?.((err: unknown) =>
       this.logger.error('Failed to send the voice-assistant ownership notification', err));
+
+    // And say it out loud, on the device the user is standing in front of. They
+    // have just pressed its button and heard nothing for 8 seconds, so this is
+    // both the moment they are paying attention and the only surface that does
+    // not require them to go looking. It rides the media player entity, which
+    // is not gated on the subscription — the announce path this normally uses
+    // is exactly what the condition breaks.
+    this.playFeedbackSound('voice_assistant_in_use', true);
   }
 
   private updateAvailable() {

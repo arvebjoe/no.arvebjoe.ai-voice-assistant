@@ -749,7 +749,8 @@ entirely on the engine you pick — with the local pipeline, nothing does.
   removing the device from Home Assistant — delete the whole ESPHome config entry, since hiding the
   entities isn't enough and the integration will just reconnect — then restart the device in Homey.
   When the app can prove this is happening (it asked the device to listen and got no reply) it puts
-  a warning on the device and a notification in your Homey timeline saying so.
+  a warning on the device, a notification in your Homey timeline, and says so out loud on the
+  device itself.
 * **The assistant reacts to its own wake word sound:** increase the device's *Initial audio
   skip* setting slightly.
 * **The device wakes but doesn't hear what you say (or only up close):** raise the device's

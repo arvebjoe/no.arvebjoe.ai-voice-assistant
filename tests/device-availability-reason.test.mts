@@ -226,6 +226,45 @@ describe('warning when another client owns the voice assistant', () => {
         expect(excerpt.length).toBeLessThan(200);
     });
 
+    it('says it out loud on the device, over the media player', async () => {
+        // The announce path is exactly what a satellite in this state discards,
+        // so the clip has to ride the ungated media-player entity command.
+        const h = await createHarness();
+        bothUp(h);
+        h.esp.emit('voice_assistant_owner', 'taken');
+        await h.settle();
+
+        const played = h.esp.calls.filter((c: any) => c.method === 'playMediaUrl');
+        expect(played).toHaveLength(1);
+        expect(played[0].args[0]).toMatch(/voice_assistant_in_use\.flac$/);
+        // Nothing on the announce path — neither the clip nor a run wrapper,
+        // which is VoiceAssistantEventResponse and equally discarded.
+        expect(h.esp.countOf('playAudioFromUrl')).toBe(0);
+        expect(h.esp.countOf('run_start')).toBe(0);
+    });
+
+    it('does not repeat the spoken clip while the state persists', async () => {
+        // Shares the notification's throttle: a reconnect loop must not make the
+        // speaker nag.
+        const h = await createHarness();
+        bothUp(h);
+        h.esp.emit('voice_assistant_owner', 'taken');
+        await h.settle();
+        h.esp.emit('voice_assistant_owner', 'taken');
+        await h.settle();
+
+        expect(h.esp.countOf('playMediaUrl')).toBe(1);
+    });
+
+    it('stays silent on the speaker on suspicion alone', async () => {
+        const h = await createHarness();
+        bothUp(h);
+        h.esp.emit('voice_assistant_owner', 'suspected');
+        await h.settle();
+
+        expect(h.esp.countOf('playMediaUrl')).toBe(0);
+    });
+
     it('does not repeat the timeline notification while the state persists', async () => {
         // Detection is per connection, so a satellite that reconnects all day
         // re-derives 'taken' all day. The timeline must not follow it.

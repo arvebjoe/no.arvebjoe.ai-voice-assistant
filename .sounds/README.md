@@ -22,16 +22,29 @@ serves it from Homey. Nothing here needs a second file per clip.
 | `api_key_missing.flac` | The user woke the device but no API key is configured for the selected engine. |
 | `agent_not_connected.flac` | The user woke the device but the voice service isn't reachable (network / service down). |
 | `error.flac` | Something failed mid-turn (agent error, connection dropped) so the reply will never arrive. |
+| `voice_assistant_in_use.flac` | Another API client — in practice Home Assistant — owns the satellite's voice assistant, so it will never hear Homey. **Played through the media player entity, not the announce path** (`esp.playMediaUrl`): the announce path is precisely what a device in this state discards. |
 
 ## Placeholders — need real recordings
 
-`device_connected.flac`, `api_key_missing.flac` and `error.flac` are currently
-**copies of `wake_word_triggered.flac`** so the wiring works end-to-end.
-Re-record them with the actual spoken messages before the store release, e.g.:
+`device_connected.flac`, `api_key_missing.flac`, `error.flac` and
+`voice_assistant_in_use.flac` are currently **copies of
+`wake_word_triggered.flac`** so the wiring works end-to-end. Re-record them with
+the actual spoken messages before the store release, e.g.:
 
 - `device_connected.flac` — *"I'm connected to Homey and ready to go."*
 - `api_key_missing.flac` — *"No API key is set. Please add one in the app settings."*
 - `error.flac` — *"Sorry, something went wrong. Please try again."*
+- `voice_assistant_in_use.flac` — *"Error. This device is already connected to
+  Home Assistant. Check the Homey app for details."*
+
+Naming Home Assistant in that last one does not break the provider-agnostic rule
+above: that rule is about the AI engines (OpenAI, Gemini, Mistral, local), and
+here Home Assistant is the subject of the message and the thing the user has to
+go and change.
+
+**The clips are served from `main`.** `SOUND_BASE` points at
+`raw/refs/heads/main/.sounds`, so a clip added on a branch 404s on the device
+until that branch lands on `main`.
 
 Any new feedback clip should be added here, wired into `sound-urls.mts`, and
 listed in the table above.

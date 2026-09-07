@@ -50,6 +50,9 @@ export class EspVoiceAssistantClient extends EventEmitter {
     pipeline_error(code: string, message: string) { this.record('pipeline_error', code, message); }
     send_voice_assistant_request(...a: any[]) { this.record('send_voice_assistant_request', ...a); }
     playAudioFromUrl(url: string, startConversation: boolean) { this.record('playAudioFromUrl', url, startConversation); }
+    // The media-player transport, which unlike playAudioFromUrl survives a
+    // satellite whose voice assistant belongs to another API client.
+    playMediaUrl(url: string, announcement = true) { this.record('playMediaUrl', url, announcement); return true; }
     setVolume(v: number) { this.record('setVolume', v); }
     setMute(v: boolean) { this.record('setMute', v); }
 

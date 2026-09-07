@@ -14,7 +14,7 @@
 //   #2 a mic-open that is never answered (proof)
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { EspVoiceAssistantClient, VaOwnerState } from '../src/voice_assistant/esp-voice-assistant-client.mjs';
-import { encodeFrame } from '../src/voice_assistant/esp-messages.mjs';
+import { encodeFrame, encodeBody, decodeBody } from '../src/voice_assistant/esp-messages.mjs';
 import { MockHomey } from './mocks/mock-homey.mjs';
 
 /** VOICE_ASSISTANT | API_AUDIO | ... — what a real PE advertises (issue #54's log). */
@@ -174,5 +174,47 @@ describe('the verdict belongs to one connection', () => {
         await sendConfig(client, []);
 
         expect(states).toEqual(['suspected']);
+    });
+});
+
+describe('playMediaUrl bypasses the voice-assistant gate', () => {
+    /** Capture what would go on the wire, round-tripped through the real proto. */
+    function makeRecordingClient() {
+        const client = new EspVoiceAssistantClient(new MockHomey(), { host: '127.0.0.1', logLevel: 0 });
+        const sent: Array<{ name: string; message: any }> = [];
+        (client as any).send = (name: string, payload: any) => {
+            const { id, body } = encodeBody(name, payload);
+            sent.push({ name, message: decodeBody(id, body).message });
+        };
+        (client as any).scheduleReconnect = () => { };
+        return { client, sent };
+    }
+
+    it('commands the media player entity, not the announce path', async () => {
+        // MediaPlayerCommandRequest is an ordinary entity command — ESPHome runs
+        // it with no check_voice_assistant_api_connection_() — which is the only
+        // reason a clip can still reach a satellite in the 'taken' state.
+        const { client, sent } = makeRecordingClient();
+        (client as any).entityKeys = { media_player: 2232357057 };
+
+        expect(client.playMediaUrl('http://homey/clip.flac')).toBe(true);
+
+        expect(sent).toHaveLength(1);
+        expect(sent[0].name).toBe('MediaPlayerCommandRequest');
+        expect(sent[0].message.key).toBe(2232357057);
+        expect(sent[0].message.mediaUrl).toBe('http://homey/clip.flac');
+        // The has* flags are what ESPHome reads before applying each field;
+        // without them the URL is ignored and nothing plays.
+        expect(sent[0].message.hasMediaUrl).toBe(true);
+        expect(sent[0].message.hasAnnouncement).toBe(true);
+        expect(sent[0].message.announcement).toBe(true);
+    });
+
+    it('reports failure instead of sending when there is no media player', async () => {
+        const { client, sent } = makeRecordingClient();
+        (client as any).entityKeys = {};
+
+        expect(client.playMediaUrl('http://homey/clip.flac')).toBe(false);
+        expect(sent).toEqual([]);
     });
 });

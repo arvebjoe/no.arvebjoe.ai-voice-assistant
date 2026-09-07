@@ -1396,6 +1396,52 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
     });
   }
 
+  /**
+   * Play a URL through the satellite's MEDIA PLAYER entity instead of the
+   * voice-assistant announce path.
+   *
+   * The distinction is the whole point. `on_media_player_command_request()` is
+   * an ordinary entity command — the same class of message as a switch or a
+   * light — and carries NO `check_voice_assistant_api_connection_()` gate, so
+   * it still reaches a satellite whose voice assistant belongs to another
+   * client. That is the one situation where `playAudioFromUrl()` is silently
+   * discarded, and the only way left to tell the user so on the device itself.
+   *
+   * `announcement` puts it on the firmware's announcement pipeline, which ducks
+   * whatever is playing (the PE advertises a dedicated mono FLAC format for it,
+   * `purpose: 1`) — worth having when the other client may be mid-reply.
+   *
+   * The trade is the acknowledgement: an announce comes back as
+   * VoiceAssistantAnnounceFinished, while this reports nothing but
+   * MediaPlayerStateResponse playing->idle edges that are indistinguishable
+   * from the other client's playback. **Fire-and-forget only** — never build
+   * turn sequencing on it.
+   *
+   * Returns false when the device has no media player entity to command.
+   */
+  playMediaUrl(url: string, announcement: boolean = true): boolean {
+    const mediaPlayerKey = this.entityKeys['media_player'];
+    if (!mediaPlayerKey) {
+      this.logger.warn('No media player entity found - cannot play a URL through it');
+      return false;
+    }
+
+    try {
+      this.send('MediaPlayerCommandRequest', {
+        key: mediaPlayerKey,
+        hasMediaUrl: true,
+        mediaUrl: url,
+        hasAnnouncement: true,
+        announcement,
+      });
+      this.logger.info(`Playing ${url} through the media player entity${announcement ? ' (announcement)' : ''}`);
+      return true;
+    } catch (error) {
+      this.logger.error('Error sending the media player play command:', error);
+      return false;
+    }
+  }
+
   /** Whether the device advertised support for on-device timers. */
   get supportsTimers(): boolean {
     return this.timersSupported;
