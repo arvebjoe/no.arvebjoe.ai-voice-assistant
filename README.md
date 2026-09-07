@@ -740,6 +740,16 @@ entirely on the engine you pick — with the local pipeline, nothing does.
   satellite perfectly healthy and the tile unavailable anyway. Settings → **Debug** → **Last seen
   devices** shows the same split as **Device connected** / **Engine connected**. If you need more
   than that, turn on Settings → **Debug** → **Verbose logging** and restart the app.
+* **The device answers you — but with the wrong answers, and Homey never notices:** the satellite
+  is still added to **Home Assistant**. An ESPHome device hands its voice assistant to exactly one
+  client, first come first served, and silently ignores the second — so Home Assistant answers
+  everything (including *"Sorry, I couldn't find a device called ..."* for devices that exist in
+  Homey), while this app sits there connected and deaf. Tell-tale signs: the *Heard something* and
+  *Thinking* Flow cards never fire, and pressing the device tile in Homey does nothing. Fix it by
+  removing the device from Home Assistant — delete the whole ESPHome config entry, since hiding the
+  entities isn't enough and the integration will just reconnect — then restart the device in Homey.
+  When the app can prove this is happening (it asked the device to listen and got no reply) it puts
+  a warning on the device and a notification in your Homey timeline saying so.
 * **The assistant reacts to its own wake word sound:** increase the device's *Initial audio
   skip* setting slightly.
 * **The device wakes but doesn't hear what you say (or only up close):** raise the device's

@@ -1,6 +1,6 @@
 import Homey from 'homey';
 import { WebServer } from '../helpers/webserver.mjs';
-import { EspVoiceAssistantClient, EspVoiceClientOptions } from '../voice_assistant/esp-voice-assistant-client.mjs';
+import { EspVoiceAssistantClient, EspVoiceClientOptions, VaOwnerState } from '../voice_assistant/esp-voice-assistant-client.mjs';
 import { NoiseFrameCodec } from '../voice_assistant/noise-frame-codec.mjs';
 import { TimerManager, TimerSummary } from '../voice_assistant/timer-manager.mjs';
 import { DeviceManager } from '../helpers/device-manager.mjs';
@@ -160,6 +160,26 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
    * changed reason from an unchanged one while the device stays unavailable.
    */
   private lastUnavailableReason: string | null = null;
+
+  /**
+   * When this device last told the timeline that another client owns its voice
+   * assistant, so a satellite stuck in that state cannot spam it. Per device,
+   * unlike notifiedUnavailableModels: this is a property of one satellite's
+   * connection, and a second satellite in the same state is separate news.
+   * Reset on 'ok' so a recurrence after the user fixes it is reported again.
+   */
+  private lastVaTakenNotificationAt: number = 0;
+  private static readonly VA_TAKEN_NOTIFY_INTERVAL_MS: number = 24 * 60 * 60 * 1000;
+
+  /**
+   * Whether we hold the satellite's single voice-assistant subscription, or
+   * null before the device has told us either way. Surfaced as a device
+   * warning rather than folded into availability: 'suspected' is a heuristic
+   * (see VaOwnerState), and a heuristic must not be able to take a working
+   * satellite offline. A warning is visible in the app, costs nothing when
+   * wrong, and — unlike the silence this replaces — it names the cause.
+   */
+  private vaOwner: VaOwnerState | null = null;
 
   /** Engine ids as the settings page labels them (settings/index.html). */
   private static readonly ENGINE_LABELS: Record<string, string> = {
@@ -788,6 +808,17 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
         this.convo.info('Paired device connected — playing welcome sound', 'INIT');
         this.playFeedbackSound('device_connected');
       }
+    });
+
+    // ESPHome allows exactly ONE voice-assistant client and rejects the second
+    // one silently (see VaOwnerState). Everything else about such a connection
+    // reads as healthy — entities list, pings answer, the engine connects — so
+    // without this the device shows "connected" while it is deaf, which is what
+    // GitHub issue #54 was: an hour of logs, zero voice requests, and Home
+    // Assistant answering every question on the same satellite.
+    this.esp.on('voice_assistant_owner', (state: VaOwnerState) => {
+      this.vaOwner = state;
+      this.updateVoiceAssistantWarning();
     });
 
     // The satellite reported its wake-word configuration (fires on every
@@ -2011,7 +2042,15 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     const esp = this.isEspClientHealthy ? 'connected' : 'NOT connected';
     const agent = this.isAgentHealthy ? 'connected' : 'NOT connected';
     const audio = this.replyToFlowUrl ? 'audio→Flow URL' : 'audio→device';
-    return `${this.driver?.id ?? 'unknown-driver'} "${this.getName()}" @${address} — ${firmware} (${encrypted}) — satellite ${esp}, ${this.engineLabel()} engine ${agent} — mic gain ${this.micGain}x, ${audio}`;
+    // Spelled out here because this line is the header of every log dump a bug
+    // report arrives with, and it is the one failure the rest of the line
+    // actively hides: satellite connected, engine connected, nothing works.
+    const va = this.vaOwner === 'taken'
+      ? ' — VOICE ASSISTANT OWNED BY ANOTHER CLIENT (mic-open unanswered)'
+      : this.vaOwner === 'suspected'
+        ? ' — voice assistant possibly owned by another client (no wake words reported)'
+        : '';
+    return `${this.driver?.id ?? 'unknown-driver'} "${this.getName()}" @${address} — ${firmware} (${encrypted}) — satellite ${esp}, ${this.engineLabel()} engine ${agent} — mic gain ${this.micGain}x, ${audio}${va}`;
   }
 
   private engineLabel(): string {
@@ -2042,6 +2081,66 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       return 'No connection to the device — check that it is powered on and reachable on the same network as Homey.';
     }
     return `The device is connected, but the ${this.engineLabel()} voice engine is not — check that engine's API key in the app settings.`;
+  }
+
+  /**
+   * Report "another client owns this satellite's voice assistant": a warning on
+   * the device, and — once, then at most daily — a Homey timeline notification.
+   * Both texts have to carry the fix, because the user cannot see the
+   * device-side ESP_LOGE that is the only other trace of this failure — and
+   * the fix is counter-intuitive: the satellite works fine, it is simply
+   * already spoken for, and Home Assistant has to let go of it.
+   *
+   * Only 'taken' warns. 'suspected' is the empty wake-word list, and a
+   * satellite whose config has no micro_wake_word answers exactly the same way
+   * while owning its voice assistant perfectly well — we support five device
+   * families and cannot claim to know the wake-word setup of every community
+   * config among them. It goes to the log and the diagnostics line instead,
+   * where it costs nothing if wrong and is right there in the next log dump.
+   *
+   * Waiting for proof does not delay the warning much in practice: the proof
+   * is an unanswered mic-open, and a user whose satellite ignores them presses
+   * its button — which is the mic-open. The warning then lands at the exact
+   * moment they are wondering why nothing happened.
+   */
+  private updateVoiceAssistantWarning(): void {
+    const warning = this.vaOwner === 'taken'
+      ? 'This satellite never answered a microphone open. Another client — almost certainly Home Assistant — is using its voice assistant, and a device can only have one. Remove it from Home Assistant (delete the ESPHome config entry), then restart this device.'
+      : null;
+
+    const promise = warning === null ? this.unsetWarning() : this.setWarning(warning);
+    Promise.resolve(promise).catch((err: unknown) =>
+      this.logger.error('Failed to update the voice-assistant ownership warning', err));
+
+    if (this.vaOwner === 'ok') {
+      // Fixed (or a reconnect won the slot back). Re-arm, so if it happens
+      // again in a month that is news rather than a swallowed repeat.
+      this.lastVaTakenNotificationAt = 0;
+    }
+
+    if (warning === null) {
+      return;
+    }
+
+    // The banner alone is not enough: it is only visible to someone who opens
+    // this device, and the whole failure mode is that nothing LOOKS wrong, so
+    // nobody opens it. The timeline is where the user actually looks — and it
+    // is the same channel the other "your setup is misconfigured, here is the
+    // fix" conditions use (missing API key, refused model, exhausted quota).
+    const now = Date.now();
+    if (now - this.lastVaTakenNotificationAt < VoiceAssistantDevice.VA_TAKEN_NOTIFY_INTERVAL_MS) {
+      return;
+    }
+    this.lastVaTakenNotificationAt = now;
+
+    // Kept to roughly one line: the timeline shows an excerpt, and anything past
+    // that is truncated away. Cause and fix only — the device warning above
+    // carries the full version (config entry vs. hidden entities, why one
+    // client is the limit) for whoever follows this to the device.
+    this.homey.notifications?.createNotification?.({
+      excerpt: `AI Assistant: **${this.getName()}** won't listen — Home Assistant is using its voice assistant, and only one app can. Remove it from Home Assistant, then restart it in Homey.`,
+    })?.catch?.((err: unknown) =>
+      this.logger.error('Failed to send the voice-assistant ownership notification', err));
   }
 
   private updateAvailable() {

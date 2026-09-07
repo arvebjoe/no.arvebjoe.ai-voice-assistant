@@ -171,3 +171,129 @@ describe('the Debug list carries the two links separately', () => {
         expect(entry!.engineConnected).toBe(true);
     });
 });
+
+/**
+ * The other way a device can be broken while looking fine: ESPHome hands its
+ * voice assistant to ONE client, and the loser of that race gets a connection
+ * that lists entities, answers pings and discards every voice message. Both
+ * links are up, so "Unavailable" has nothing to say — hence a warning.
+ */
+describe('warning when another client owns the voice assistant', () => {
+    beforeEach(() => {
+        __resetProviderRegistry();
+    });
+
+    it('names Home Assistant and the fix once the mic-open goes unanswered', async () => {
+        const h = await createHarness();
+        bothUp(h);
+        h.esp.emit('voice_assistant_owner', 'taken');
+        await h.settle();
+
+        const warning = (h.device as any).warning as string;
+        expect(warning).toMatch(/Home Assistant/);
+        expect(warning).toMatch(/only have one/i);
+        // The device is NOT unavailable: both links really are up, and saying
+        // otherwise would send the user back to the network for the third time.
+        expect(h.device.getAvailable()).toBe(true);
+    });
+
+    it('stays silent on suspicion alone', async () => {
+        // An empty wake-word list is how ESPHome answers a non-owner, but also
+        // how a satellite with no on-board wake words answers. Log it, do not
+        // accuse a working device.
+        const h = await createHarness();
+        bothUp(h);
+        h.esp.emit('voice_assistant_owner', 'suspected');
+        await h.settle();
+
+        expect((h.device as any).warning).toBeNull();
+    });
+
+    it('also puts it on the Homey timeline, naming the device and the fix', async () => {
+        // The banner is only seen by someone who opens the device, and the whole
+        // failure mode is that nothing looks wrong — so nobody opens it.
+        const h = await createHarness();
+        bothUp(h);
+        h.esp.emit('voice_assistant_owner', 'taken');
+        await h.settle();
+
+        expect(h.homey.notificationsSent).toHaveLength(1);
+        const excerpt = h.homey.notificationsSent[0].excerpt as string;
+        expect(excerpt).toMatch(/Home Assistant/);
+        expect(excerpt).toMatch(/Remove it from Home Assistant/);
+        expect(excerpt).toContain(h.device.getName());
+        // The timeline truncates; the full explanation lives on the device warning.
+        expect(excerpt.length).toBeLessThan(200);
+    });
+
+    it('does not repeat the timeline notification while the state persists', async () => {
+        // Detection is per connection, so a satellite that reconnects all day
+        // re-derives 'taken' all day. The timeline must not follow it.
+        const h = await createHarness();
+        bothUp(h);
+        h.esp.emit('voice_assistant_owner', 'taken');
+        await h.settle();
+        h.esp.emit('voice_assistant_owner', 'taken');
+        await h.settle();
+
+        expect(h.homey.notificationsSent).toHaveLength(1);
+    });
+
+    it('notifies again when it recurs after being fixed', async () => {
+        const h = await createHarness();
+        bothUp(h);
+        h.esp.emit('voice_assistant_owner', 'taken');
+        await h.settle();
+
+        // Removed from Home Assistant, satellite answers again...
+        h.esp.emit('voice_assistant_owner', 'ok');
+        await h.settle();
+        // ...and then someone adds it back.
+        h.esp.emit('voice_assistant_owner', 'taken');
+        await h.settle();
+
+        expect(h.homey.notificationsSent).toHaveLength(2);
+    });
+
+    it('stays off the timeline on suspicion alone', async () => {
+        const h = await createHarness();
+        bothUp(h);
+        h.esp.emit('voice_assistant_owner', 'suspected');
+        await h.settle();
+
+        expect(h.homey.notificationsSent).toHaveLength(0);
+    });
+
+    it('clears the warning when the satellite starts answering', async () => {
+        const h = await createHarness();
+        bothUp(h);
+        h.esp.emit('voice_assistant_owner', 'taken');
+        await h.settle();
+        expect((h.device as any).warning).not.toBeNull();
+
+        h.esp.emit('voice_assistant_owner', 'ok');
+        await h.settle();
+        expect((h.device as any).warning).toBeNull();
+    });
+
+    it('spells it out in the log dump, where a bug report will carry it', async () => {
+        // diagnosticSummary() is the Devices block of every log dump. Issue #54
+        // arrived with one that said "satellite connected, engine connected" and
+        // nothing else — which was true, and useless.
+        const h = await createHarness();
+        bothUp(h);
+        h.esp.emit('voice_assistant_owner', 'taken');
+        await h.settle();
+
+        expect((h.device as any).diagnosticSummary()).toMatch(/VOICE ASSISTANT OWNED BY ANOTHER CLIENT/);
+    });
+
+    it('mentions the suspicion in the log dump even though it does not warn', async () => {
+        const h = await createHarness();
+        bothUp(h);
+        h.esp.emit('voice_assistant_owner', 'suspected');
+        await h.settle();
+
+        expect((h.device as any).diagnosticSummary()).toMatch(/possibly owned by another client/);
+    });
+});

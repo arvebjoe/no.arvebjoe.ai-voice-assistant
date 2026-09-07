@@ -82,6 +82,26 @@ export class Device extends EventEmitter {
     /** Every availability message in order, for transition assertions. */
     get unavailableMessages(): Array<string | null> { return this._unavailableMessages; }
 
+    private _warning: string | null = null;
+    private _warnings: Array<string | null> = [];
+    /**
+     * The device banner, kept separate from availability on purpose: it carries
+     * the things that are wrong with a device that is otherwise connected —
+     * today, another API client holding its voice-assistant subscription.
+     */
+    async setWarning(msg?: string): Promise<void> {
+        this._warning = msg ?? null;
+        this._warnings.push(msg ?? null);
+    }
+    async unsetWarning(): Promise<void> {
+        this._warning = null;
+        this._warnings.push(null);
+    }
+    /** Currently shown warning, or null. */
+    get warning(): string | null { return this._warning; }
+    /** Every warning set/cleared in order, for transition assertions. */
+    get warnings(): Array<string | null> { return this._warnings; }
+
     log(..._args: any[]) { /* silent in tests */ }
     error(..._args: any[]) { /* silent in tests */ }
 }

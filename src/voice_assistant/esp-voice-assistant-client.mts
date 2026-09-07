@@ -60,6 +60,31 @@ export interface EspWakeWord {
   trainedLanguages: string[];
 }
 
+/**
+ * Whether we hold the satellite's voice-assistant subscription.
+ *
+ * ESPHome tracks exactly ONE voice-assistant client
+ * (`VoiceAssistant::client_subscription`): the first to subscribe wins, and a
+ * second `SubscribeVoiceAssistantRequest` is rejected with nothing but an
+ * `ESP_LOGE("Multiple API Clients attempting to connect to Voice Assistant")`
+ * on the device itself. Every voice message we then send — mic-open announces,
+ * pipeline events, timer events — is dropped by
+ * `APIConnection::check_voice_assistant_api_connection_()`, silently, on a
+ * connection that otherwise looks perfectly healthy from here.
+ *
+ * In practice the other client is Home Assistant, which the satellite is
+ * usually still added to (it is why it has an encryption key at all). See
+ * GitHub issue #54: an hour of logs where the app never received a single
+ * voice request while HA answered every question on the same device.
+ *
+ * - `ok`        we demonstrably own it (the device talked to us on that path)
+ * - `suspected` the empty wake-word list hints we do not — see the
+ *               VoiceAssistantConfigurationResponse handler for why that is a
+ *               hint and not proof
+ * - `taken`     proof: a mic-open went unanswered
+ */
+export type VaOwnerState = 'ok' | 'suspected' | 'taken';
+
 type EspVoiceEvents = {
   Healthy: () => void;
   Unhealthy: () => void;
@@ -72,6 +97,9 @@ type EspVoiceEvents = {
   mute: (isMuted: boolean) => void; // Mute state change event
   // The satellite's wake-word configuration arrived/changed (available + active).
   wake_words: (available: EspWakeWord[], active: string[], maxActive: number) => void;
+  // Our claim on the device's single voice-assistant subscription changed.
+  // Fires only on a change, and re-derives itself on every reconnect.
+  voice_assistant_owner: (state: VaOwnerState) => void;
   // A stateless Event entity fired on the device (EventResponse, msg id 108) —
   // e.g. the ThirdReality's physical top button. Carries the entity's object_id
   // and the event type string the firmware sent (e.g. 'single_press').
@@ -122,6 +150,23 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
   // (DeviceInfoResponse.voice_assistant_feature_flags & 8). Used to gate the
   // timer feature; the PE sets it.
   private timersSupported: boolean = false;
+  // Whether DeviceInfoResponse advertised ANY voice-assistant feature flag, i.e.
+  // whether the ESPHome voice_assistant component is compiled in at all. Every
+  // voice satellite sets at least VOICE_ASSISTANT | API_AUDIO, so a zero here
+  // means the device simply has no voice assistant to own — which the
+  // ownership check below must not mistake for a stolen subscription.
+  private isVoiceSatellite: boolean = false;
+  // Our claim on the device's single voice-assistant subscription slot, or null
+  // before any evidence has arrived on this connection. See VaOwnerState.
+  private vaOwner: VaOwnerState | null = null;
+  // Armed by send_voice_assistant_request(), disarmed by anything the device
+  // sends back on the voice-assistant path. If it ever fires, our announces are
+  // being discarded and someone else holds the subscription.
+  private micOpenTimer: NodeJS.Timeout | null = null;
+  // Generous: a mic-open announce is answered within ~0.3 s when the chime
+  // plays, and the firmware's own start_playback_timeout_ caps the silent case
+  // at 2 s. Anything past this is not slow, it is not listening.
+  private readonly MIC_OPEN_TIMEOUT: number = 8000;
   // Whether to auto-reconnect on disconnect. Disabled for one-shot discovery
   // probes (which have their own timeout) so a failed/finished probe can never
   // spawn an orphaned reconnect loop that holds the device's API connection slot.
@@ -409,6 +454,9 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
       this.healthCheckTimer = null;
     }
 
+    // A mic-open that outlives its connection proves nothing about ownership.
+    this.clearMicOpenWatchdog();
+
     this.lastMessageReceivedTime = 0;
 
     if (this.tcp) {
@@ -440,6 +488,8 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
         this.homey.clearInterval(this.healthCheckTimer);
         this.healthCheckTimer = null;
       }      
+
+      this.clearMicOpenWatchdog();
 
       // Close mic socket - wrap in try-catch in case it's already closed
       try {
@@ -827,6 +877,7 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
       // supports timers. TIMERS = 1 << 3 = 8 (aioesphomeapi VoiceAssistantFeature).
       const featureFlags = message?.voiceAssistantFeatureFlags ?? 0;
       this.timersSupported = (featureFlags & 8) !== 0;
+      this.isVoiceSatellite = featureFlags !== 0 || (message?.legacyVoiceAssistantVersion ?? 0) !== 0;
       this.logger.info(`Voice assistant feature flags: ${featureFlags} (timers ${this.timersSupported ? 'supported' : 'NOT advertised'})`);
 
       // A discovery probe must NOT ask for the voice-assistant configuration:
@@ -886,11 +937,33 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
         this.emit('wake_words', this.getAvailableWakeWords(), this.getActiveWakeWords(), this.maxActiveWakeWords);
       }
 
+      // Ownership signal #1. ESPHome answers this request with an EMPTY response
+      // when the asking connection is not the voice assistant's owner — that is
+      // the whole unsubscribed branch of
+      // APIConnection::send_voice_assistant_get_configuration_response_(), which
+      // returns before it copies a single wake word. A satellite we own always
+      // lists its on-board wake words (`available=[hey_homey, okay_nabu, ...]`),
+      // so an empty list on a device that advertised voice-assistant feature
+      // flags means our SubscribeVoiceAssistantRequest was rejected.
+      //
+      // Not proof, which is why it only ever reaches 'suspected': a satellite
+      // with no on-board wake word engine (wake word detected upstream instead)
+      // owns its voice assistant and still answers with an empty list. Only an
+      // unanswered mic-open separates the two, and that is signal #2.
+      if (this.availableWakeWords.length) {
+        this.setVaOwner('ok');
+      } else if (this.isVoiceSatellite) {
+        this.setVaOwner('suspected');
+      }
+
       this.emit('capabilities', this.mediaPlayersCount, this.subscribeVoiceAssistantCount, this.voiceAssistantConfigurationCount, this.deviceType);
 
     }
 
     else if (name === 'VoiceAssistantAnnounceFinished') {
+      // on_voice_assistant_announce_request() is owner-gated too, so an announce
+      // that finishes is an announce that was accepted.
+      this.setVaOwner('ok');
       if (this.shouldAnnounceFinished) {
         this.emit('announce_finished');
       }
@@ -958,9 +1031,12 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
     }
 
     else if (name === 'VoiceAssistantRequest' && message.start) {
+      // The device only ever sends this to the client holding its subscription.
+      this.setVaOwner('ok');
       this.emit('starting');
 
     } else if (name === 'VoiceAssistantRequest') {
+      this.setVaOwner('ok');
       this.emit('started');
 
     } else if (name === 'VoiceAssistantAudio') {
@@ -1030,6 +1106,12 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
     this.mediaPlayersCount = 0;
     this.subscribeVoiceAssistantCount = 0;
     this.voiceAssistantConfigurationCount = 0;
+    // Ownership is a property of THIS connection: a reconnect can win the slot
+    // a previous one lost (and vice versa). Cleared without emitting — the
+    // config response re-derives it a second from now, so the device keeps
+    // showing the last known state until there is something better to say.
+    this.vaOwner = null;
+    this.clearMicOpenWatchdog();
     this.entityKeys = {};
     this.eventEntityIds.clear();
     this.muteEntityScore = 0;
@@ -1074,6 +1156,64 @@ class EspVoiceAssistantClient extends (EventEmitter as new () => TypedEmitter<Es
       text: '',
     });
 
+    this.armMicOpenWatchdog();
+  }
+
+  /**
+   * Ownership signal #2, and the only one that is proof.
+   *
+   * A mic-open is the one thing we ask of the satellite that it MUST answer:
+   * accepted, it comes back as VoiceAssistantAnnounceFinished and then a
+   * VoiceAssistantRequest; unplayable media does not change that, because the
+   * firmware ends the announce on its own 2 s start_playback_timeout_. Total
+   * silence has exactly one cause — check_voice_assistant_api_connection_()
+   * threw our announce away because another client owns the voice assistant.
+   */
+  private armMicOpenWatchdog(): void {
+    this.clearMicOpenWatchdog();
+    this.micOpenTimer = this.homey.setTimeout(() => {
+      this.micOpenTimer = null;
+      this.setVaOwner('taken');
+    }, this.MIC_OPEN_TIMEOUT);
+  }
+
+  private clearMicOpenWatchdog(): void {
+    if (this.micOpenTimer) {
+      this.homey.clearTimeout(this.micOpenTimer);
+      this.micOpenTimer = null;
+    }
+  }
+
+  /**
+   * Record what we now know about the subscription slot, emitting only on a
+   * change so a reconnect storm cannot spam the device with warnings. 'ok' is
+   * always believed (it comes from the device answering us) and cancels a
+   * pending watchdog; the two bad states never overwrite it silently — they
+   * log at warn, because this is the failure that looks like nothing is wrong.
+   */
+  private setVaOwner(state: VaOwnerState): void {
+    if (state === 'ok') {
+      this.clearMicOpenWatchdog();
+    }
+    if (this.vaOwner === state) {
+      return;
+    }
+    this.vaOwner = state;
+
+    if (state === 'taken') {
+      this.logger.warn('The satellite never answered a microphone open. Another API client (almost certainly Home Assistant) holds its voice assistant — ESPHome allows only one, and everything we send on that path is being discarded.');
+    } else if (state === 'suspected') {
+      this.logger.warn('The satellite reported no on-board wake words, which is how ESPHome answers a client that does NOT own the voice assistant. If it is still added to Home Assistant, remove it there.');
+    } else {
+      this.logger.info('Voice assistant subscription confirmed - the device is talking to us.');
+    }
+
+    this.emit('voice_assistant_owner', state);
+  }
+
+  /** Our claim on the device's voice-assistant slot, or null before any evidence. */
+  get voiceAssistantOwner(): VaOwnerState | null {
+    return this.vaOwner;
   }
 
   run_start(): void {

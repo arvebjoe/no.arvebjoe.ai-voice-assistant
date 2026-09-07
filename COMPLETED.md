@@ -2372,3 +2372,85 @@ user sends it; a clipboard/textarea copy sits in the same card (`navigator.clipb
   deliberately crashing the app on a user's Homey, killing their voice pipeline, to file a bug
   report.
 
+
+---
+
+## 35. "OpenAI Realtime cannot find/control Homey devices" — Home Assistant held the satellite's voice assistant (issue #54, 2026-09-07)
+
+**The report.** A Voice PE on 1.5.4 answered *"Hoe laat is het?"* correctly but refused every
+device command with *"Sorry, ik kan geen apparaat vinden met de naam Stalampen"* for a light that
+plainly exists. Verbose log attached: 35 devices and 29 zones loaded, all smart-home tools
+registered, the standard zone tracked correctly through a room move. Filed as a suspected
+regression in the 1.5.3 tool-path rework.
+
+**It was not our bug — and the app never handled a single one of those conversations.** Evidence
+from the attached 862-line dump, in the order it settles the question:
+
+1. **Zero voice traffic in 51 minutes.** `SubscribeVoiceAssistantRequest {subscribe: true, flags: 1}`
+   goes out at 11:37:48 and nothing comes back on that path — not one `VoiceAssistantRequest`, not
+   one mic chunk. The only OpenAI events in the whole log are `session.created`/`session.updated`
+   for the two sessions plus health pings. No tool call is *missing*; no turn ever started.
+2. **The device was speaking anyway** — 77 `MediaPlayerStateResponse` playing→idle pairs against
+   exactly **one** announce request from us.
+3. **The config response came back empty:** `VoiceAssistantConfigurationResponse
+   { availableWakeWords: [], activeWakeWords: [] }`, against §18's healthy PE which reports
+   `available=[hey_homey, okay_nabu, hey_jarvis, hey_mycroft], active=[okay_nabu], max=1`.
+4. **Both quoted replies are verbatim Home Assistant strings**, from
+   `OHF-Voice/intents/sentences/nl/_common.yaml`: `no_intent: "Sorry, ik snap het niet"` and
+   `no_entity: "Sorry, ik kan geen apparaat vinden met de naam {{ entity }}"`. Not paraphrases.
+   The time question worked because HA has `HassGetCurrentTime`.
+
+**The mechanism, from ESPHome's source.** `VoiceAssistant::client_subscription()`
+(`voice_assistant.cpp:552`) keeps ONE `api_client_`: first subscriber wins, and a second gets
+`ESP_LOGE("Multiple API Clients attempting to connect to Voice Assistant")` on the device and
+**nothing at all** back over the wire. Everything downstream is then gated on
+`APIConnection::check_voice_assistant_api_connection_()` — `on_voice_assistant_audio`,
+`on_voice_assistant_event_response`, `on_voice_assistant_timer_event_response` and, critically,
+`on_voice_assistant_announce_request`, which is why the tile press at 12:05:06 produced an announce
+that the device simply dropped. The satellite is encrypted, i.e. adopted by HA, which is the same
+fact seen from the other end: **the pairing path that needs an encryption key is exactly the path
+that produces this failure**, so it will recur.
+
+**Why it burned a day.** Every signal the user could see said "fine": satellite connected, engine
+connected, tools registered, zone tracking working, device available. The one true statement — "our
+voice-assistant subscription was rejected" — existed only in a device-side log line the user cannot
+read.
+
+**What was added (not a fix — this cannot be fixed from here; ownership is first-come and HA
+reconnects aggressively).** Two signals in `esp-voice-assistant-client.mts`, emitted as
+`voice_assistant_owner` (`VaOwnerState = 'ok' | 'suspected' | 'taken'`):
+
+- **`suspected`** — an empty wake-word list on a device whose `voice_assistant_feature_flags` are
+  non-zero. That is precisely the unsubscribed branch of
+  `send_voice_assistant_get_configuration_response_()`, which returns before copying a single wake
+  word. **Deliberately not user-facing:** a satellite whose config has no `micro_wake_word` answers
+  identically while owning its voice assistant, and we support five device families whose community
+  configs we do not control. It goes to the log and to `diagnosticSummary()` — the Devices header of
+  every log dump — so the next bug report carries it.
+- **`taken`** — a mic-open (`send_voice_assistant_request`, the single choke point for the tile
+  press and every follow-up reopen) that draws no `VoiceAssistantAnnounceFinished` and no
+  `VoiceAssistantRequest` within 8 s. That is **proof**: an accepted announce always completes,
+  because unplayable media is capped by the firmware's own 2 s `start_playback_timeout_`. This one
+  sets a device warning **and posts a Homey timeline notification** (one line — the timeline
+  truncates, so it carries cause and fix only and leaves the detail to the warning), both naming
+  Home Assistant and the fix (delete the ESPHome **config entry** — hiding entities is not enough, the integration
+  reconnects). The banner alone was not enough: it is only visible to someone who opens the device,
+  and the entire failure mode is that nothing looks wrong, so nobody opens it. The timeline is the
+  same channel the other "your setup is misconfigured, here is the fix" conditions already use
+  (missing API key, refused model, exhausted quota). Throttled to once per day per device, because
+  detection is per connection and a satellite in this state reconnects all day; the throttle resets
+  on `ok`, so a recurrence after the user fixes it is reported again.
+
+`ok` is asserted by anything the device sends on that path and clears both. The verdict belongs to
+one connection: `onConnectionEstablished()` resets it without emitting, so a reconnect re-derives it
+within a second while the tile keeps showing the last known state.
+
+**Why a warning and not `setUnavailable`.** Availability is `isAgentHealthy && isEspClientHealthy`
+and both links genuinely ARE up here — §33's whole lesson was that a wrong availability story sends
+people to their network. A warning also cannot take a working satellite offline on a heuristic.
+Waiting for proof costs little in practice: the proof *is* the button press, so the warning lands at
+the moment the user is wondering why nothing happened.
+
+Tests: `tests/va-subscription-ownership.test.mts` (both signals, off real protobuf frames) and the
+warning/log-dump cases in `tests/device-availability-reason.test.mts`. README gained a troubleshooting
+entry.
