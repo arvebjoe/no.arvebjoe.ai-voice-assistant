@@ -145,16 +145,25 @@ export class DeviceManager implements IDeviceManager {
     async fetchData(): Promise<void> {
         this.logger.info('Fetching devices and zones from Homey...');
     
-        const zones = await this.apiHelper.zones.getZones();
+        const fetchStart = Date.now();
+        // $cache: false — same reasoning as devices below. The zones manager is
+        // never connect()ed today, so its cache is unused anyway; this keeps it
+        // live if that ever changes (a stale zone breaks zone-scoped commands).
+        const zones = await this.apiHelper.zones.getZones({ $cache: false });
+        const zonesMs = Date.now() - fetchStart;
         // $cache: false — the SDK's getAll cache, once marked complete, is only
         // ever refreshed by realtime device.update events. If one is ever missed
         // (or a partial-payload update clobbers capabilitiesObj — Item.__update
         // is a shallow merge), a capability value can go stale forever without
         // this, since fetchData() would otherwise just be handed the same
         // in-memory cache with no network round trip.
+        const devicesStart = Date.now();
         const devices = await this.apiHelper.devices.getDevices({ $cache: false });
+        const devicesMs = Date.now() - devicesStart;
 
-        this.logger.info(`Found ${Object.keys(devices).length} devices and ${Object.keys(zones).length} zones`);
+        // Timed because every voice turn pays this fetch now that the cache is off
+        // (measured ~140-180 ms for 159 devices / 33 zones on a Homey Pro 2023).
+        this.logger.info(`Found ${Object.keys(devices).length} devices in ${devicesMs} ms and ${Object.keys(zones).length} zones in ${zonesMs} ms (total ${Date.now() - fetchStart} ms)`);
 
         this.zones = zones;
 
