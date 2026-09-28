@@ -67,5 +67,8 @@
   },
   "1.5.4": {
     "en": "Fix: if your OpenAI project is not allowed to use one of the models the app needs (a setting on OpenAI's dashboard), the app now falls back to another model and sends you a notification telling you which model to allow, instead of silently never answering. Speech recognition falls back from gpt-4o-transcribe to gpt-4o-mini-transcribe or whisper-1, and the Say card falls back from gpt-4o-mini-tts to tts-1; the turn that hit the problem is still answered from the audio itself."
+  },
+  "1.5.5": {
+    "en": "Fix: the assistant now always reads the current state of your devices when you speak to it. Previously, a light switched on or off some other way (a wall switch, the Homey app, a Flow) could still look unchanged to the assistant, so it would refuse to turn it back on or off, saying it already was. New: if a voice device is still added to Home Assistant, Home Assistant can take over its voice assistant, so the device keeps answering you but Homey never hears you. The app now detects this and tells you: a warning on the device, a notification in your Homey timeline, and a spoken message on the device itself. Remove the device from Home Assistant to fix it."
   }
 }
