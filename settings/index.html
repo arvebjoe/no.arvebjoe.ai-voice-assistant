@@ -663,6 +663,7 @@
         </optgroup>
         <optgroup label="Features">
           <option value="smart">Smart home control</option>
+          <option value="matching">Device matching</option>
           <option value="weather">Weather</option>
           <option value="timers">Timers &amp; alarms</option>
           <option value="shopping">Shopping list</option>
@@ -1302,25 +1303,35 @@
               <span class="knob"></span>
             </label>
           </div>
-          <div class="feature-head" style="margin-top: 16px; margin-bottom: 0;">
+        </div>
+      </section>
+
+      <!-- ========================= Device matching ========================= -->
+      <section class="section" data-section="matching">
+        <div class="card">
+          <div class="feature-head">
             <div>
-              <div class="feature-title" style="font-size: 14.5px;">Find devices with Jev (TypeSafe)</div>
-              <div class="feature-sub">Off (default): the AI looks up zones and devices itself, one step at a time.
-                On: the AI only says what to do and which devices it means, and Jev, a fast TypeSafe model, picks the
-                devices. Faster and cheaper smart-home commands, and a much smaller prompt. Needs a TypeSafe API
-                key.</div>
+              <div class="feature-title">Device matching</div>
+              <div class="feature-sub">Let a fast, specialised model pick the devices for smart-home commands</div>
             </div>
-            <label class="switch">
-              <input type="checkbox" id="jev_enabled" aria-label="Find devices with Jev" />
-              <span class="knob"></span>
-            </label>
+          </div>
+          <div class="note">Off (default): the AI looks up zones and devices itself, one step at a time. With a matcher
+            selected, the AI only says what to do and which devices it means ("turn off — the lights in the
+            kitchen"), and the matcher picks the devices. Faster and cheaper smart-home commands, and a much smaller
+            prompt. The same safety rules apply.</div>
+          <div class="homey-form-group" style="margin-top: 16px;">
+            <label class="homey-form-label" for="device_matcher">Matcher</label>
+            <select class="homey-form-input" id="device_matcher">
+              <option value="off">Off — the AI finds devices itself</option>
+              <option value="jev">Jev — TypeSafe AI (cloud API)</option>
+            </select>
           </div>
           <div id="jev_settings" style="display: none;">
             <div class="homey-form-group">
-              <label class="homey-form-label" for="typesafe_api_key">TypeSafe API key</label>
+              <label class="homey-form-label" for="typesafe_api_key">TypeSafe AI API key</label>
               <div class="secret-wrap">
                 <input type="password" class="homey-form-input" id="typesafe_api_key" autocomplete="off"
-                  placeholder="Enter your TypeSafe API key here..." />
+                  placeholder="Enter your TypeSafe AI API key here..." />
                 <button type="button" class="secret-toggle" data-for="typesafe_api_key">Show</button>
               </div>
               <div class="help-text">Get a key at console.typesafe.ai. Without a key the assistant keeps using its own
@@ -2498,15 +2509,17 @@
         if (attempts) document.getElementById("web_search_max_attempts").value = String(attempts);
       });
 
-      // Jev (TypeSafe) device selection: toggle + API key (shown when on).
-      var jevEnabledElement = document.getElementById("jev_enabled");
+      // Device matching: the Matcher dropdown + the selected matcher's settings.
+      // The pick is not a stored setting of its own — with Jev as the only
+      // matcher it maps onto jev_enabled (off ↔ false, jev ↔ true).
+      var deviceMatcherElement = document.getElementById("device_matcher");
       function refreshJevSettings() {
-        document.getElementById("jev_settings").style.display = jevEnabledElement.checked ? "" : "none";
+        document.getElementById("jev_settings").style.display = deviceMatcherElement.value === "jev" ? "" : "none";
       }
-      jevEnabledElement.addEventListener("change", refreshJevSettings);
+      deviceMatcherElement.addEventListener("change", refreshJevSettings);
       Homey.get("jev_enabled", function (err, enabled) {
         if (err) return Homey.alert(err);
-        jevEnabledElement.checked = enabled === true || enabled === "true";
+        deviceMatcherElement.value = enabled === true || enabled === "true" ? "jev" : "off";
         refreshJevSettings();
       });
       Homey.get("typesafe_api_key", function (err, value) {
@@ -3060,8 +3073,8 @@
           ["allow_unlock_via_voice", document.getElementById("allow_unlock_via_voice").checked],
           // Fall back to the one other zone that has the asked-for device type (default on)
           ["zone_fallback_enabled", document.getElementById("zone_fallback_enabled").checked],
-          // Jev (TypeSafe) device selection (enable flag + API key)
-          ["jev_enabled", jevEnabledElement.checked],
+          // Device matching: Jev (TypeSafe AI) enable flag + API key
+          ["jev_enabled", deviceMatcherElement.value === "jev"],
           ["typesafe_api_key", document.getElementById("typesafe_api_key").value.trim()],
           // Bring! shopping-list settings (enable flag + credentials + optional list)
           ["bring_enabled", bringEnabledElement.checked],
