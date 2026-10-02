@@ -56,8 +56,6 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
 
     // Awaited before every tool handler; see setBeforeRun.
     private beforeRun?: () => Promise<void>;
-    // Debug measurement hook (/agent-bench): told about every executed tool.
-    private executeObserver?: (e: { name: string; args: any; ms: number; failed: boolean }) => void;
     private static readonly BEFORE_RUN_TIMEOUT_MS = 5_000;
 
     // Devices of the most recent fallback listing, so a `fb:` page token can
@@ -169,11 +167,6 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
         this.beforeRun = hook;
     }
 
-    /** Debug: observe every tool execution with its duration (one observer at a time). */
-    setExecuteObserver(observer: ((e: { name: string; args: any; ms: number; failed: boolean }) => void) | undefined): void {
-        this.executeObserver = observer;
-    }
-
     /** The zone `get_devices_in_standard_zone` resolves against (the device's own zone). */
     getStandardZone(): string {
         return this.standardZone;
@@ -253,15 +246,10 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
                 clearTimeout(timer);
             }
         }
-        const started = Date.now();
-        let failed = false;
         try {
             return { output: await tool.handler(args ?? {}), failed: false };
         } catch (err: any) {
-            failed = true;
             return { output: { error: String(err?.message ?? err) }, failed: true };
-        } finally {
-            this.executeObserver?.({ name, args, ms: Date.now() - started, failed });
         }
     }
 

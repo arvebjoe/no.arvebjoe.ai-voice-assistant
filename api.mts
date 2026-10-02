@@ -196,6 +196,14 @@ export default {
      * the live device catalog, repeated. Never writes to a device. Debug only;
      * it spends TypeSafe tokens, so rounds are capped.
      *
+     * Off unless the hidden app setting `debug_bench_enabled` is true. There
+     * is no UI for it — a developer turns it on per Homey:
+     *   homey api apps set-app-setting --id no.arvebjoe.ai-voice-assistant \
+     *     --name debug_bench_enabled --value true      (stored as the string "true")
+     *   homey api apps unset-app-setting --id no.arvebjoe.ai-voice-assistant \
+     *     --name debug_bench_enabled                    (off again)
+     * (Not an env.json switch: env.json ships with every published build.)
+     *
      * Body: { mode: 'run' | 'raw', target, action?, value?, room?, rounds?, pauseMs? }
      * (see src/llm/jev/jev-benchmark.mts for what the two modes measure).
      */
@@ -203,6 +211,10 @@ export default {
         ok: boolean; message: string; mode?: string; candidates?: number;
         production?: ProductionRound[]; raw?: RawRound[];
     }> {
+        const gate = homey.settings.get('debug_bench_enabled');
+        if (gate !== true && gate !== 'true') {
+            return { ok: false, message: 'Benchmark disabled (hidden setting debug_bench_enabled is off)' };
+        }
         const apiKey = (settingsManager.getGlobal<string>('typesafe_api_key', '') || '').trim();
         if (!apiKey) return { ok: false, message: 'No TypeSafe API key in the app settings' };
         const mode = body?.mode === 'raw' ? 'raw' : 'run';
@@ -234,68 +246,5 @@ export default {
         }
         const production = await benchProduction(new TypeSafeClient({ apiKey }), candidates, cmd, rounds, pauseMs);
         return { ok: true, message: 'done', mode, candidates: candidates.length, production };
-    },
-
-    /**
-     * POST /agent-bench — time a TYPED command through the live voice provider
-     * (no audio): the whole agent turn, every tool call, and the provider's
-     * token usage. Compares the classic device tools with Jev when called with
-     * `jev: false` and `jev: true`: the route flips `jev_enabled` for the run,
-     * waits for the provider to restart with the new tool set, and restores
-     * the user's setting afterwards. Real tools run — a control command really
-     * switches devices; a status question is read-only. Debug only.
-     *
-     * Body: { text, rounds?, pauseMs?, jev?: boolean, device?: <name substring> }
-     */
-    async agentBench({ homey, body }: { homey: any; body: any }): Promise<any> {
-        const text = String(body?.text ?? '').trim();
-        if (!text) return { ok: false, message: 'Need text' };
-        const rounds = Math.min(10, Math.max(1, Number(body?.rounds) || 3));
-        const pauseMs = Math.min(10_000, Math.max(0, Number(body?.pauseMs) || 1_500));
-
-        const wanted = String(body?.device ?? '').toLowerCase();
-        const device = Object.values<any>(homey.drivers.getDrivers())
-            .flatMap((driver: any) => driver.getDevices())
-            .find((d: any) => typeof d.benchAsk === 'function' && d.benchState().connected
-                && (!wanted || d.getName().toLowerCase().includes(wanted)));
-        if (!device) return { ok: false, message: 'No voice assistant device with a connected provider' };
-
-        const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
-        const waitFor = async (jev: boolean) => {
-            for (let i = 0; i < 60; i++) {
-                const st = device.benchState();
-                if (st.jev === jev && st.connected) { await sleep(2_000); return true; }
-                await sleep(500);
-            }
-            return false;
-        };
-        const original = homey.settings.get('jev_enabled');
-        const wantJev = typeof body?.jev === 'boolean' ? body.jev : undefined;
-        try {
-            if (wantJev !== undefined && device.benchState().jev !== wantJev) {
-                homey.settings.set('jev_enabled', wantJev);
-                // Give the settings pub/sub a moment to start the restart, so
-                // waitFor doesn't see the OLD connection as ready.
-                await sleep(1_000);
-                if (!(await waitFor(wantJev))) {
-                    return { ok: false, message: `Provider did not come back with jev=${wantJev} within 30 s`, state: device.benchState() };
-                }
-            }
-            const state = device.benchState();
-            const results: any[] = [];
-            for (let round = 1; round <= rounds; round++) {
-                try {
-                    results.push({ round, ...(await device.benchAsk(text)) });
-                } catch (error: any) {
-                    results.push({ round, error: error?.message ?? String(error) });
-                }
-                if (round < rounds) await sleep(pauseMs);
-            }
-            return { ok: true, message: 'done', device: device.getName(), state, results };
-        } finally {
-            if (wantJev !== undefined && homey.settings.get('jev_enabled') !== original) {
-                homey.settings.set('jev_enabled', original);
-            }
-        }
     },
 };

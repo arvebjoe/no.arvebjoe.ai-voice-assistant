@@ -1083,10 +1083,6 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
 
             //case "response.completed":
             case "response.done": {
-                // Token usage of EVERY response, tool-call ones included — a
-                // tool round trip is a separate billed response. Only the
-                // /agent-bench debug route listens.
-                this.emit("usage", msg.response?.usage);
                 // A response that ended in a function_call is NOT the end of the turn:
                 // maybeExecuteTool feeds the tool result back and issues createResponse(),
                 // so a continuation response with the spoken answer is coming. Emitting

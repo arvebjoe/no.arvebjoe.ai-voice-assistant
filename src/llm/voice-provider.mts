@@ -56,8 +56,6 @@ export type VoiceProviderEvents = {
     "response.progress": () => void;
     "response.output_item.done": () => void;
     "response.done": () => void;
-    /** Token usage of one model response (OpenAI Realtime only; debug measurement). */
-    usage: (usage: any) => void;
     "response.error": (msg: any) => void;
     /**
      * The provider's account/project refused a model it needs (OpenAI
