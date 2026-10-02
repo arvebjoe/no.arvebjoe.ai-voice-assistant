@@ -6,20 +6,7 @@ import { MockDeviceManager } from './mocks/mock-device-manager.mjs';
 import { MockGeoHelper } from './mocks/mock-geo-helper.mjs';
 import { MockWeatherHelper } from './mocks/mock-weather-helper.mjs';
 import { IDeviceManager } from '../src/helpers/interfaces.mjs';
-import fs from 'fs';
-import path from 'path';
-
-// Load environment variables from env.json
-const envPath = path.join(process.cwd(), 'env.json');
-let envConfig: any = {};
-
-if (fs.existsSync(envPath)) {
-  try {
-    envConfig = JSON.parse(fs.readFileSync(envPath, 'utf8'));
-  } catch (error) {
-    console.warn('Could not load env.json:', error);
-  }
-}
+import { OPENAI_TEST_KEY, hasOpenAiTestKey } from './mocks/openai-test-key.mjs';
 
 describe('OpenAI Realtime Agent', () => {
   let mockHomey: MockHomey;
@@ -29,7 +16,7 @@ describe('OpenAI Realtime Agent', () => {
   let toolManager: ToolManager;
   let agent: OpenAIRealtimeAgent;
   
-  const testApiKey = envConfig.OPENAI_API_KEY || 'test-api-key';
+  const testApiKey = OPENAI_TEST_KEY || 'test-api-key';
   const testZone = 'Office';
 
   beforeEach(async () => {

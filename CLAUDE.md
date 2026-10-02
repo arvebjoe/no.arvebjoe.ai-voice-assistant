@@ -87,7 +87,7 @@ The ESPHome native API changed its connection handshake across firmware versions
 
 ## Testing
 
-Vitest with `globals: true`, node environment. Tests live in `tests/**/*.test.mts`. Mocks for Homey, DeviceManager, GeoHelper, WeatherHelper are in `tests/mocks/`. Some tests hit the real OpenAI API (`openai-connection-test`, `openai-agent-behavior`) and require a key — they are integration tests, not pure unit tests.
+Vitest with `globals: true`, node environment. Tests live in `tests/**/*.test.mts`. Mocks for Homey, DeviceManager, GeoHelper, WeatherHelper are in `tests/mocks/`. Some tests hit the real OpenAI API (`openai-connection-test`, `openai-agent-behavior`, `smart-home-agent`) and require a key — they are integration tests, not pure unit tests. They read it from the environment (`OPENAI_API_KEY=sk-... npm test`, via `tests/mocks/openai-test-key.mts`) and are reported as skipped without it. Never put a test key in `env.json`: Homey bundles that file into every built and published app.
 
 ## Reference docs
 

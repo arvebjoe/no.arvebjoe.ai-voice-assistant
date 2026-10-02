@@ -5,24 +5,11 @@ import { MockHomey } from './mocks/mock-homey.mjs';
 import { MockDeviceManager } from './mocks/mock-device-manager.mjs';
 import { MockGeoHelper } from './mocks/mock-geo-helper.mjs';
 import { MockWeatherHelper } from './mocks/mock-weather-helper.mjs';
-import fs from 'fs';
-import path from 'path';
-
-// Load environment variables from env.json
-const envPath = path.join(process.cwd(), 'env.json');
-let envConfig: any = {};
-
-if (fs.existsSync(envPath)) {
-  try {
-    envConfig = JSON.parse(fs.readFileSync(envPath, 'utf8'));
-  } catch (error) {
-    console.warn('Could not load env.json:', error);
-  }
-}
+import { OPENAI_TEST_KEY, hasOpenAiTestKey } from './mocks/openai-test-key.mjs';
 
 // Real-API integration suite: skipped (reported as skipped, not vacuously passed)
-// unless a real OPENAI_API_KEY is present in env.json.
-const hasValidApiKey = typeof envConfig.OPENAI_API_KEY === 'string' && envConfig.OPENAI_API_KEY.length > 0;
+// unless OPENAI_API_KEY is set in the environment (see mocks/openai-test-key.mts).
+const hasValidApiKey = hasOpenAiTestKey;
 
 describe.skipIf(!hasValidApiKey)('Quick OpenAI Connection Test', () => {
   let mockHomey: MockHomey;
@@ -31,7 +18,7 @@ describe.skipIf(!hasValidApiKey)('Quick OpenAI Connection Test', () => {
   let mockWeatherHelper: MockWeatherHelper;
   let toolManager: ToolManager;
   
-  const testApiKey = envConfig.OPENAI_API_KEY || 'test-api-key';
+  const testApiKey = OPENAI_TEST_KEY || 'test-api-key';
   const testZone = 'Office';
 
   beforeEach(async () => {
