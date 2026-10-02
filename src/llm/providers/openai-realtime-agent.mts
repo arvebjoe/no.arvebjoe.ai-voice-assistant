@@ -414,12 +414,14 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
             }
         });
 
-        this.send({
-            type: "response.create",
-            response: {
-                instructions: "Answer in short text. Do not generate audio."
-            }
-        });
+        // No `instructions` here: on response.create they REPLACE the session's
+        // system prompt for this response instead of adding to it, so the old
+        // "Answer in short text. Do not generate audio." left the model without
+        // the smart-home rules — the "ask agent, output as text" Flow card then
+        // answered like a generic chatbot and never called a tool. Text-only
+        // output is already enforced by setOutputMode("text") above, and the
+        // session prompt already asks for short answers.
+        this.send({ type: "response.create" });
 
     }
 

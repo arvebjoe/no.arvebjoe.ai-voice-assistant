@@ -55,4 +55,17 @@ describe('output-mode cache vs session reconfiguration', () => {
             .map((m) => m.session.output_modalities[0]);
         expect(modalityUpdates).toEqual(['text', 'audio', 'text']);
     });
+
+    it('a text request keeps the session instructions (no per-response override)', () => {
+        // Regression: response.create carried `instructions`, which REPLACE the
+        // session prompt for that response — the Flow card's text path lost the
+        // smart-home rules and never called a tool.
+        const { agent, sent } = makeAgent();
+        agent.sendTextForTextResponse('Are the kitchen lights on?');
+        const create = sent.filter((m) => m.type === 'response.create');
+        expect(create).toHaveLength(1);
+        expect(create[0].response?.instructions).toBeUndefined();
+        expect(sent.find((m) => m.type === 'conversation.item.create')?.item.content[0].text)
+            .toBe('Are the kitchen lights on?');
+    });
 });
