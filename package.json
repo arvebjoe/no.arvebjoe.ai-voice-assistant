@@ -10,7 +10,8 @@
     "test:run": "vitest run",
     "test:ui": "vitest --ui",
     "test:coverage": "vitest run --coverage",
-    "emulator": "node --import tsx --import ./emulator/register.mjs ./emulator/main.mts"
+    "emulator": "node --import tsx --import ./emulator/register.mjs ./emulator/main.mts",
+    "jev-bench": "node --import tsx --import ./emulator/register.mjs ./emulator/jev-bench.mts"
   },
   "devDependencies": {
     "@tsconfig/node22": "^22.0.5",

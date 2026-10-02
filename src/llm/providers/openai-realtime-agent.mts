@@ -128,6 +128,7 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
             | "supportsTimers"
             | "supportsShoppingList"
             | "supportsMusic"
+            | "supportsJev"
         >
     >;
     // keep your existing maps, but store full records keyed by callId
@@ -188,7 +189,8 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
             deviceZone: opts.deviceZone ?? "<Unknown Zone>",
             supportsTimers: opts.supportsTimers ?? false,
             supportsShoppingList: opts.supportsShoppingList ?? false,
-            supportsMusic: opts.supportsMusic ?? false
+            supportsMusic: opts.supportsMusic ?? false,
+            supportsJev: opts.supportsJev ?? false
         };
 
         this.reconnect = new ReconnectPolicy(homey, {
@@ -248,6 +250,7 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
             supportsTimers: this.options.supportsTimers,
             supportsShoppingList: this.options.supportsShoppingList,
             supportsMusic: this.options.supportsMusic,
+            supportsJev: this.options.supportsJev,
         };
     }
 
@@ -751,6 +754,22 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
         }
         this.logger.info(`Music ${supportsMusic ? 'enabled' : 'disabled'}, rebuilding instructions`);
         this.options.supportsMusic = supportsMusic;
+        await this.instructionState.reload(this.instructionParams());
+        if (this.isConnected()) {
+            this.sendSessionUpdate();
+        }
+    }
+
+    /**
+     * Swap the smart-home prompt section for the Jev-backed smart_home tool.
+     * Same shape as updateMusicSupport.
+     */
+    async updateJevSupport(supportsJev: boolean): Promise<void> {
+        if (this.options.supportsJev === supportsJev) {
+            return;
+        }
+        this.logger.info(`Jev ${supportsJev ? 'enabled' : 'disabled'}, rebuilding instructions`);
+        this.options.supportsJev = supportsJev;
         await this.instructionState.reload(this.instructionParams());
         if (this.isConnected()) {
             this.sendSessionUpdate();

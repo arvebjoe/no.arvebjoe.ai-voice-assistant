@@ -11,6 +11,8 @@
 # Matrix-runner local config (can hold API keys) and its TTS output clips
 /emulator/matrix.json
 /emulator/matrix-out/
+# Jev benchmark: exported Homey device catalog (a map of the user's home)
+/emulator/jev-catalog/
 
 # Emulator voice clips for the `mic` command (usually personal recordings)
 /emulator/recordings/*.flac

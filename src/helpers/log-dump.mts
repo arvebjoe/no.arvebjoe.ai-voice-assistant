@@ -63,11 +63,11 @@ export function dumpFilename(at: number, timeZone?: string): string {
 const HEADER_SETTINGS = [
     'voice_provider', 'language', 'voice',
     'local_stt_provider', 'local_llm_provider', 'local_tts_provider',
-    'weather_enabled', 'web_search_provider', 'timers_enabled', 'bring_enabled', 'music_assistant_enabled',
+    'weather_enabled', 'web_search_provider', 'timers_enabled', 'bring_enabled', 'music_assistant_enabled', 'jev_enabled',
     'zone_fallback_enabled', 'allow_unlock_via_voice',
     'remote_log_enabled', 'debug_audio_enabled',
 ];
-const HEADER_KEY_PRESENCE = ['openai_api_key', 'gemini_api_key', 'mistral_api_key', 'claude_api_key'];
+const HEADER_KEY_PRESENCE = ['openai_api_key', 'gemini_api_key', 'mistral_api_key', 'claude_api_key', 'typesafe_api_key'];
 
 export function buildDumpText(homey: any, entries: LogBufferEntry[], now: number, timeZone?: string): string {
     const manifest = homey?.manifest ?? {};

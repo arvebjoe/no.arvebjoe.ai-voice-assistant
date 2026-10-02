@@ -9,6 +9,10 @@ import { seenDevices, SeenDeviceView } from './src/helpers/seen-devices.mjs';
 import { probeEspDevice } from './src/voice_assistant/esp-probe.mjs';
 import { recordingRegistry, Recording } from './src/helpers/recording-registry.mjs';
 import { writeLogDump, LogDumpResult } from './src/helpers/log-dump.mjs';
+import { settingsManager } from './src/settings/settings-manager.mjs';
+import { TypeSafeClient } from './src/llm/jev/typesafe-client.mjs';
+import { JEV_ACTIONS, jevCandidates } from './src/llm/jev/jev-actions.mjs';
+import { benchProduction, benchRaw, ProductionRound, RawRound } from './src/llm/jev/jev-benchmark.mjs';
 
 /**
  * App Web API — called from the settings page via `Homey.api(...)`.
@@ -184,5 +188,63 @@ export default {
         }
         const result = await recordingRegistry.play([recording]);
         return { ok: result.played > 0, message: result.message };
+    },
+
+    /**
+     * POST /jev-bench — measure the Jev (TypeSafe) device lookup FROM THE
+     * HOMEY, without voice: the same code the smart_home tool runs, against
+     * the live device catalog, repeated. Never writes to a device. Debug only;
+     * it spends TypeSafe tokens, so rounds are capped.
+     *
+     * Off unless the hidden app setting `debug_bench_enabled` is true. There
+     * is no UI for it — a developer turns it on per Homey:
+     *   homey api apps set-app-setting --id no.arvebjoe.ai-voice-assistant \
+     *     --name debug_bench_enabled --value true      (stored as the string "true")
+     *   homey api apps unset-app-setting --id no.arvebjoe.ai-voice-assistant \
+     *     --name debug_bench_enabled                    (off again)
+     * (Not an env.json switch: env.json ships with every published build.)
+     *
+     * Body: { mode: 'run' | 'raw', target, action?, value?, room?, rounds?, pauseMs? }
+     * (see src/llm/jev/jev-benchmark.mts for what the two modes measure).
+     */
+    async jevBench({ homey, body }: { homey: any; body: any }): Promise<{
+        ok: boolean; message: string; mode?: string; candidates?: number;
+        production?: ProductionRound[]; raw?: RawRound[];
+    }> {
+        const gate = homey.settings.get('debug_bench_enabled');
+        if (gate !== true && gate !== 'true') {
+            return { ok: false, message: 'Benchmark disabled (hidden setting debug_bench_enabled is off)' };
+        }
+        const apiKey = (settingsManager.getGlobal<string>('typesafe_api_key', '') || '').trim();
+        if (!apiKey) return { ok: false, message: 'No TypeSafe API key in the app settings' };
+        const mode = body?.mode === 'raw' ? 'raw' : 'run';
+        const action = body?.action ?? 'turn_on';
+        const target = String(body?.target ?? '').trim();
+        if (!JEV_ACTIONS.includes(action) || !target) {
+            return { ok: false, message: `Need a target and an action (one of ${JEV_ACTIONS.join(', ')})` };
+        }
+        const value = body?.value !== undefined ? Number(body.value) : undefined;
+        const rounds = Math.min(20, Math.max(1, Number(body?.rounds) || 5));
+        const pauseMs = Math.min(10_000, Math.max(0, Number(body?.pauseMs) || 1_000));
+        const room = String(body?.room ?? '');
+
+        const deviceManager = homey.app?.deviceManager;
+        await deviceManager.fetchData();
+        const all: any[] = [];
+        let token: string | null = null;
+        do {
+            const page: { devices: any[]; next_page_token: string | null } = deviceManager.getSmartHomeDevices(undefined, undefined, 100, token);
+            all.push(...page.devices);
+            token = page.next_page_token;
+        } while (token);
+        const candidates = jevCandidates(action, all, value);
+
+        const cmd = { target, room };
+        if (mode === 'raw') {
+            const raw = await benchRaw(apiKey, candidates, cmd, rounds, pauseMs);
+            return { ok: true, message: 'done', mode, candidates: candidates.length, raw };
+        }
+        const production = await benchProduction(new TypeSafeClient({ apiKey }), candidates, cmd, rounds, pauseMs);
+        return { ok: true, message: 'done', mode, candidates: candidates.length, production };
     },
 };

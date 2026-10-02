@@ -113,6 +113,10 @@
     "dumpLog": {
       "method": "POST",
       "path": "/dump-log"
+    },
+    "jevBench": {
+      "method": "POST",
+      "path": "/jev-bench"
     }
   }
 }

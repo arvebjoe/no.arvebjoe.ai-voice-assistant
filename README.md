@@ -485,6 +485,11 @@ loaded at all: no tools, no prompt text, no cost.
   other zone that has them, and says which zone that was; when several zones have such devices it
   still asks you to say *"everywhere"*. And **Allow unlocking by voice** (off by default): until
   you enable it, the assistant will lock doors but refuse to unlock them.
+  **Find devices with Jev** *(opt-in, needs a [TypeSafe](https://typesafe.ai) API key)*: instead
+  of looking up zones and devices step by step, the AI just says what to do and which devices it
+  means ("turn off — the lights in the kitchen"), and Jev, TypeSafe's fast decision model, picks
+  the matching devices. Smart-home commands get quicker, cost fewer AI tokens, and the prompt gets
+  much smaller. The same safety rules apply (unlocking, confirmation above 10 devices).
 * **Weather** — current weather, forecast, rain and outside-light questions (on by default).
 * **Timers & alarms** — countdown timers/alarms on devices whose firmware supports them
   (on by default).

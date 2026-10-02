@@ -1,6 +1,7 @@
 import { loadInstructionModule, InstructionModule } from './agent-instructions.mjs';
 import { getShoppingListInstructions } from './instructions/shopping-list-instructions.mjs';
 import { getMusicInstructions } from './instructions/music-instructions.mjs';
+import { getJevInstructions } from './instructions/jev-instructions.mjs';
 
 /** The option fields the system prompt is built from. */
 export type InstructionParams = {
@@ -10,6 +11,8 @@ export type InstructionParams = {
     supportsTimers?: boolean;
     supportsShoppingList?: boolean;
     supportsMusic?: boolean;
+    /** Jev picks the devices: the smart_home tool replaces the device tools. */
+    supportsJev?: boolean;
     /**
      * The reply text is fed verbatim to a TTS engine (local pipeline / Mistral
      * chat) — chat LLMs decorate with markdown unless told not to, and it
@@ -25,6 +28,22 @@ export const PLAIN_TEXT_BLOCK = `
 Output format
 - Your reply is spoken aloud by a text-to-speech engine. Write plain conversational text only.
 - Never use markdown or other formatting: no **bold**, bullet points, headers, backticks or emoji.`;
+
+/**
+ * The language module's own (translated) timer block: the text its prompt
+ * gains when timers are on. The Jev prompt replaces the base prompt but keeps
+ * this block, so it is cut out of the difference rather than duplicated.
+ */
+export function timersBlockOf(mod: InstructionModule, languageName: string): string {
+    const without = mod.getDefaultInstructions(languageName, null, false);
+    const withTimers = mod.getDefaultInstructions(languageName, null, true);
+    let prefix = 0;
+    while (prefix < without.length && without[prefix] === withTimers[prefix]) prefix++;
+    let suffix = 0;
+    while (suffix < without.length - prefix
+        && without[without.length - 1 - suffix] === withTimers[withTimers.length - 1 - suffix]) suffix++;
+    return withTimers.slice(prefix, withTimers.length - suffix);
+}
 
 /**
  * Shared holder for the language-specific system prompt (Org 2).
@@ -68,11 +87,18 @@ export class InstructionState {
     private async doReload(params: InstructionParams): Promise<void> {
         try {
             this.instructionModule = await this.loader(params.languageCode);
-            let text = this.instructionModule.getDefaultInstructions(
-                params.languageName,
-                params.additionalInstructions,
-                params.supportsTimers,
-            );
+            let text = params.supportsJev
+                ? getJevInstructions(
+                    params.languageCode,
+                    params.languageName,
+                    params.additionalInstructions,
+                    params.supportsTimers ? timersBlockOf(this.instructionModule, params.languageName) : '',
+                )
+                : this.instructionModule.getDefaultInstructions(
+                    params.languageName,
+                    params.additionalInstructions,
+                    params.supportsTimers,
+                );
             // The Bring! shopping-list block lives in one shared file (not the
             // per-language modules) and is only added when the feature is on.
             if (params.supportsShoppingList) {

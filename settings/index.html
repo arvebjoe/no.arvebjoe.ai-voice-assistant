@@ -1302,6 +1302,31 @@
               <span class="knob"></span>
             </label>
           </div>
+          <div class="feature-head" style="margin-top: 16px; margin-bottom: 0;">
+            <div>
+              <div class="feature-title" style="font-size: 14.5px;">Find devices with Jev (TypeSafe)</div>
+              <div class="feature-sub">Off (default): the AI looks up zones and devices itself, one step at a time.
+                On: the AI only says what to do and which devices it means, and Jev, a fast TypeSafe model, picks the
+                devices. Faster and cheaper smart-home commands, and a much smaller prompt. Needs a TypeSafe API
+                key.</div>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="jev_enabled" aria-label="Find devices with Jev" />
+              <span class="knob"></span>
+            </label>
+          </div>
+          <div id="jev_settings" style="display: none;">
+            <div class="homey-form-group">
+              <label class="homey-form-label" for="typesafe_api_key">TypeSafe API key</label>
+              <div class="secret-wrap">
+                <input type="password" class="homey-form-input" id="typesafe_api_key" autocomplete="off"
+                  placeholder="Enter your TypeSafe API key here..." />
+                <button type="button" class="secret-toggle" data-for="typesafe_api_key">Show</button>
+              </div>
+              <div class="help-text">Get a key at console.typesafe.ai. Without a key the assistant keeps using its own
+                device lookup.</div>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -2473,6 +2498,22 @@
         if (attempts) document.getElementById("web_search_max_attempts").value = String(attempts);
       });
 
+      // Jev (TypeSafe) device selection: toggle + API key (shown when on).
+      var jevEnabledElement = document.getElementById("jev_enabled");
+      function refreshJevSettings() {
+        document.getElementById("jev_settings").style.display = jevEnabledElement.checked ? "" : "none";
+      }
+      jevEnabledElement.addEventListener("change", refreshJevSettings);
+      Homey.get("jev_enabled", function (err, enabled) {
+        if (err) return Homey.alert(err);
+        jevEnabledElement.checked = enabled === true || enabled === "true";
+        refreshJevSettings();
+      });
+      Homey.get("typesafe_api_key", function (err, value) {
+        if (err) return Homey.alert(err);
+        if (value) document.getElementById("typesafe_api_key").value = value;
+      });
+
       // Bring! shopping list credentials.
       var bringEnabledElement = document.getElementById("bring_enabled");
       Homey.get("bring_enabled", function (err, enabled) {
@@ -3019,6 +3060,9 @@
           ["allow_unlock_via_voice", document.getElementById("allow_unlock_via_voice").checked],
           // Fall back to the one other zone that has the asked-for device type (default on)
           ["zone_fallback_enabled", document.getElementById("zone_fallback_enabled").checked],
+          // Jev (TypeSafe) device selection (enable flag + API key)
+          ["jev_enabled", jevEnabledElement.checked],
+          ["typesafe_api_key", document.getElementById("typesafe_api_key").value.trim()],
           // Bring! shopping-list settings (enable flag + credentials + optional list)
           ["bring_enabled", bringEnabledElement.checked],
           ["bring_email", document.getElementById("bring_email").value.trim()],

@@ -341,7 +341,9 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       // needs credentials); kept in sync by handleSettingsChange.
       supportsShoppingList: false,
       // Same contract as supportsShoppingList, for the Music Assistant tools.
-      supportsMusic: false
+      supportsMusic: false,
+      // Same contract again: Jev swaps the device tools for smart_home.
+      supportsJev: false
     };
 
     // Initialize ESP voice client - Uses stored address and port.
@@ -392,6 +394,10 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     // is talking to (matched against MA's player list by MAC, then IP, then
     // name/zone — MA 2.9 reports no IP for the satellites, only the MAC).
     this.providerOptions.supportsMusic = this.toolManager.isMusicActive();
+
+    // Jev (TypeSafe): the ToolManager already swapped the device tools for
+    // smart_home if enabled; the prompt's smart-home section must match.
+    this.providerOptions.supportsJev = this.toolManager.isJevActive();
     this.toolManager.setMusicPlayerHint(() => ({
       mac: this.macAddress,
       address: this.getStoreValue('address'),
@@ -1511,6 +1517,16 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
         this.logger.info(`Music ${musicActive ? 'enabled' : 'disabled'}, updating agent.`);
         this.providerOptions.supportsMusic = musicActive;
         await this.provider.updateMusicSupport(musicActive);
+        needRestart = true;
+      }
+
+      // Jev settings changed: same reconcile-then-restart dance — the tool set
+      // (device tools vs smart_home) and the prompt section swap together.
+      const jevActive = this.toolManager.refreshJevTools();
+      if (jevActive !== this.providerOptions.supportsJev) {
+        this.logger.info(`Jev ${jevActive ? 'enabled' : 'disabled'}, updating agent.`);
+        this.providerOptions.supportsJev = jevActive;
+        await this.provider.updateJevSupport(jevActive);
         needRestart = true;
       }
 
