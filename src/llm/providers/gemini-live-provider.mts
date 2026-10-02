@@ -161,6 +161,7 @@ export class GeminiLiveProvider extends (EventEmitter as new () => TypedEmitter<
             supportsTimers: this.options.supportsTimers,
             supportsShoppingList: this.options.supportsShoppingList,
             supportsMusic: this.options.supportsMusic,
+            supportsJev: this.options.supportsJev,
         };
     }
 
@@ -584,6 +585,12 @@ export class GeminiLiveProvider extends (EventEmitter as new () => TypedEmitter<
     async updateMusicSupport(supportsMusic: boolean): Promise<void> {
         if (this.options.supportsMusic === supportsMusic) return;
         this.options.supportsMusic = supportsMusic;
+        await this.instructionState.reload(this.instructionParams());
+    }
+
+    async updateJevSupport(supportsJev: boolean): Promise<void> {
+        if (this.options.supportsJev === supportsJev) return;
+        this.options.supportsJev = supportsJev;
         await this.instructionState.reload(this.instructionParams());
     }
 }

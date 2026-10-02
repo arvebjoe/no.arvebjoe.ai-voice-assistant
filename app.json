@@ -114,6 +114,14 @@
     "dumpLog": {
       "method": "POST",
       "path": "/dump-log"
+    },
+    "jevBench": {
+      "method": "POST",
+      "path": "/jev-bench"
+    },
+    "agentBench": {
+      "method": "POST",
+      "path": "/agent-bench"
     }
   },
   "esm": true,

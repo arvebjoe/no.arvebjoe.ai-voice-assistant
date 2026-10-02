@@ -128,6 +128,7 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
             | "supportsTimers"
             | "supportsShoppingList"
             | "supportsMusic"
+            | "supportsJev"
         >
     >;
     // keep your existing maps, but store full records keyed by callId
@@ -188,7 +189,8 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
             deviceZone: opts.deviceZone ?? "<Unknown Zone>",
             supportsTimers: opts.supportsTimers ?? false,
             supportsShoppingList: opts.supportsShoppingList ?? false,
-            supportsMusic: opts.supportsMusic ?? false
+            supportsMusic: opts.supportsMusic ?? false,
+            supportsJev: opts.supportsJev ?? false
         };
 
         this.reconnect = new ReconnectPolicy(homey, {
@@ -248,6 +250,7 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
             supportsTimers: this.options.supportsTimers,
             supportsShoppingList: this.options.supportsShoppingList,
             supportsMusic: this.options.supportsMusic,
+            supportsJev: this.options.supportsJev,
         };
     }
 
@@ -414,12 +417,14 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
             }
         });
 
-        this.send({
-            type: "response.create",
-            response: {
-                instructions: "Answer in short text. Do not generate audio."
-            }
-        });
+        // No `instructions` here: on response.create they REPLACE the session's
+        // system prompt for this response instead of adding to it, so the old
+        // "Answer in short text. Do not generate audio." left the model without
+        // the smart-home rules — the "ask agent, output as text" Flow card then
+        // answered like a generic chatbot and never called a tool. Text-only
+        // output is already enforced by setOutputMode("text") above, and the
+        // session prompt already asks for short answers.
+        this.send({ type: "response.create" });
 
     }
 
@@ -755,6 +760,22 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
         }
     }
 
+    /**
+     * Swap the smart-home prompt section for the Jev-backed smart_home tool.
+     * Same shape as updateMusicSupport.
+     */
+    async updateJevSupport(supportsJev: boolean): Promise<void> {
+        if (this.options.supportsJev === supportsJev) {
+            return;
+        }
+        this.logger.info(`Jev ${supportsJev ? 'enabled' : 'disabled'}, rebuilding instructions`);
+        this.options.supportsJev = supportsJev;
+        await this.instructionState.reload(this.instructionParams());
+        if (this.isConnected()) {
+            this.sendSessionUpdate();
+        }
+    }
+
     async updateApiKey(newApiKey: string): Promise<void> {
         this.logger.info('Updating API key and restarting agent...');
         this.options.apiKey = newApiKey;
@@ -1062,6 +1083,10 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
 
             //case "response.completed":
             case "response.done": {
+                // Token usage of EVERY response, tool-call ones included — a
+                // tool round trip is a separate billed response. Only the
+                // /agent-bench debug route listens.
+                this.emit("usage", msg.response?.usage);
                 // A response that ended in a function_call is NOT the end of the turn:
                 // maybeExecuteTool feeds the tool result back and issues createResponse(),
                 // so a continuation response with the spoken answer is coming. Emitting

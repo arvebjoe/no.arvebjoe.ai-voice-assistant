@@ -56,6 +56,8 @@ export type VoiceProviderEvents = {
     "response.progress": () => void;
     "response.output_item.done": () => void;
     "response.done": () => void;
+    /** Token usage of one model response (OpenAI Realtime only; debug measurement). */
+    usage: (usage: any) => void;
     "response.error": (msg: any) => void;
     /**
      * The provider's account/project refused a model it needs (OpenAI
@@ -94,6 +96,7 @@ export type VoiceProviderOptions = {
     supportsTimers?: boolean; // device advertised the TIMERS feature flag
     supportsShoppingList?: boolean; // Bring! integration enabled in app settings
     supportsMusic?: boolean; // Music Assistant integration enabled in app settings
+    supportsJev?: boolean; // Jev (TypeSafe) handles smart-home device selection
 };
 
 /**
@@ -182,4 +185,11 @@ export interface IVoiceProvider extends TypedEmitter<VoiceProviderEvents> {
      * which also restarts the provider when the active state flips.
      */
     updateMusicSupport(supportsMusic: boolean): Promise<void> | void;
+    /**
+     * Swap the smart-home part of the prompt between the fine-grained device
+     * tools and the single Jev-backed smart_home tool. Same contract as
+     * updateShoppingListSupport: the device reconciles the tool set and restarts
+     * the provider when the active state flips.
+     */
+    updateJevSupport(supportsJev: boolean): Promise<void> | void;
 }

@@ -341,7 +341,9 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       // needs credentials); kept in sync by handleSettingsChange.
       supportsShoppingList: false,
       // Same contract as supportsShoppingList, for the Music Assistant tools.
-      supportsMusic: false
+      supportsMusic: false,
+      // Same contract again: Jev swaps the device tools for smart_home.
+      supportsJev: false
     };
 
     // Initialize ESP voice client - Uses stored address and port.
@@ -392,6 +394,10 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     // is talking to (matched against MA's player list by MAC, then IP, then
     // name/zone — MA 2.9 reports no IP for the satellites, only the MAC).
     this.providerOptions.supportsMusic = this.toolManager.isMusicActive();
+
+    // Jev (TypeSafe): the ToolManager already swapped the device tools for
+    // smart_home if enabled; the prompt's smart-home section must match.
+    this.providerOptions.supportsJev = this.toolManager.isJevActive();
     this.toolManager.setMusicPlayerHint(() => ({
       mac: this.macAddress,
       address: this.getStoreValue('address'),
@@ -1514,6 +1520,16 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
         needRestart = true;
       }
 
+      // Jev settings changed: same reconcile-then-restart dance — the tool set
+      // (device tools vs smart_home) and the prompt section swap together.
+      const jevActive = this.toolManager.refreshJevTools();
+      if (jevActive !== this.providerOptions.supportsJev) {
+        this.logger.info(`Jev ${jevActive ? 'enabled' : 'disabled'}, updating agent.`);
+        this.providerOptions.supportsJev = jevActive;
+        await this.provider.updateJevSupport(jevActive);
+        needRestart = true;
+      }
+
       // Weather / web search gates: tools only, no instruction block, so a
       // restart (which re-sends the tool list at session config) is enough.
       const weatherActive = this.toolManager.isWeatherActive();
@@ -1763,6 +1779,76 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
   }
 
+
+  /**
+   * Debug measurement (/agent-bench): ask the agent a typed question from an
+   * EMPTY conversation (so earlier rounds can't answer it from memory) and
+   * report wall time, every tool call with its duration, and the provider's
+   * token usage summed over all responses of the turn. Real tools run — a
+   * control command really switches devices.
+   */
+  async benchAsk(text: string): Promise<{
+    ms: number; reply: string;
+    tools: { name: string; args: any; ms: number; failed: boolean }[];
+    usage: { responses: number; input: number; cached: number; output: number };
+  }> {
+    const tools: { name: string; args: any; ms: number; failed: boolean }[] = [];
+    const usage = { responses: 0, input: 0, cached: 0, output: 0 };
+    const onUsage = (u: any) => {
+      if (!u) return;
+      usage.responses++;
+      usage.input += u.input_tokens ?? 0;
+      usage.cached += u.input_token_details?.cached_tokens ?? 0;
+      usage.output += u.output_tokens ?? 0;
+    };
+    // Sent like a voice turn's transcript: user message + a plain
+    // response.create that keeps the session instructions. (askAgentOutputToText
+    // can't be used: its response.create REPLACES the instructions, so the
+    // model never sees the smart-home rules and calls no tools.) The turn is
+    // over at the provider's final response.done — tool-call responses don't
+    // emit it — and the reply is the last text.done before that.
+    const provider = this.provider as any;
+    if (typeof provider.sendUserText !== 'function' || typeof provider.setOutputMode !== 'function') {
+      throw new Error(`benchAsk needs the OpenAI Realtime provider (current: ${this.currentProviderId})`);
+    }
+    await this.deviceManager.fetchData();
+    this.provider.resetConversation();
+    let reply = '';
+    const onText = (msg: any) => { reply = msg?.text ?? reply; };
+    this.provider.on('usage', onUsage);
+    this.provider.on('text.done', onText);
+    this.toolManager.setExecuteObserver((e) => tools.push(e));
+    const started = Date.now();
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const timer = this.homey.setTimeout(() => {
+          this.provider.off('response.done', onDone);
+          reject(new Error('Timeout waiting for the final response'));
+        }, 30_000);
+        const onDone = () => { this.homey.clearTimeout(timer); resolve(); };
+        this.provider.once('response.done', onDone);
+        provider.setOutputMode('text');
+        provider.sendUserText(text);
+        provider.createResponse();
+      });
+      return { ms: Date.now() - started, reply, tools, usage };
+    } finally {
+      this.provider.off('usage', onUsage);
+      this.provider.off('text.done', onText);
+      this.toolManager.setExecuteObserver(undefined);
+      // Never leave the satellite's session in text mode.
+      provider.setOutputMode('audio');
+    }
+  }
+
+  /** Debug (/agent-bench): whether Jev and a connected provider are live right now. */
+  benchState(): { providerId: string; connected: boolean; jev: boolean } {
+    return {
+      providerId: this.currentProviderId,
+      connected: this.provider?.isConnected() ?? false,
+      jev: this.toolManager.isJevActive(),
+    };
+  }
 
   async askAgentOutputToText(question: string): Promise<string> {
     // The answer arrives on the shared 'text.done' broadcast event with no

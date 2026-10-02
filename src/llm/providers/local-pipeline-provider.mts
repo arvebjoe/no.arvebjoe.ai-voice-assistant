@@ -474,6 +474,7 @@ export class LocalPipelineProvider extends (EventEmitter as new () => TypedEmitt
             supportsTimers: this.options.supportsTimers,
             supportsShoppingList: this.options.supportsShoppingList,
             supportsMusic: this.options.supportsMusic,
+            supportsJev: this.options.supportsJev,
             // Chat-LLM replies go verbatim to TTS/transcripts; markdown leaks
             // without this (observed live with Mistral 2026-07-19).
             plainTextOutput: true,
@@ -964,6 +965,12 @@ export class LocalPipelineProvider extends (EventEmitter as new () => TypedEmitt
     async updateMusicSupport(supportsMusic: boolean): Promise<void> {
         if (this.options.supportsMusic === supportsMusic) return;
         this.options.supportsMusic = supportsMusic;
+        await this.instructionState.reload(this.instructionParams());
+    }
+
+    async updateJevSupport(supportsJev: boolean): Promise<void> {
+        if (this.options.supportsJev === supportsJev) return;
+        this.options.supportsJev = supportsJev;
         await this.instructionState.reload(this.instructionParams());
     }
 }

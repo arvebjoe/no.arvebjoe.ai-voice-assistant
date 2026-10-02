@@ -11,6 +11,9 @@ import { BringClient } from "../helpers/bring-client.mjs";
 import { MusicAssistantClient, getMusicAssistantClient, MaPlayer, MaMediaItem, MaQueueCommand } from "../helpers/music-assistant-client.mjs";
 import { getPlayAcknowledgement } from "./instructions/music-instructions.mjs";
 import { getSearchAcknowledgement } from "./instructions/search-instructions.mjs";
+import { TypeSafeClient } from "./jev/typesafe-client.mjs";
+import { selectDevices, JevCandidate } from "./jev/jev-device-selector.mjs";
+import { JEV_ACTIONS, JEV_VALUE_ACTIONS, planJevWrite, capabilityValues, jevCandidates } from "./jev/jev-actions.mjs";
 
 type ToolHandler = (args: any) => Promise<any> | any;
 
@@ -53,6 +56,8 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
 
     // Awaited before every tool handler; see setBeforeRun.
     private beforeRun?: () => Promise<void>;
+    // Debug measurement hook (/agent-bench): told about every executed tool.
+    private executeObserver?: (e: { name: string; args: any; ms: number; failed: boolean }) => void;
     private static readonly BEFORE_RUN_TIMEOUT_MS = 5_000;
 
     // Devices of the most recent fallback listing, so a `fb:` page token can
@@ -117,6 +122,16 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
     ];
     private static readonly TIMER_TOOL_NAMES = ['set_timer', 'cancel_timer', 'get_timer'];
     private static readonly WEB_SEARCH_TOOL_NAMES = ['web_search'];
+    // Jev (TypeSafe) mode swaps the fine-grained device tools below for the
+    // single smart_home tool: the LLM says WHAT to do and describes WHICH
+    // devices, Jev picks the devices, code does the write.
+    private jevActive = false;
+    private jevClient?: TypeSafeClient;
+    private jevApiKey = '';
+    private static readonly DEVICE_TOOL_NAMES = [
+        'get_zones', 'get_device_types', 'get_devices_in_standard_zone', 'get_devices', 'set_device_capability',
+    ];
+    private static readonly JEV_TOOL_NAMES = ['smart_home'];
 
     /** Tool names per optional feature — the settings cost endpoint groups by this. */
     static readonly FEATURE_TOOLS: Record<string, readonly string[]> = {
@@ -152,6 +167,11 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
      */
     setBeforeRun(hook: (() => Promise<void>) | undefined): void {
         this.beforeRun = hook;
+    }
+
+    /** Debug: observe every tool execution with its duration (one observer at a time). */
+    setExecuteObserver(observer: ((e: { name: string; args: any; ms: number; failed: boolean }) => void) | undefined): void {
+        this.executeObserver = observer;
     }
 
     /** The zone `get_devices_in_standard_zone` resolves against (the device's own zone). */
@@ -233,10 +253,15 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
                 clearTimeout(timer);
             }
         }
+        const started = Date.now();
+        let failed = false;
         try {
             return { output: await tool.handler(args ?? {}), failed: false };
         } catch (err: any) {
+            failed = true;
             return { output: { error: String(err?.message ?? err) }, failed: true };
+        } finally {
+            this.executeObserver?.({ name, args, ms: Date.now() - started, failed });
         }
     }
 
@@ -558,6 +583,7 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
     private registerDefaultTools(): void {
         this.registerSystemTools();
         this.registerDeviceManagementTools();
+        this.refreshJevTools();
         this.refreshWeatherTools();
         this.refreshWebSearchTools();
         this.refreshTimerTools();
@@ -649,6 +675,40 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
         this.registerTimerTools();
         this.registerShoppingListTools();
         this.registerMusicTools();
+    }
+
+    /** Whether the Jev-backed smart_home tool replaces the device tools. */
+    isJevActive(): boolean {
+        return this.jevActive;
+    }
+
+    /**
+     * Reconcile the smart-home tool set with the `jev_enabled` setting (default
+     * off) and the TypeSafe key: active means the five fine-grained device tools
+     * are removed and smart_home is registered in their place, and vice versa.
+     * Same contract as the other refreshes — returns the new active state so the
+     * device swaps the prompt section and restarts the provider when it flips.
+     */
+    refreshJevTools(): boolean {
+        const apiKey = (settingsManager.getGlobal<string>('typesafe_api_key', '') || '').trim();
+        const active = ToolManager.boolSetting('jev_enabled', false) && apiKey.length > 0;
+
+        if (active && (apiKey !== this.jevApiKey || !this.jevClient)) {
+            this.jevClient = new TypeSafeClient({ apiKey });
+            this.jevApiKey = apiKey;
+        }
+        if (active === this.jevActive) return active;
+
+        if (active) {
+            for (const name of ToolManager.DEVICE_TOOL_NAMES) this.unregisterTool(name);
+            this.registerJevTools();
+        } else {
+            for (const name of ToolManager.JEV_TOOL_NAMES) this.unregisterTool(name);
+            this.registerDeviceManagementTools();
+        }
+        this.jevActive = active;
+        this.logger.info(`Jev smart-home tool ${active ? 'registered' : 'removed'}`);
+        return active;
     }
 
     /** Whether the Bring! shopping-list tools are currently registered. */
@@ -1654,87 +1714,229 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
                 required: ["deviceIds", "capabilityId", "newValue"],
                 additionalProperties: false
             },
-            handler: async ({ deviceIds, capabilityId, newValue, expected_zone, expected_type, allow_cross_zone, confirmed }) => {
-                // S3: don't rely on the model honoring the JSON schema —
-                // whitelist the capability and coerce/clamp the value in code.
-                const validated = this.validateCapabilityWrite(capabilityId, newValue);
-                if (!validated.ok) {
-                    return { ok: false, error: { code: "INVALID_CAPABILITY_WRITE", message: validated.message } };
-                }
-                const value = validated.value;
-
-                const originalCount = Array.isArray(deviceIds) ? deviceIds.length : 0;
-                const uniqueIds = Array.from(new Set((deviceIds || []).filter(Boolean) as string[]));
-                let filteredIds = uniqueIds;
-
-                // Enforce type/zone narrowing if hints provided
-                if (expected_type || expected_zone) {
-                    const allowedIds = await this.listDeviceIdsBy(expected_zone || null, expected_type || null);
-                    const allowedSet = new Set(allowedIds);
-                    filteredIds = uniqueIds.filter(id => allowedSet.has(id));
-                }
-
-                // S2: cross-zone writes are opt-in ("everywhere"/"whole house").
-                // Without allow_cross_zone, confine the write to one zone: the
-                // verified expected_zone when given (already applied above),
-                // otherwise this assistant's standard zone.
-                let crossZoneBlocked = 0;
-                if (allow_cross_zone !== true && !expected_zone && this.standardZone) {
-                    const inZone = new Set(await this.listDeviceIdsBy(this.standardZone, null));
-                    // Devices handed back by the "nothing here" fallback count as
-                    // in-scope: the standard zone had none of that type and they all
-                    // sit in one single other zone (see tryZoneFallback). The grant
-                    // expires (activeZoneFallback) and the setting is re-read here,
-                    // so a grant cannot outlive the utterance that earned it or
-                    // survive the user switching the feature off mid-session.
-                    const fromFallback = ToolManager.boolSetting('zone_fallback_enabled', true)
-                        ? this.activeZoneFallback()?.ids
-                        : undefined;
-                    const before = filteredIds.length;
-                    filteredIds = filteredIds.filter(id => inZone.has(id) || fromFallback?.has(id) === true);
-                    crossZoneBlocked = before - filteredIds.length;
-                }
-
-                const deduped = filteredIds.length;
-
-                if (deduped === 0) {
-                    if (crossZoneBlocked > 0) {
-                        return { ok: false, error: { code: "CROSS_ZONE_BLOCKED", message: `All ${crossZoneBlocked} devices are outside the standard zone (${this.standardZone}). Retry with allow_cross_zone=true only if the user explicitly asked for all zones / the whole house, or pass the zone the user named as expected_zone.` } };
-                    }
-                    return { ok: false, error: { code: "NO_MATCHING_DEVICES_FOR_TYPE", message: "No devices match the expected type/zone for this action." } };
-                }
-                if (deduped > 10 && confirmed !== true) {
-                    return { ok: false, error: { code: "CONFIRMATION_REQUIRED", message: `Refusing to change ${deduped} devices without explicit confirmation.` } };
-                }
-
-                // S3/H4: unlocking is physical security. Two code-enforced rules
-                // (deliberately NOT a confirmation prompt — that guard was
-                // removed on purpose; locking is never restricted):
-                //  1. Unlocking must be explicitly enabled in the app settings
-                //     (default off).
-                //  2. Even then, exactly ONE device per call, so "unlock all
-                //     doors" (or a prompt-injected equivalent) can't happen in
-                //     a single write.
-                if (capabilityId === "locked" && value === false) {
-                    const allowUnlock = settingsManager.getGlobal<any>('allow_unlock_via_voice', false);
-                    if (allowUnlock !== true && allowUnlock !== 'true') {
-                        return { ok: false, error: { code: "UNLOCK_DISABLED", message: "Unlocking by voice is disabled. The user must enable 'Allow unlocking by voice' in the app's settings first. Locking is still allowed." } };
-                    }
-                    if (deduped > 1) {
-                        return { ok: false, error: { code: "UNLOCK_SINGLE_DEVICE_ONLY", message: `Refusing to unlock ${deduped} devices at once. Unlock only the specific lock the user named, one call per device.` } };
-                    }
-                }
-
-                this.logger.info('set_device_capability_bulk', 'TOOL', `devices=${deduped}/${originalCount}, cap=${capabilityId}, value=${value}, zone=${expected_zone}, type=${expected_type}, xzoneBlocked=${crossZoneBlocked}`);
-                try {
-                    const data = await this.deviceManager.setDeviceCapabilityBulk(filteredIds, capabilityId, value, { expected_zone, allow_cross_zone, confirmed });
-                    return { ok: true, data, meta: { requested: originalCount, deduplicated: deduped, cross_zone_blocked: crossZoneBlocked } };
-                } catch (error: any) {
-                    this.logger.error(`Error executing set_device_capability_bulk`, error);
-                    return { ok: false, error: { code: "BULK_SET_CAPABILITY_FAILED", message: "Could not set capability for multiple devices." } };
-                }
-            }
+            handler: (args) => this.writeCapability(args),
         });
+    }
+
+    /**
+     * The set_device_capability write path with every code-side safety gate
+     * (value whitelist/coercion, type/zone narrowing, cross-zone opt-in, the
+     * >10-device confirmation, the unlock rules). Shared with the Jev-backed
+     * smart_home tool so both routes enforce exactly the same rules.
+     */
+    private async writeCapability({ deviceIds, capabilityId, newValue, expected_zone, expected_type, allow_cross_zone, confirmed }: {
+        deviceIds: string[]; capabilityId: string; newValue: any;
+        expected_zone?: string; expected_type?: string; allow_cross_zone?: boolean; confirmed?: boolean;
+    }): Promise<any> {
+        // S3: don't rely on the model honoring the JSON schema —
+        // whitelist the capability and coerce/clamp the value in code.
+        const validated = this.validateCapabilityWrite(capabilityId, newValue);
+        if (!validated.ok) {
+            return { ok: false, error: { code: "INVALID_CAPABILITY_WRITE", message: validated.message } };
+        }
+        const value = validated.value;
+
+        const originalCount = Array.isArray(deviceIds) ? deviceIds.length : 0;
+        const uniqueIds = Array.from(new Set((deviceIds || []).filter(Boolean) as string[]));
+        let filteredIds = uniqueIds;
+
+        // Enforce type/zone narrowing if hints provided
+        if (expected_type || expected_zone) {
+            const allowedIds = await this.listDeviceIdsBy(expected_zone || null, expected_type || null);
+            const allowedSet = new Set(allowedIds);
+            filteredIds = uniqueIds.filter(id => allowedSet.has(id));
+        }
+
+        // S2: cross-zone writes are opt-in ("everywhere"/"whole house").
+        // Without allow_cross_zone, confine the write to one zone: the
+        // verified expected_zone when given (already applied above),
+        // otherwise this assistant's standard zone.
+        let crossZoneBlocked = 0;
+        if (allow_cross_zone !== true && !expected_zone && this.standardZone) {
+            const inZone = new Set(await this.listDeviceIdsBy(this.standardZone, null));
+            // Devices handed back by the "nothing here" fallback count as
+            // in-scope: the standard zone had none of that type and they all
+            // sit in one single other zone (see tryZoneFallback). The grant
+            // expires (activeZoneFallback) and the setting is re-read here,
+            // so a grant cannot outlive the utterance that earned it or
+            // survive the user switching the feature off mid-session.
+            const fromFallback = ToolManager.boolSetting('zone_fallback_enabled', true)
+                ? this.activeZoneFallback()?.ids
+                : undefined;
+            const before = filteredIds.length;
+            filteredIds = filteredIds.filter(id => inZone.has(id) || fromFallback?.has(id) === true);
+            crossZoneBlocked = before - filteredIds.length;
+        }
+
+        const deduped = filteredIds.length;
+
+        if (deduped === 0) {
+            if (crossZoneBlocked > 0) {
+                return { ok: false, error: { code: "CROSS_ZONE_BLOCKED", message: `All ${crossZoneBlocked} devices are outside the standard zone (${this.standardZone}). Retry with allow_cross_zone=true only if the user explicitly asked for all zones / the whole house, or pass the zone the user named as expected_zone.` } };
+            }
+            return { ok: false, error: { code: "NO_MATCHING_DEVICES_FOR_TYPE", message: "No devices match the expected type/zone for this action." } };
+        }
+        if (deduped > 10 && confirmed !== true) {
+            return { ok: false, error: { code: "CONFIRMATION_REQUIRED", message: `Refusing to change ${deduped} devices without explicit confirmation.` } };
+        }
+
+        // S3/H4: unlocking is physical security. Two code-enforced rules
+        // (deliberately NOT a confirmation prompt — that guard was
+        // removed on purpose; locking is never restricted):
+        //  1. Unlocking must be explicitly enabled in the app settings
+        //     (default off).
+        //  2. Even then, exactly ONE device per call, so "unlock all
+        //     doors" (or a prompt-injected equivalent) can't happen in
+        //     a single write.
+        if (capabilityId === "locked" && value === false) {
+            const allowUnlock = settingsManager.getGlobal<any>('allow_unlock_via_voice', false);
+            if (allowUnlock !== true && allowUnlock !== 'true') {
+                return { ok: false, error: { code: "UNLOCK_DISABLED", message: "Unlocking by voice is disabled. The user must enable 'Allow unlocking by voice' in the app's settings first. Locking is still allowed." } };
+            }
+            if (deduped > 1) {
+                return { ok: false, error: { code: "UNLOCK_SINGLE_DEVICE_ONLY", message: `Refusing to unlock ${deduped} devices at once. Unlock only the specific lock the user named, one call per device.` } };
+            }
+        }
+
+        this.logger.info('set_device_capability_bulk', 'TOOL', `devices=${deduped}/${originalCount}, cap=${capabilityId}, value=${value}, zone=${expected_zone}, type=${expected_type}, xzoneBlocked=${crossZoneBlocked}`);
+        try {
+            const data = await this.deviceManager.setDeviceCapabilityBulk(filteredIds, capabilityId, value, { expected_zone, allow_cross_zone, confirmed });
+            return { ok: true, data, meta: { requested: originalCount, deduplicated: deduped, cross_zone_blocked: crossZoneBlocked } };
+        } catch (error: any) {
+            this.logger.error(`Error executing set_device_capability_bulk`, error);
+            return { ok: false, error: { code: "BULK_SET_CAPABILITY_FAILED", message: "Could not set capability for multiple devices." } };
+        }
+    }
+
+    private registerJevTools(): void {
+        this.registerTool({
+            type: "function",
+            name: "smart_home",
+            description: "Control or read smart home devices. Give the action and describe in plain words which devices it is for; the devices are found for you. One action per call — for a request with several actions, make one call per action.",
+            parameters: {
+                type: "object",
+                properties: {
+                    action: {
+                        type: "string",
+                        enum: JEV_ACTIONS,
+                        description: "open/close/stop/set_position are for window coverings (blinds, curtains, awnings). get_status reads the current state without changing anything.",
+                    },
+                    target: {
+                        type: "string",
+                        description: "Which devices, as a short self-contained description in the user's words, including the room if the user named one: 'the lights in the kitchen', 'the lamp by the sofa', 'all lights everywhere', 'the front door'. Resolve words like 'it' or 'them' from the conversation. Leave out the room when the user did not name one — the user's own room is then assumed.",
+                    },
+                    value: {
+                        type: "number",
+                        description: "Required for set_brightness (percent 0-100), set_temperature (°C) and set_position (percent open, 0-100).",
+                    },
+                    confirmed: { type: "boolean", description: "Must be true if more than 10 devices would change; only after the user confirmed." },
+                },
+                required: ["action", "target"],
+                additionalProperties: false,
+            },
+            handler: (args) => this.runSmartHome(args),
+        });
+    }
+
+    private async runSmartHome({ action, target, value, confirmed }: { action: string; target: string; value?: number; confirmed?: boolean }): Promise<any> {
+        if (!JEV_ACTIONS.includes(action)) {
+            return { ok: false, error: { code: "INVALID_ACTION", message: `Unknown action '${action}'.` } };
+        }
+        const targetText = String(target ?? '').trim();
+        if (!targetText) {
+            return { ok: false, error: { code: "MISSING_TARGET", message: "Describe which devices the action is for." } };
+        }
+        const numeric = typeof value === 'number' ? value : (value !== undefined ? Number(value) : undefined);
+        if (JEV_VALUE_ACTIONS.includes(action) && (numeric === undefined || !Number.isFinite(numeric))) {
+            return { ok: false, error: { code: "MISSING_VALUE", message: `'${action}' needs a numeric value.` } };
+        }
+        if (!this.jevClient) {
+            return { ok: false, error: { code: "JEV_UNAVAILABLE", message: "Smart home control is not configured." } };
+        }
+
+        // Candidates: every device that can do the action (all devices for a
+        // status read). Exact, so it stays in code.
+        const toolStarted = Date.now();
+        const candidates: JevCandidate[] = jevCandidates(action, await this.listDevicesBy(null, null), numeric);
+        if (candidates.length === 0) {
+            return { ok: false, error: { code: "NO_CAPABLE_DEVICES", message: `No device in the home can do '${action}'.` } };
+        }
+
+        const lookupStarted = Date.now();
+        let selection;
+        try {
+            selection = await selectDevices(this.jevClient, targetText, this.standardZone, candidates);
+        } catch (error: any) {
+            // error(), not the quieted info(): a failed lookup must reach the
+            // log even without verbose logging.
+            this.logger.error(`Jev device selection failed (action=${action}, target="${targetText}", candidates=${candidates.length}, ${Date.now() - lookupStarted} ms)`, error?.message ?? error);
+            // Worded as a service outage on purpose: "could not work out which
+            // devices were meant" made the model ask the user which lamp — and
+            // invent lamp names — when TypeSafe had simply not answered.
+            return { ok: false, error: { code: "JEV_FAILED", message: "The smart-home device lookup service did not respond. Nothing was changed. This is a temporary service error, not an unclear request: do not ask which device, and do not name any devices — tell the user it failed and to try again." } };
+        }
+        this.logger.info('smart_home', 'TOOL',
+            `action=${action}, target="${targetText}", value=${numeric}, candidates=${candidates.length}, selected=${selection.selected.length} ` +
+            `(${selection.selected.map(d => d.name).join(', ')}), requests=${selection.requests} [${selection.requestStats.map(r => `${r.ms}${'*'.repeat(r.attempts - 1)}`).join('/')} ms` +
+            `${selection.requestStats.some(r => r.attempts > 1) ? ', * = one re-send each' : ''}], ` +
+            `tokens=${selection.inputTokens}, jev ${selection.elapsedMs} ms, device list ${lookupStarted - toolStarted} ms`);
+
+        if (selection.selected.length === 0) {
+            return {
+                ok: false,
+                error: { code: "NO_MATCHING_DEVICES", message: "No device clearly matched. If one of the closest is what the user meant, retry with a more specific target; otherwise ask the user." },
+                closest: selection.ranked.slice(0, 3).map(r => ({ name: r.device.name, zone: r.device.zone })),
+            };
+        }
+
+        if (action === 'get_status') {
+            return {
+                ok: true,
+                devices: selection.selected.map(d => ({ name: d.name, zone: d.zone, type: d.type, capabilities: d.capabilities })),
+            };
+        }
+
+        // Plan per device; skip devices already at the value (idempotent).
+        const groups = new Map<string, { capabilityId: string; newValue: any; ids: string[] }>();
+        const already: string[] = [];
+        const byId = new Map(selection.selected.map(d => [d.id, d]));
+        for (const device of selection.selected) {
+            const values = capabilityValues(device);
+            const plan = planJevWrite(action, new Set(values.keys()), numeric);
+            if (!plan) continue;
+            if (values.get(plan.capabilityId) === String(plan.newValue)) {
+                already.push(device.name);
+                continue;
+            }
+            const key = `${plan.capabilityId}=${plan.newValue}`;
+            const group = groups.get(key) ?? { ...plan, ids: [] };
+            group.ids.push(device.id);
+            groups.set(key, group);
+        }
+
+        const toChange = Array.from(groups.values()).reduce((n, g) => n + g.ids.length, 0);
+        if (toChange > 10 && confirmed !== true) {
+            return { ok: false, error: { code: "CONFIRMATION_REQUIRED", message: `Refusing to change ${toChange} devices without explicit confirmation.` } };
+        }
+
+        const changed: { name: string; zone: string }[] = [];
+        const failed: string[] = [];
+        for (const group of groups.values()) {
+            // Jev's room judgment is the zone scoping here, so the write is not
+            // re-confined to the standard zone; every other gate still applies.
+            const result = await this.writeCapability({
+                deviceIds: group.ids, capabilityId: group.capabilityId, newValue: group.newValue,
+                allow_cross_zone: true, confirmed: true,
+            });
+            if (!result?.ok) return result;
+            for (const r of result.data ?? []) {
+                const device = byId.get(r.deviceId);
+                if (!device) continue;
+                if (r.status === 'success') changed.push({ name: device.name, zone: device.zone });
+                else failed.push(device.name);
+            }
+        }
+        return { ok: true, action, changed, already_set: already, failed };
     }
 
     private registerWeatherTools(): void {

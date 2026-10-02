@@ -9,6 +9,10 @@ import { seenDevices, SeenDeviceView } from './src/helpers/seen-devices.mjs';
 import { probeEspDevice } from './src/voice_assistant/esp-probe.mjs';
 import { recordingRegistry, Recording } from './src/helpers/recording-registry.mjs';
 import { writeLogDump, LogDumpResult } from './src/helpers/log-dump.mjs';
+import { settingsManager } from './src/settings/settings-manager.mjs';
+import { TypeSafeClient } from './src/llm/jev/typesafe-client.mjs';
+import { JEV_ACTIONS, jevCandidates } from './src/llm/jev/jev-actions.mjs';
+import { benchProduction, benchRaw, ProductionRound, RawRound } from './src/llm/jev/jev-benchmark.mjs';
 
 /**
  * App Web API — called from the settings page via `Homey.api(...)`.
@@ -184,5 +188,114 @@ export default {
         }
         const result = await recordingRegistry.play([recording]);
         return { ok: result.played > 0, message: result.message };
+    },
+
+    /**
+     * POST /jev-bench — measure the Jev (TypeSafe) device lookup FROM THE
+     * HOMEY, without voice: the same code the smart_home tool runs, against
+     * the live device catalog, repeated. Never writes to a device. Debug only;
+     * it spends TypeSafe tokens, so rounds are capped.
+     *
+     * Body: { mode: 'run' | 'raw', target, action?, value?, room?, rounds?, pauseMs? }
+     * (see src/llm/jev/jev-benchmark.mts for what the two modes measure).
+     */
+    async jevBench({ homey, body }: { homey: any; body: any }): Promise<{
+        ok: boolean; message: string; mode?: string; candidates?: number;
+        production?: ProductionRound[]; raw?: RawRound[];
+    }> {
+        const apiKey = (settingsManager.getGlobal<string>('typesafe_api_key', '') || '').trim();
+        if (!apiKey) return { ok: false, message: 'No TypeSafe API key in the app settings' };
+        const mode = body?.mode === 'raw' ? 'raw' : 'run';
+        const action = body?.action ?? 'turn_on';
+        const target = String(body?.target ?? '').trim();
+        if (!JEV_ACTIONS.includes(action) || !target) {
+            return { ok: false, message: `Need a target and an action (one of ${JEV_ACTIONS.join(', ')})` };
+        }
+        const value = body?.value !== undefined ? Number(body.value) : undefined;
+        const rounds = Math.min(20, Math.max(1, Number(body?.rounds) || 5));
+        const pauseMs = Math.min(10_000, Math.max(0, Number(body?.pauseMs) || 1_000));
+        const room = String(body?.room ?? '');
+
+        const deviceManager = homey.app?.deviceManager;
+        await deviceManager.fetchData();
+        const all: any[] = [];
+        let token: string | null = null;
+        do {
+            const page: { devices: any[]; next_page_token: string | null } = deviceManager.getSmartHomeDevices(undefined, undefined, 100, token);
+            all.push(...page.devices);
+            token = page.next_page_token;
+        } while (token);
+        const candidates = jevCandidates(action, all, value);
+
+        const cmd = { target, room };
+        if (mode === 'raw') {
+            const raw = await benchRaw(apiKey, candidates, cmd, rounds, pauseMs);
+            return { ok: true, message: 'done', mode, candidates: candidates.length, raw };
+        }
+        const production = await benchProduction(new TypeSafeClient({ apiKey }), candidates, cmd, rounds, pauseMs);
+        return { ok: true, message: 'done', mode, candidates: candidates.length, production };
+    },
+
+    /**
+     * POST /agent-bench — time a TYPED command through the live voice provider
+     * (no audio): the whole agent turn, every tool call, and the provider's
+     * token usage. Compares the classic device tools with Jev when called with
+     * `jev: false` and `jev: true`: the route flips `jev_enabled` for the run,
+     * waits for the provider to restart with the new tool set, and restores
+     * the user's setting afterwards. Real tools run — a control command really
+     * switches devices; a status question is read-only. Debug only.
+     *
+     * Body: { text, rounds?, pauseMs?, jev?: boolean, device?: <name substring> }
+     */
+    async agentBench({ homey, body }: { homey: any; body: any }): Promise<any> {
+        const text = String(body?.text ?? '').trim();
+        if (!text) return { ok: false, message: 'Need text' };
+        const rounds = Math.min(10, Math.max(1, Number(body?.rounds) || 3));
+        const pauseMs = Math.min(10_000, Math.max(0, Number(body?.pauseMs) || 1_500));
+
+        const wanted = String(body?.device ?? '').toLowerCase();
+        const device = Object.values<any>(homey.drivers.getDrivers())
+            .flatMap((driver: any) => driver.getDevices())
+            .find((d: any) => typeof d.benchAsk === 'function' && d.benchState().connected
+                && (!wanted || d.getName().toLowerCase().includes(wanted)));
+        if (!device) return { ok: false, message: 'No voice assistant device with a connected provider' };
+
+        const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+        const waitFor = async (jev: boolean) => {
+            for (let i = 0; i < 60; i++) {
+                const st = device.benchState();
+                if (st.jev === jev && st.connected) { await sleep(2_000); return true; }
+                await sleep(500);
+            }
+            return false;
+        };
+        const original = homey.settings.get('jev_enabled');
+        const wantJev = typeof body?.jev === 'boolean' ? body.jev : undefined;
+        try {
+            if (wantJev !== undefined && device.benchState().jev !== wantJev) {
+                homey.settings.set('jev_enabled', wantJev);
+                // Give the settings pub/sub a moment to start the restart, so
+                // waitFor doesn't see the OLD connection as ready.
+                await sleep(1_000);
+                if (!(await waitFor(wantJev))) {
+                    return { ok: false, message: `Provider did not come back with jev=${wantJev} within 30 s`, state: device.benchState() };
+                }
+            }
+            const state = device.benchState();
+            const results: any[] = [];
+            for (let round = 1; round <= rounds; round++) {
+                try {
+                    results.push({ round, ...(await device.benchAsk(text)) });
+                } catch (error: any) {
+                    results.push({ round, error: error?.message ?? String(error) });
+                }
+                if (round < rounds) await sleep(pauseMs);
+            }
+            return { ok: true, message: 'done', device: device.getName(), state, results };
+        } finally {
+            if (wantJev !== undefined && homey.settings.get('jev_enabled') !== original) {
+                homey.settings.set('jev_enabled', original);
+            }
+        }
     },
 };
