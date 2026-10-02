@@ -158,6 +158,7 @@ async function doRun(client: TypeSafeClient, devices: Device[], cmd: Command) {
         const key = r.selected!.join(', ') || '(none)';
         selections.set(key, (selections.get(key) ?? 0) + 1);
         console.log(`  ${r.round}: ${r.ms} ms  [${r.requests!.map(q => `${q.ms}${'*'.repeat(q.attempts - 1)}`).join('/')}]  → ${key}`);
+        console.log(`       top: ${r.top}`);
     }
     const ok = results.filter(r => r.ok);
     const resends = ok.reduce((n, r) => n + r.requests!.reduce((m, q) => m + q.attempts - 1, 0), 0);

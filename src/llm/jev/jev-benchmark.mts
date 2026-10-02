@@ -1,4 +1,4 @@
-import { buildRequests, selectDevices, JevCandidate } from './jev-device-selector.mjs';
+import { buildRequests, selectDevices, formatRanked, JevCandidate } from './jev-device-selector.mjs';
 import { TypeSafeClient } from './typesafe-client.mjs';
 
 /**
@@ -26,6 +26,8 @@ export interface ProductionRound {
     /** Per request: wall time and attempts (1 = no re-send). */
     requests?: { ms: number; attempts: number }[];
     selected?: string[];
+    /** Best five with their scores — the same line smart_home logs. */
+    top?: string;
     tokens?: number;
     error?: string;
 }
@@ -54,6 +56,7 @@ export async function benchProduction(
                 round, ok: true, ms: sel.elapsedMs,
                 requests: sel.requestStats,
                 selected: sel.selected.map(d => d.name).sort(),
+                top: formatRanked(sel.ranked.slice(0, 5)),
                 tokens: sel.inputTokens,
             });
         } catch (error: any) {

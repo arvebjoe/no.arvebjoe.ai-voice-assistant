@@ -8,8 +8,8 @@ import type { Question, RequestStat, ScoreAnswer, SystemOneRequest, TypeSafeClie
  * enumerates the candidates and asks, per device, three Score questions (how
  * clearly the command refers to it, whether it is in the targeted room, whether
  * it is the requested kind). Each is normalized to 0–1, averaged with weights,
- * and a device is selected when the average clears THRESHOLD and no veto
- * dimension is below VETO_FLOOR.
+ * and a device is selected when the average clears THRESHOLD and every
+ * dimension clears its own floor.
  *
  * Design and numbers come from the jev-test-001 prototype (100-device test
  * home, jev-1.13):
@@ -54,13 +54,15 @@ type DimensionKey = 'clarity' | 'room' | 'type';
 interface Dimension {
     key: DimensionKey;
     weight: number;
-    veto: boolean;
+    /** Below this the device is out, whatever the other dimensions say. */
+    floor: number;
     question: (device: object, sameRoom: object[]) => Question;
 }
 
-// Tuned in jev-test-001 (8/10 benchmark commands right on every run).
-export const THRESHOLD = 0.7;
-export const VETO_FLOOR = 0.3;
+// Was 0.7 from jev-test-001; lowered once the per-dimension floors took over
+// rejecting wrong devices — at 0.7 the average alone dropped real lamps
+// ("the lights in the office" missed two at 0.68–0.69).
+export const THRESHOLD = 0.65;
 export const DEVICES_PER_REQUEST = 20;
 
 // The model-facing view of a device: names only, no ids or current values —
@@ -85,7 +87,16 @@ const DIMENSIONS: Dimension[] = [
     {
         key: 'clarity',
         weight: 1,
-        veto: false,
+        // Per-dimension floors, with THRESHOLD, tuned on a live 158-device
+        // Homey: 13 commands with known answers, 42 runs, 0 wrong devices and
+        // 1 miss (a named device scored room 0.68 once — it then comes back as
+        // NO_MATCHING_DEVICES with it in "closest", and the model retries by
+        // name). The average alone let one strong dimension carry a failing
+        // one: "the lights in the gym" took the treadmill socket (type 0.53,
+        // clarity 0.8) and a lamp from the next room (room 0.58). Lowest score
+        // of a wanted device vs highest of a wrong one: clarity 0.36 vs 0.29,
+        // room 0.77 vs 0.72, type 0.72 vs 0.42. Room has the thinnest margin.
+        floor: 0.3,
         question: (device, sameRoom) => ({
             type: 'score',
             // Without its roommates, a device can't tell that a singular command
@@ -112,7 +123,7 @@ const DIMENSIONS: Dimension[] = [
     {
         key: 'room',
         weight: 1,
-        veto: true,
+        floor: 0.75,
         question: (device) => ({
             type: 'score',
             // "In the house" was read literally in the prototype (backyard lights
@@ -131,11 +142,16 @@ const DIMENSIONS: Dimension[] = [
     {
         key: 'type',
         weight: 1,
-        veto: true,
+        floor: 0.55,
         question: (device) => ({
             type: 'score',
+            // The old hint "a socket powering a lamp counts as a light" made
+            // Jev give every socket the benefit of the doubt: a siren socket
+            // scored 0.78 as a light, as high as a real ceiling lamp. Tying it
+            // to the name dropped the siren to 0.41 and the treadmill to 0.25
+            // while real lights stayed at 0.73+.
             instructions: {
-                question: 'Is the device `device` the kind of device the smart home command in `command` asks to control? Use its type, name and capabilities; for example, a socket powering a lamp counts as a light.',
+                question: 'Is the device `device` the kind of device the smart home command in `command` asks to control? Use its type, name and capabilities. A socket or switch counts as a light only when its name says it powers a lamp or light; a socket named after anything else (an appliance, a siren, a speaker) is that thing, not a light.',
                 device,
             },
             criteria: [
@@ -146,6 +162,20 @@ const DIMENSIONS: Dimension[] = [
         }),
     },
 ];
+
+/**
+ * One log line for the best-ranked devices: weighted score, then each
+ * dimension (c/r/t = clarity/room/type), ✓ when selected, the vetoing
+ * dimensions otherwise — `Utelys #19 [Ute] ✓ 0.89 c0.67 r1 t1`.
+ */
+export function formatRanked(ranked: RankedDevice[]): string {
+    const n = (x: number) => String(Math.round(x * 100) / 100);
+    return ranked.map(r => {
+        const mark = r.selected ? '✓' : r.vetoedBy.length > 0 ? `veto:${r.vetoedBy.join('+')}` : '✗';
+        return `${r.device.name} [${r.device.zone}] ${mark} ${n(r.weighted)} ` +
+            `c${n(r.scores.clarity.value)} r${n(r.scores.room.value)} t${n(r.scores.type.value)}`;
+    }).join('; ');
+}
 
 // Ids are only seen by code, never by the model.
 const questionId = (i: number, dim: DimensionKey) => `d${i}__${dim}`;
@@ -206,7 +236,7 @@ export async function selectDevices(
             weighted += value * dim.weight;
         }
         weighted /= totalWeight;
-        const vetoedBy = DIMENSIONS.filter(d => d.veto && scores[d.key].value < VETO_FLOOR).map(d => d.key);
+        const vetoedBy = DIMENSIONS.filter(d => scores[d.key].value < d.floor).map(d => d.key);
         return { device, scores, weighted, vetoedBy, selected: weighted >= THRESHOLD && vetoedBy.length === 0 };
     }).sort((a, b) => b.weighted - a.weighted);
 

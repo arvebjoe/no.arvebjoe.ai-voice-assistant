@@ -918,6 +918,8 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       // an empty transcript), so stand the no-speech net down.
       this.clearNoSpeechTimeout();
       if (!this.turn.isListening) return;
+      // A user turn: lets a pending ">10 devices" confirmation be granted.
+      this.toolManager?.noteUserTurn();
       this.convo.info(`User started speaking (${source} VAD)`, 'MIC');
       this.esp.stt_vad_start();
     });
@@ -968,6 +970,8 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       this.logger.info('Final transcript: '+ transcript, "transcript");
 
       transcript = (transcript ?? '').trim();
+      // Also a user turn, for providers that report no voice activity.
+      if (transcript) this.toolManager?.noteUserTurn();
 
       // Label this turn's recording with what STT made of it — the whole point
       // of "what did I just say?" is comparing the two.
@@ -1772,6 +1776,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
 
     if (this.provider && this.provider.sendTextForAudioResponse) {
       await this.deviceManager.fetchData();
+      this.toolManager?.noteUserTurn();
       this.provider.sendTextForAudioResponse(question);
     } else {
       this.logger.error('Agent not initialized or sendTextForAudioResponse method not available');
@@ -1833,6 +1838,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
         };
 
         try {
+          this.toolManager?.noteUserTurn();
           Promise.resolve(this.provider.sendTextForTextResponse(question)).catch(failSend);
         } catch (error) {
           failSend(error);

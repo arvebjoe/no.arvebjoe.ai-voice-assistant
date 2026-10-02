@@ -5,7 +5,7 @@ import { MockDeviceManager } from './mocks/mock-device-manager.mjs';
 import { MockGeoHelper } from './mocks/mock-geo-helper.mjs';
 import { MockWeatherHelper } from './mocks/mock-weather-helper.mjs';
 import { settingsManager } from '../src/settings/settings-manager.mjs';
-import { buildRequests } from '../src/llm/jev/jev-device-selector.mjs';
+import { buildRequests, formatRanked } from '../src/llm/jev/jev-device-selector.mjs';
 
 const DEVICE_TOOLS = ['get_zones', 'get_device_types', 'get_devices_in_standard_zone', 'get_devices', 'set_device_capability'];
 
@@ -99,7 +99,7 @@ describe('smart_home tool', () => {
         const fake = fakeTypeSafe(wanted);
         vi.stubGlobal('fetch', fake.fetchImpl);
         const { tm, deviceManager } = await makeManager(homey);
-        return { run: tm.getToolHandlers()['smart_home'], deviceManager, ...fake };
+        return { run: tm.getToolHandlers()['smart_home'], tm, deviceManager, ...fake };
     }
 
     it('turns off exactly the devices Jev selects', async () => {
@@ -117,6 +117,31 @@ describe('smart_home tool', () => {
         const asked = new Set(bodies.flatMap(b => Object.values<any>(b.questions).map(q => q.instructions.device.name)));
         expect([...asked]).toEqual(['Office Thermostat']);
         expect(bodies[0].state).toEqual({ command: 'the office', speaker_room: 'Office' });
+    });
+
+    it('offers the exact room names as the room enum, read when the definitions are', async () => {
+        const { deviceManager } = await setup([]);
+        const { tm } = await makeManager(homey);
+        const room = () => (tm.getToolDefinition('smart_home')!.parameters as any).properties.room;
+        expect(room().enum).toEqual(deviceManager.getZones());
+        expect(room().description).toContain('(Office)');
+        // Survives serialization, which is how every provider sends it.
+        const sent = JSON.parse(JSON.stringify(tm.getToolDefinitions())).find((t: any) => t.name === 'smart_home');
+        expect(sent.parameters.properties.room.enum).toEqual(deviceManager.getZones());
+    });
+
+    it('sends a named room to Jev as the targeted room, matched case-insensitively', async () => {
+        const { run, bodies } = await setup([]);
+        await run({ action: 'turn_off', target: 'the lights', room: 'kitchen' });
+        expect(bodies[0].state).toEqual({ command: 'the lights', speaker_room: 'Kitchen' });
+    });
+
+    it('refuses a room that is not a zone without asking Jev', async () => {
+        const { run, fetchImpl } = await setup([]);
+        const res = await run({ action: 'turn_off', target: 'the lights', room: 'the gym' });
+        expect(res.error.code).toBe('UNKNOWN_ROOM');
+        expect(res.error.message).toContain('Kitchen');
+        expect(fetchImpl).not.toHaveBeenCalled();
     });
 
     it('reports the closest devices when nothing clears the threshold', async () => {
@@ -157,7 +182,7 @@ describe('smart_home tool', () => {
     });
 
     it('asks for confirmation above 10 devices', async () => {
-        const { run } = await setup([
+        const { run, tm } = await setup([
             'Living Room Main Light', 'Living Room Floor Lamp', 'Living Room TV Socket', 'Kitchen Ceiling Light',
             'Kitchen Under Cabinet Lights', 'Kitchen Coffee Machine', 'Bedroom Main Light', 'Bedroom Bedside Lamp',
             'Bedroom Phone Charger', 'Office Desk Light', 'Office Ceiling Light', 'Office Reading Lamp',
@@ -169,8 +194,76 @@ describe('smart_home tool', () => {
         // Now all 12 are on -> 12 to change: gated.
         const off = await run({ action: 'turn_off', target: 'everything everywhere' });
         expect(off.error.code).toBe('CONFIRMATION_REQUIRED');
-        const confirmed = await run({ action: 'turn_off', target: 'everything everywhere', confirmed: true });
+        tm.noteUserTurn(); // the user says yes
+        // The model may reword target on the re-run; the request is the same.
+        const confirmed = await run({ action: 'turn_off', target: 'all lights everywhere', confirmed: true });
         expect(confirmed.changed).toHaveLength(12);
+    });
+
+    describe('confirmation is granted by the tool, not the model', () => {
+        const ALL = [
+            'Living Room Main Light', 'Living Room Floor Lamp', 'Living Room TV Socket', 'Kitchen Ceiling Light',
+            'Kitchen Under Cabinet Lights', 'Kitchen Coffee Machine', 'Bedroom Main Light', 'Bedroom Bedside Lamp',
+            'Bedroom Phone Charger', 'Office Desk Light', 'Office Ceiling Light', 'Office Reading Lamp',
+        ];
+
+        it('refuses confirmed=true on a first call', async () => {
+            const { run, tm } = await setup(ALL);
+            tm.noteUserTurn();
+            const res = await run({ action: 'turn_on', target: 'everything everywhere', confirmed: true });
+            expect(res.ok).toBe(true); // 5 to change: under the gate
+            const off = await run({ action: 'turn_off', target: 'everything everywhere', confirmed: true });
+            expect(off.error.code).toBe('CONFIRMATION_REQUIRED');
+            expect(off.error.message).toContain('was not accepted');
+        });
+
+        it('refuses a re-run in the same response, before the user has spoken', async () => {
+            const { run } = await setup(ALL);
+            await run({ action: 'turn_on', target: 'everything everywhere' });
+            expect((await run({ action: 'turn_off', target: 'everything everywhere' })).error.code).toBe('CONFIRMATION_REQUIRED');
+            const again = await run({ action: 'turn_off', target: 'everything everywhere', confirmed: true });
+            expect(again.error.code).toBe('CONFIRMATION_REQUIRED');
+        });
+
+        it('does not carry a confirmation over to a different request', async () => {
+            const { run, tm } = await setup(ALL);
+            await run({ action: 'turn_on', target: 'everything everywhere' });
+            expect((await run({ action: 'turn_off', target: 'everything everywhere' })).error.code).toBe('CONFIRMATION_REQUIRED');
+            tm.noteUserTurn();
+            // The fake selects the same 12 devices for any room, so this is a
+            // different request (room set) over the limit: no grant for it.
+            const other = await run({ action: 'turn_off', target: 'the lights', room: 'Kitchen', confirmed: true });
+            expect(other.error.code).toBe('CONFIRMATION_REQUIRED');
+        });
+
+        it('expires', async () => {
+            const { run, tm } = await setup(ALL);
+            await run({ action: 'turn_on', target: 'everything everywhere' });
+            vi.useFakeTimers({ now: Date.now(), toFake: ['Date'] });
+            try {
+                expect((await run({ action: 'turn_off', target: 'everything everywhere' })).error.code).toBe('CONFIRMATION_REQUIRED');
+                tm.noteUserTurn();
+                vi.setSystemTime(Date.now() + ToolManager.CONFIRMATION_TTL_MS + 1);
+                const late = await run({ action: 'turn_off', target: 'everything everywhere', confirmed: true });
+                expect(late.error.code).toBe('CONFIRMATION_REQUIRED');
+            } finally {
+                vi.useRealTimers();
+            }
+        });
+
+        it('guards set_device_capability the same way', async () => {
+            const { tm, deviceManager } = await setup([]);
+            const ids = deviceManager.getSmartHomeDevices(undefined, undefined, 100).devices
+                .filter(d => d.capabilities.some(c => c.startsWith('onoff='))).map(d => d.id);
+            expect(ids.length).toBeGreaterThan(10);
+            homey.setMockSetting('jev_enabled', false);
+            tm.refreshJevTools();
+            const set = tm.getToolHandlers()['set_device_capability'];
+            const args = { deviceIds: ids, capabilityId: 'onoff', newValue: false, allow_cross_zone: true };
+            expect((await set({ ...args, confirmed: true })).error.code).toBe('CONFIRMATION_REQUIRED');
+            tm.noteUserTurn();
+            expect((await set({ ...args, confirmed: true })).ok).toBe(true);
+        });
     });
 
     it('get_status returns the selected devices with their values and changes nothing', async () => {
@@ -215,6 +308,53 @@ describe('Jev request building', () => {
         const heater: any = req.questions['d2__clarity'];
         expect(heater.instructions.similar_devices_in_room).toBeUndefined();
         expect(heater.instructions.question).toContain('only device of its type');
+    });
+});
+
+describe('Jev selection rule', () => {
+    // Answers each question with a fixed level per device and dimension
+    // (levels: clarity 0-3, room 0-2, type 0-2).
+    function client(levels: Record<string, { clarity: number; room: number; type: number }>) {
+        return {
+            systemOneBatch: async (requests: any[]) => ({
+                stats: requests.map(() => ({ ms: 1, attempts: 1 })),
+                responses: requests.map(r => ({
+                    answers: Object.fromEntries(Object.entries<any>(r.questions).map(([id, q]) => {
+                        const dim = id.split('__')[1] as 'clarity' | 'room' | 'type';
+                        const legend = Object.fromEntries(q.criteria.map((c: string, i: number) => [String(i), c]));
+                        return [id, { type: 'score', score: levels[q.instructions.device.name][dim], legend, probabilities: {}, confidence: 1 }];
+                    })),
+                })),
+            }),
+        } as any;
+    }
+    const dev = (name: string) => ({ id: name, name, zone: 'Gym', zones: ['Gym'], type: 'socket', capabilities: ['onoff=true'] });
+
+    it('drops a device that fails one dimension even when the average clears the threshold', async () => {
+        const { selectDevices } = await import('../src/llm/jev/jev-device-selector.mjs');
+        const sel = await selectDevices(client({
+            // clarity 1, room 1, type 1/2 -> average 0.83, but type is below its floor
+            'Treadmill': { clarity: 3, room: 2, type: 1 },
+            'Lamp socket': { clarity: 2, room: 2, type: 2 },
+        }), 'the lights in the gym', 'Hall', [dev('Treadmill'), dev('Lamp socket')]);
+        expect(sel.selected.map(d => d.name)).toEqual(['Lamp socket']);
+        const treadmill = sel.ranked.find(r => r.device.name === 'Treadmill')!;
+        expect(treadmill.weighted).toBeGreaterThan(0.7);
+        expect(treadmill.vetoedBy).toEqual(['type']);
+    });
+});
+
+describe('Jev ranking log', () => {
+    it('shows each dimension, the selection mark and the vetoes', () => {
+        const dev = (name: string, zone: string) => ({ id: name, name, zone, zones: [zone], type: 'light', capabilities: [] });
+        const s = (clarity: number, room: number, type: number) => ({
+            clarity: { value: clarity, confidence: 1 }, room: { value: room, confidence: 1 }, type: { value: type, confidence: 1 },
+        });
+        const line = formatRanked([
+            { device: dev('Utelys', 'Ute'), scores: s(2 / 3, 1, 1), weighted: 8 / 9, vetoedBy: [], selected: true },
+            { device: dev('Taklys', 'Trimrom'), scores: s(1 / 3, 0, 1), weighted: 4 / 9, vetoedBy: ['room'], selected: false },
+        ]);
+        expect(line).toBe('Utelys [Ute] ✓ 0.89 c0.67 r1 t1; Taklys [Trimrom] veto:room 0.44 c0.33 r0 t1');
     });
 });
 

@@ -182,6 +182,7 @@ describe('ToolManager set_device_capability safety gates', () => {
         expect(res.ok).toBe(false);
         expect(res.error.code).toBe('CONFIRMATION_REQUIRED');
 
+        toolManager.noteUserTurn(); // the user says yes
         res = await setCapability({ deviceIds: ids, capabilityId: 'onoff', newValue: false, allow_cross_zone: true, confirmed: true });
         expect(res.ok).toBe(true);
     });

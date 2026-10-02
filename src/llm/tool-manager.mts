@@ -12,7 +12,7 @@ import { MusicAssistantClient, getMusicAssistantClient, MaPlayer, MaMediaItem, M
 import { getPlayAcknowledgement } from "./instructions/music-instructions.mjs";
 import { getSearchAcknowledgement } from "./instructions/search-instructions.mjs";
 import { TypeSafeClient } from "./jev/typesafe-client.mjs";
-import { selectDevices, JevCandidate } from "./jev/jev-device-selector.mjs";
+import { selectDevices, formatRanked, JevCandidate } from "./jev/jev-device-selector.mjs";
 import { JEV_ACTIONS, JEV_VALUE_ACTIONS, planJevWrite, capabilityValues, jevCandidates } from "./jev/jev-actions.mjs";
 
 type ToolHandler = (args: any) => Promise<any> | any;
@@ -41,6 +41,18 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
     private tools: Map<string, ToolDefinition> = new Map();
     private logger = createLogger('ToolManager', true);
     private standardZone: string;
+
+    // The >10-device confirmation is granted by the tool, not by the model:
+    // a CONFIRMATION_REQUIRED result records what was refused, and
+    // confirmed=true only passes for that same request AFTER the user has
+    // spoken again. Live, gpt-realtime-mini sent confirmed=true on the very
+    // first call for "turn off all the lights in the whole house" (1 run in
+    // 3), which skipped the question entirely.
+    private userTurns = 0;
+    private pendingConfirmation: { key: string; count: number; turn: number; at: number } | null = null;
+    static readonly CONFIRMATION_TTL_MS = 2 * 60 * 1000;
+    // Jev may select a slightly different set on the confirmed re-run.
+    static readonly CONFIRMATION_SLACK = 2;
 
     // "Nothing here" fallback (setting `zone_fallback_enabled`): the devices
     // get_devices_in_standard_zone handed back from ANOTHER zone because the
@@ -163,6 +175,37 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
      * Host hook awaited before every tool runs (see execute). The device points
      * this at the turn's in-flight device/zone refetch.
      */
+    /**
+     * The user said something (voice activity or a final transcript; either
+     * may be the only one a provider reports). Opens the window in which a
+     * pending >10-device confirmation can be granted.
+     */
+    noteUserTurn(): void {
+        this.userTurns++;
+    }
+
+    /**
+     * The >10-device gate. `key` identifies the request well enough that a
+     * confirmation cannot be carried over to a different one. Returns null when
+     * the write may go ahead, else the CONFIRMATION_REQUIRED result.
+     */
+    private confirmationGate(key: string, count: number, confirmed: boolean | undefined): any | null {
+        const pending = this.pendingConfirmation;
+        const now = Date.now();
+        if (confirmed === true && pending && pending.key === key
+            && this.userTurns > pending.turn
+            && now - pending.at <= ToolManager.CONFIRMATION_TTL_MS
+            && count <= pending.count + ToolManager.CONFIRMATION_SLACK) {
+            this.pendingConfirmation = null;
+            return null;
+        }
+        this.pendingConfirmation = { key, count, turn: this.userTurns, at: now };
+        const why = confirmed === true
+            ? " confirmed=true was not accepted: it only counts after this result has been put to the user and they agreed. Ask them now."
+            : "";
+        return { ok: false, error: { code: "CONFIRMATION_REQUIRED", message: `Refusing to change ${count} devices without explicit confirmation.${why}` } };
+    }
+
     setBeforeRun(hook: (() => Promise<void>) | undefined): void {
         this.beforeRun = hook;
     }
@@ -1702,7 +1745,7 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
                 required: ["deviceIds", "capabilityId", "newValue"],
                 additionalProperties: false
             },
-            handler: (args) => this.writeCapability(args),
+            handler: (args) => this.writeCapability(args, true),
         });
     }
 
@@ -1715,7 +1758,7 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
     private async writeCapability({ deviceIds, capabilityId, newValue, expected_zone, expected_type, allow_cross_zone, confirmed }: {
         deviceIds: string[]; capabilityId: string; newValue: any;
         expected_zone?: string; expected_type?: string; allow_cross_zone?: boolean; confirmed?: boolean;
-    }): Promise<any> {
+    }, gateConfirmation: boolean = false): Promise<any> {
         // S3: don't rely on the model honoring the JSON schema —
         // whitelist the capability and coerce/clamp the value in code.
         const validated = this.validateCapabilityWrite(capabilityId, newValue);
@@ -1764,8 +1807,11 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
             }
             return { ok: false, error: { code: "NO_MATCHING_DEVICES_FOR_TYPE", message: "No devices match the expected type/zone for this action." } };
         }
-        if (deduped > 10 && confirmed !== true) {
-            return { ok: false, error: { code: "CONFIRMATION_REQUIRED", message: `Refusing to change ${deduped} devices without explicit confirmation.` } };
+        // smart_home runs the gate itself (on its own request) before it calls
+        // in here, so only the set_device_capability tool call is gated.
+        if (deduped > 10 && gateConfirmation) {
+            const refused = this.confirmationGate(JSON.stringify(['set_device_capability', capabilityId, value]), deduped, confirmed);
+            if (refused) return refused;
         }
 
         // S3/H4: unlocking is physical security. Two code-enforced rules
@@ -1797,6 +1843,7 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
     }
 
     private registerJevTools(): void {
+        const toolManager = this;
         this.registerTool({
             type: "function",
             name: "smart_home",
@@ -1811,7 +1858,27 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
                     },
                     target: {
                         type: "string",
-                        description: "Which devices, as a short self-contained description in the user's words, including the room if the user named one: 'the lights in the kitchen', 'the lamp by the sofa', 'all lights everywhere', 'the front door'. Resolve words like 'it' or 'them' from the conversation. Leave out the room when the user did not name one — the user's own room is then assumed.",
+                        description: "Which devices, as a short description in the user's words WITHOUT the room — the room goes in 'room': 'the lights', 'the ceiling light', 'the lamp by the sofa', 'the front door', 'all lights everywhere'. Resolve words like 'it' or 'them' from the conversation.",
+                    },
+                    // The room is a closed list rather than words in target:
+                    // Jev matches an exact zone name reliably, but read an
+                    // informal or inflected one ("trimmen", "trimrommet" for the
+                    // zone "Trimrom") as "no room named" and acted on the
+                    // speaker's room instead. Asked to copy exact names into free
+                    // text, the conversation model kept inflecting them. A getter
+                    // because zones load after the tool registers and the
+                    // satellite's zone can change; it is read when the session
+                    // is configured.
+                    get room(): Record<string, unknown> {
+                        const rooms = toolManager.deviceManager.getZones();
+                        // Named only when it is a real zone (it starts as "<Unknown Zone>").
+                        return {
+                            type: "string",
+                            ...(rooms.length > 0 ? { enum: rooms } : {}),
+                            description: "The room the user named, as its exact name from the list — pick the one they meant even when they said it informally, shortened or inflected. " +
+                                `Leave it out when the user named no room: their own room${rooms.includes(toolManager.standardZone) ? ` (${toolManager.standardZone})` : ''} is then used — never ask which room. ` +
+                                "Also leave it out for whole-home requests ('everywhere', 'the whole house'), which go in target.",
+                        };
                     },
                     value: {
                         type: "number",
@@ -1826,13 +1893,25 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
         });
     }
 
-    private async runSmartHome({ action, target, value, confirmed }: { action: string; target: string; value?: number; confirmed?: boolean }): Promise<any> {
+    private async runSmartHome({ action, target, room, value, confirmed }: { action: string; target: string; room?: string; value?: number; confirmed?: boolean }): Promise<any> {
         if (!JEV_ACTIONS.includes(action)) {
             return { ok: false, error: { code: "INVALID_ACTION", message: `Unknown action '${action}'.` } };
         }
         const targetText = String(target ?? '').trim();
         if (!targetText) {
             return { ok: false, error: { code: "MISSING_TARGET", message: "Describe which devices the action is for." } };
+        }
+        // The enum is a request, not a guarantee: map case-insensitively to
+        // the real zone name and refuse anything else rather than guess.
+        let targetRoom = this.standardZone;
+        const roomText = String(room ?? '').trim();
+        if (roomText) {
+            const rooms = this.deviceManager.getZones();
+            const match = rooms.find(r => r.toLowerCase() === roomText.toLowerCase());
+            if (!match) {
+                return { ok: false, error: { code: "UNKNOWN_ROOM", message: `There is no room named '${roomText}'. Use one of: ${rooms.join(', ')} — or leave room out for the user's own room.` } };
+            }
+            targetRoom = match;
         }
         const numeric = typeof value === 'number' ? value : (value !== undefined ? Number(value) : undefined);
         if (JEV_VALUE_ACTIONS.includes(action) && (numeric === undefined || !Number.isFinite(numeric))) {
@@ -1853,7 +1932,9 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
         const lookupStarted = Date.now();
         let selection;
         try {
-            selection = await selectDevices(this.jevClient, targetText, this.standardZone, candidates);
+            // The named room goes to Jev as the room a roomless command targets —
+            // the case it resolves reliably — and target no longer carries one.
+            selection = await selectDevices(this.jevClient, targetText, targetRoom, candidates);
         } catch (error: any) {
             // error(), not the quieted info(): a failed lookup must reach the
             // log even without verbose logging.
@@ -1864,10 +1945,13 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
             return { ok: false, error: { code: "JEV_FAILED", message: "The smart-home device lookup service did not respond. Nothing was changed. This is a temporary service error, not an unclear request: do not ask which device, and do not name any devices — tell the user it failed and to try again." } };
         }
         this.logger.info('smart_home', 'TOOL',
-            `action=${action}, target="${targetText}", value=${numeric}, candidates=${candidates.length}, selected=${selection.selected.length} ` +
+            `action=${action}, target="${targetText}", room=${roomText ? targetRoom : `(own: ${targetRoom})`}, value=${numeric}, candidates=${candidates.length}, selected=${selection.selected.length} ` +
             `(${selection.selected.map(d => d.name).join(', ')}), requests=${selection.requests} [${selection.requestStats.map(r => `${r.ms}${'*'.repeat(r.attempts - 1)}`).join('/')} ms` +
             `${selection.requestStats.some(r => r.attempts > 1) ? ', * = one re-send each' : ''}], ` +
             `tokens=${selection.inputTokens}, jev ${selection.elapsedMs} ms, device list ${lookupStarted - toolStarted} ms`);
+        // The near misses with their per-dimension scores, so a wrong pick can
+        // be explained from the log alone (which dimension let it through).
+        this.logger.info('smart_home', 'TOOL', `top: ${formatRanked(selection.ranked.slice(0, 5))}`);
 
         if (selection.selected.length === 0) {
             return {
@@ -1903,8 +1987,11 @@ export class ToolManager extends (EventEmitter as new () => TypedEmitter<ToolMan
         }
 
         const toChange = Array.from(groups.values()).reduce((n, g) => n + g.ids.length, 0);
-        if (toChange > 10 && confirmed !== true) {
-            return { ok: false, error: { code: "CONFIRMATION_REQUIRED", message: `Refusing to change ${toChange} devices without explicit confirmation.` } };
+        if (toChange > 10) {
+            // Keyed on what the user asked for, not on target's wording, which
+            // the model may rephrase on the confirmed re-run.
+            const refused = this.confirmationGate(JSON.stringify(['smart_home', action, roomText ? targetRoom : null, numeric ?? null]), toChange, confirmed);
+            if (refused) return refused;
         }
 
         const changed: { name: string; zone: string }[] = [];
