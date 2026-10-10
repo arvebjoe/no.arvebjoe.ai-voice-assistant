@@ -12,6 +12,7 @@ import { createLogger, setVerboseLogging } from './src/helpers/logger.mjs';
 import { configureRemoteLogFromSettings } from './src/helpers/remote-log.mjs';
 import { recordingRegistry } from './src/helpers/recording-registry.mjs';
 import { DiscoveryWatcher } from './src/helpers/discovery-watcher.mjs';
+import { FlowAssistant } from './src/homey/flow-assistant.mjs';
 import homeyLogPkg from 'homey-log'; // requires "esModuleInterop": true in tsconfig
 const { Log } = homeyLogPkg;
 
@@ -28,6 +29,8 @@ export default class AiVoiceAssistantApp extends Homey.App implements AppService
   private apiHelper: ApiHelper | undefined;
   // Always-on mDNS observer behind the Debug page's "last seen devices" list.
   private discoveryWatcher: DiscoveryWatcher | undefined;
+  // Device-less Flow cards (speech URL / ask) — the app without a satellite.
+  private flowAssistant: FlowAssistant | undefined;
   private logger = createLogger('APP');
   private homeyLog: any;
   // Teardown bookkeeping (code_review_2 L5): every listener registered on
@@ -98,6 +101,10 @@ export default class AiVoiceAssistantApp extends Homey.App implements AppService
     await this.deviceManager.init();
     await this.deviceManager.fetchData();
 
+    this.flowAssistant = new FlowAssistant(this.homey, this);
+    this.flowAssistant.init();
+    this.registerAppFlowCards(this.flowAssistant);
+
     this.logger.info('AI voice assistant initialized successfully');
   }
 
@@ -118,6 +125,9 @@ export default class AiVoiceAssistantApp extends Homey.App implements AppService
     this.discoveryWatcher?.stop();
     this.discoveryWatcher = undefined;
 
+    this.flowAssistant?.dispose();
+    this.flowAssistant = undefined;
+
     this.geoHelper?.dispose();
     // DeviceManager before ApiHelper: its dispose() unregisters through
     // apiHelper.devices, which is gone once the API is destroyed.
@@ -133,6 +143,36 @@ export default class AiVoiceAssistantApp extends Homey.App implements AppService
   /**
    * Set up global error handling that works even when Homey framework intercepts errors
    */
+  /**
+   * The app-level Flow cards: no device argument, so they work for users with
+   * no satellite at all (e.g. AI announcements on a Sonos). Failures are thrown,
+   * not swallowed, so the Flow shows the error instead of carrying on with an
+   * empty URL.
+   */
+  private registerAppFlowCards(assistant: FlowAssistant) {
+    const voiceAutocomplete = (query: string) => assistant.voiceOptions(query);
+    // The optional autocomplete arg arrives as { name, id } or not at all.
+    const voiceOf = (args: any): string | undefined => args.voice?.id || undefined;
+
+    const speechCard = this.homey.flow.getActionCard('create-speech-url');
+    speechCard.registerArgumentAutocompleteListener('voice', voiceAutocomplete);
+    speechCard.registerRunListener(async (args: any) => {
+      const { url, duration } = await assistant.speak(String(args.text ?? ''), voiceOf(args));
+      return { url, duration };
+    });
+
+    this.homey.flow.getActionCard('ask-assistant').registerRunListener(async (args: any) => {
+      return { answer: await assistant.ask(String(args.question ?? '')) };
+    });
+
+    const askSpeechCard = this.homey.flow.getActionCard('ask-assistant-speech-url');
+    askSpeechCard.registerArgumentAutocompleteListener('voice', voiceAutocomplete);
+    askSpeechCard.registerRunListener(async (args: any) => {
+      const { url, answer, duration } = await assistant.askAndSpeak(String(args.question ?? ''), voiceOf(args));
+      return { url, answer, duration };
+    });
+  }
+
   private setupGlobalErrorHandling() {
 
     // Handle uncaught exceptions that might escape Homey's error handling

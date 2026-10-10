@@ -665,6 +665,30 @@ it turns itself on whenever the assistant wakes and off again when the turn ends
 * Plus standard device actions (*Start conversation* on = open the mic without the wake word,
   off = cancel the running conversation; set volume; mute/unmute)
 
+### Without a voice device: AI announcements on any speaker
+
+Three action cards belong to the app itself rather than to a device, so they work even if you
+have **no voice device at all** — for instance "dishwasher finished → generate a message → play
+it on Sonos". Find them under the app in the Flow picker:
+
+* **Create speech audio** — turns text into speech with the selected AI engine's voice and returns
+  a **url** (and **duration**) you can hand to the Sonos *Play a URL* action, a Chromecast, or any
+  speaker that plays a URL
+* **Ask assistant** — asks the assistant and returns its **answer** as text. It can read and
+  control your home exactly as it does by voice, so *"Write a short goodnight message that
+  mentions tomorrow's weather"* or *"Which windows are open?"* both work
+* **Ask assistant and create speech audio** — both in one: returns the **answer** text and a
+  **url** to it spoken
+
+The speech cards take an optional **voice**; leave it empty to use the app's voice. Engine,
+model, language and AI instructions come from the app settings, as for the devices. Each ask
+stands alone (no memory of the previous one), and since there is no device there is no room to
+default to — name the room in the question when it matters. The audio is MP3, 48 kHz, served from
+Homey on your LAN, and the link is valid for about five minutes, so play it right away rather
+than storing it. Asking needs a cloud engine's API key or a configured custom pipeline; with a
+realtime engine the app keeps the connection open for a few minutes after the last card and then
+closes it.
+
 > Names may vary slightly as the app evolves — see the in-app Flow picker for the authoritative
 > list.
 

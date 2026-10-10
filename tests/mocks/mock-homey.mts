@@ -41,6 +41,18 @@ export class MockHomey {
         createNotification: async (n: { excerpt: string }) => { this.notificationsSent.push(n); },
     };
 
+    /** App-level Flow action cards the app registered listeners on, by card id. */
+    actionCards: Record<string, { run?: Function; autocomplete: Record<string, Function> }> = {};
+    flow = {
+        getActionCard: (cardId: string) => {
+            const card = this.actionCards[cardId] ??= { autocomplete: {} };
+            return {
+                registerRunListener: (fn: Function) => { card.run = fn; },
+                registerArgumentAutocompleteListener: (arg: string, fn: Function) => { card.autocomplete[arg] = fn; },
+            };
+        },
+    };
+
     log(..._args: any[]): void { }
     error(..._args: any[]): void { }
 

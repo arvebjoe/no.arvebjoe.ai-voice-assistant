@@ -1,0 +1,64 @@
+{
+  "title": {
+    "en": "Ask assistant and create speech audio"
+  },
+  "titleFormatted": {
+    "en": "Ask assistant [[question]] and speak the answer with voice [[voice]]"
+  },
+  "hint": {
+    "en": "Asks the AI assistant, then turns its answer into natural speech and gives you a link to the audio (MP3) together with the answer text. No voice device needed — pass the link to a Sonos, Chromecast or any speaker that can play a URL. Leave the voice empty to use the app's voice. The link stays valid for about five minutes, so play it right away rather than storing it."
+  },
+  "args": [
+    {
+      "type": "text",
+      "name": "question",
+      "title": {
+        "en": "Question"
+      },
+      "placeholder": {
+        "en": "Write a cheerful one-sentence announcement that the dishwasher is done."
+      }
+    },
+    {
+      "type": "autocomplete",
+      "name": "voice",
+      "required": false,
+      "title": {
+        "en": "Voice"
+      },
+      "placeholder": {
+        "en": "App voice"
+      }
+    }
+  ],
+  "tokens": [
+    {
+      "name": "url",
+      "type": "string",
+      "title": {
+        "en": "Audio URL"
+      },
+      "example": {
+        "en": "http://192.168.1.10/app/no.arvebjoe.ai-voice-assistant/userdata/audio/flow_1a2b.mp3"
+      }
+    },
+    {
+      "name": "answer",
+      "type": "string",
+      "title": {
+        "en": "Answer"
+      },
+      "example": {
+        "en": "The dishwasher is done — time to empty it!"
+      }
+    },
+    {
+      "name": "duration",
+      "type": "number",
+      "title": {
+        "en": "Duration"
+      },
+      "example": 3
+    }
+  ]
+}

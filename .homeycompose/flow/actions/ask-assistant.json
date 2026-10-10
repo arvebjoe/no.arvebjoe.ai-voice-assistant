@@ -1,0 +1,35 @@
+{
+  "title": {
+    "en": "Ask assistant"
+  },
+  "titleFormatted": {
+    "en": "Ask assistant [[question]]"
+  },
+  "hint": {
+    "en": "Sends a question or an instruction to the AI assistant and gives you its answer as text. No voice device needed. The assistant can read and control your home just as it does when you talk to it, so \"Write a short goodnight message that mentions tomorrow's weather\" or \"Which windows are open?\" both work."
+  },
+  "args": [
+    {
+      "type": "text",
+      "name": "question",
+      "title": {
+        "en": "Question"
+      },
+      "placeholder": {
+        "en": "Write a one-sentence announcement that the dishwasher is done."
+      }
+    }
+  ],
+  "tokens": [
+    {
+      "name": "answer",
+      "type": "string",
+      "title": {
+        "en": "Answer"
+      },
+      "example": {
+        "en": "The dishwasher is done — time to empty it!"
+      }
+    }
+  ]
+}

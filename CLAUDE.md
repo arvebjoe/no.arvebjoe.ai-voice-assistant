@@ -34,6 +34,8 @@ Source files are `.mts` (ESM TypeScript) compiled by `tsc` to `.homeybuild/`. Im
 
 `AiVoiceAssistantApp` (the `Homey.App` entry point) constructs the shared services in order and stores them on the app instance: `settingsManager` (init), `GeoHelper`, `WeatherHelper`, `WebServer`, `ApiHelper`, `DeviceManager`. Devices reach these via `(this.homey as any).app.deviceManager` etc. — they are not re-instantiated per device.
 
+The app also owns a **device-less assistant** for its own Flow cards (`create-speech-url`, `ask-assistant`, `ask-assistant-speech-url` — no `device` arg, registered in `app.mts` `registerAppFlowCards`): `src/homey/flow-assistant.mts` lazily builds its own provider + ToolManager (empty zone, no timers) from the same global settings, marks itself stale on any settings save and rebuilds on the next call, serializes every call through one queue (text asks share the `text.done` broadcast; a per-card voice override must not leak), resets the conversation before each ask, re-encodes `textToSpeech()` FLAC to 48 kHz MP3 for third-party speakers, and closes the provider after 5 idle minutes. Built for users with no satellite (AI announcements on Sonos etc.).
+
 ### Driver/device inheritance
 
 Both drivers are thin subclasses of shared base classes in `src/homey/`:

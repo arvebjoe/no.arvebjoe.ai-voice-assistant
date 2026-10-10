@@ -1,0 +1,54 @@
+{
+  "title": {
+    "en": "Create speech audio"
+  },
+  "titleFormatted": {
+    "en": "Create speech of [[text]] with voice [[voice]]"
+  },
+  "hint": {
+    "en": "Turns text into natural speech with the AI engine chosen in the app settings and gives you a link to the audio (MP3). No voice device needed — pass the link to a Sonos, Chromecast or any speaker that can play a URL. Leave the voice empty to use the app's voice. The link stays valid for about five minutes, so play it right away rather than storing it."
+  },
+  "args": [
+    {
+      "type": "text",
+      "name": "text",
+      "title": {
+        "en": "Text"
+      },
+      "placeholder": {
+        "en": "The dishwasher is done."
+      }
+    },
+    {
+      "type": "autocomplete",
+      "name": "voice",
+      "required": false,
+      "title": {
+        "en": "Voice"
+      },
+      "placeholder": {
+        "en": "App voice"
+      }
+    }
+  ],
+  "tokens": [
+    {
+      "name": "url",
+      "type": "string",
+      "title": {
+        "en": "Audio URL"
+      },
+      "example": {
+        "en": "http://192.168.1.10/app/no.arvebjoe.ai-voice-assistant/userdata/audio/flow_1a2b.mp3"
+      }
+    },
+    {
+      "name": "duration",
+      "type": "number",
+      "title": {
+        "en": "Duration"
+      },
+      "example": 3
+    }
+  ]
+}

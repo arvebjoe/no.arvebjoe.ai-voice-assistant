@@ -1,5 +1,15 @@
 # TODO — single source of truth
 
+## Device-less Flow cards — live verification (forum request: AI announcements on Sonos)
+
+- [ ] **Live-test the three app-level cards on a real Homey** (`create-speech-url`, `ask-assistant`,
+  `ask-assistant-speech-url`; `src/homey/flow-assistant.mts`). Unit-tested with a fake provider only.
+  Check: the URL plays on a Sonos via *Play a URL*; the voice autocomplete lists the current
+  engine's voices and the override is audible; an ask that controls a device works with no room
+  of its own; each engine (OpenAI realtime, Gemini, Mistral, custom pipeline) answers; a settings
+  save mid-use rebuilds cleanly; the realtime socket closes after 5 idle minutes. Then reply on the
+  forum thread.
+
 ## Model refusals — optional follow-ups (from the 1.5.4 work, not started)
 
 - [ ] Let the Gemini and Mistral providers emit `model_unavailable` on their equivalent

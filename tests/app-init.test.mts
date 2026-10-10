@@ -101,6 +101,21 @@ describe('AiVoiceAssistantApp.onInit', () => {
         }
     });
 
+    it('registers the device-less Flow cards, with voice autocomplete on the speech ones', async () => {
+        await app.onInit();
+
+        expect(Object.keys(homey.actionCards).sort()).toEqual(['ask-assistant', 'ask-assistant-speech-url', 'create-speech-url']);
+        for (const card of Object.values<any>(homey.actionCards)) {
+            expect(card.run).toBeTypeOf('function');
+        }
+        expect(homey.actionCards['create-speech-url'].autocomplete.voice).toBeTypeOf('function');
+        expect(homey.actionCards['ask-assistant-speech-url'].autocomplete.voice).toBeTypeOf('function');
+
+        const voices = await homey.actionCards['create-speech-url'].autocomplete.voice('');
+        expect(voices.length).toBeGreaterThan(0);
+        expect(voices[0]).toEqual({ name: expect.any(String), id: expect.any(String) });
+    });
+
     it('L5 — onUninit disposes the shared services', async () => {
         await app.onInit();
         const geoSpy = vi.spyOn(app.geoHelper, 'dispose');
