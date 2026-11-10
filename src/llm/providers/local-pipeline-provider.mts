@@ -902,7 +902,7 @@ export class LocalPipelineProvider extends (EventEmitter as new () => TypedEmitt
                 this.logger.error('sendTextForTextResponse failed', e);
                 // Match the Gemini provider: resolve the waiting device promise
                 // with an error text instead of leaving it to time out.
-                this.emit("text.done", { text: `Error: ${e?.message ?? e}` });
+                this.emit("text.done", { text: `Error: ${e?.message ?? e}`, error: true });
             });
     }
 

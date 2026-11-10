@@ -466,6 +466,11 @@ length you configured when loading the model).
   or background noise keeps triggering the assistant, lower it if it misses quiet or distant
   speakers. **Silence before reply**: raise it if the assistant cuts you off mid-sentence, lower
   it for snappier replies. Leave both empty for the defaults.
+* **Models** *(Gemini only)* — which Gemini model handles the **voice conversation**, **text**
+  questions (Flow cards) and **speech** (the *Say* and *Create speech* cards). The lists are
+  fetched live from Google for your API key and show only the fast *Flash* models; **Default**
+  uses the app's recommended model. If Google retires a model, the app switches to the newest
+  available one by itself and sends you a notification.
 * **Voice** — the voice the assistant speaks with. The list adapts to the selected provider
   (and, for the Custom pipeline, to the selected TTS backend).
 * **Optional AI instructions** — personality or behaviour tweaks. Be careful: this **will**

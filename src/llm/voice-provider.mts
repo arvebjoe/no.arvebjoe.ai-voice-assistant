@@ -63,8 +63,13 @@ export type VoiceProviderEvents = {
      * the model now in use instead, or null when the chain is exhausted. The
      * host should tell the user once - this is a settings problem on the
      * provider's dashboard, not something the app can fix.
+     *
+     * `reason: "retired"` (Gemini) means the model no longer exists for this
+     * key at all - Google retired it - so the fix is picking another model in
+     * the app settings, not a dashboard permission. `stage: "live"` is the
+     * realtime voice session model itself. Absent reason = "no_access".
      */
-    model_unavailable: (d: { stage: "stt" | "tts" | "llm"; model: string; fallback: string | null }) => void;
+    model_unavailable: (d: { stage: "stt" | "tts" | "llm" | "live"; model: string; fallback: string | null; reason?: "no_access" | "retired" }) => void;
 
     "conversation.item.created": () => void;
 

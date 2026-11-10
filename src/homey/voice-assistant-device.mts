@@ -74,6 +74,10 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
   // baked into the Realtime websocket URL, so a change needs a provider restart
   // (handleSettingsChange) rather than a session.update.
   private currentOpenAiModel: string = 'full';
+  // Last seen 'gemini_live_model' ("" = default). The live model is fixed at
+  // connect time, so a change needs a restart; the text and TTS models are read
+  // per call and need nothing.
+  private currentGeminiLiveModel: string = '';
   // Last seen advanced VAD tuning ('openai_vad_threshold' | 'openai_vad_silence_ms'),
   // as a composite key. The agent reads the settings itself at session config, so a
   // change just needs a provider restart to re-send turn_detection.
@@ -416,6 +420,7 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     // runtime provider switch and rebuild (see rebuildProvider).
     this.currentProviderId = settingsManager.getGlobal('voice_provider', DEFAULT_VOICE_PROVIDER);
     this.currentOpenAiModel = settingsManager.getGlobal('openai_model', 'full');
+    this.currentGeminiLiveModel = settingsManager.getGlobal('gemini_live_model', '') || '';
     this.currentOpenAiVadTuning = VoiceAssistantDevice.vadTuningKey(
       settingsManager.getGlobal('openai_vad_threshold'),
       settingsManager.getGlobal('openai_vad_silence_ms'));
@@ -1087,9 +1092,13 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
     // That is a dashboard setting on the provider's side (OpenAI: Project ->
     // Limits -> Model usage), so the only useful thing we can do is say so, once
     // per model, and name what we fell back to.
-    this.provider.on('model_unavailable', ({ stage, model, fallback }) => {
-      const what = stage === 'stt' ? 'speech recognition' : stage === 'tts' ? 'speech output' : 'the language model';
+    this.provider.on('model_unavailable', ({ stage, model, fallback, reason }) => {
+      const what = stage === 'stt' ? 'speech recognition'
+        : stage === 'tts' ? 'speech output'
+          : stage === 'live' ? 'the voice conversation'
+            : 'the language model';
       const engine = this.engineLabel();
+      const retired = reason === 'retired';
       const consequence = fallback
         ? `Using **${fallback}** instead.`
         : (stage === 'stt'
@@ -1098,14 +1107,18 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
       // warn, not error: this is a handled condition (the fallback keeps the
       // turn alive), and Logger.error reports to Sentry — one captureException
       // per refused turn is exactly the noise COMPLETED.md §15 removed.
-      this.convo.warn(`${engine}: the project has no access to model ${model} (${what}). ${fallback ? `Falling back to ${fallback}.` : 'No fallback left.'}`);
+      this.convo.warn(`${engine}: ${retired ? `model ${model} is no longer available` : `the project has no access to model ${model}`} (${what}). ${fallback ? `Falling back to ${fallback}.` : 'No fallback left.'}`);
       if (VoiceAssistantDevice.notifiedUnavailableModels.has(model)) {
         return;
       }
       VoiceAssistantDevice.notifiedUnavailableModels.add(model);
-      this.homey.notifications?.createNotification?.({
-        excerpt: `AI Assistant: your ${engine} project has no access to the model **${model}** (${what}). ${consequence} Allow it in the ${engine} dashboard under Project → Limits → Model usage.`,
-      }).catch?.((err: unknown) => this.logger.error('Failed to send the model-unavailable notification', err));
+      // A retired model is fixed in the app settings (pick another model); a
+      // refused one in the provider's own dashboard.
+      const excerpt = retired
+        ? `AI Assistant: ${engine} no longer offers the model **${model}** (${what}). ${consequence} You can choose a model in the app settings.`
+        : `AI Assistant: your ${engine} project has no access to the model **${model}** (${what}). ${consequence} Allow it in the ${engine} dashboard under Project → Limits → Model usage.`;
+      this.homey.notifications?.createNotification?.({ excerpt })
+        .catch?.((err: unknown) => this.logger.error('Failed to send the model-unavailable notification', err));
     });
 
     // The agent websocket closed (idle timeout, network drop, or restart). This
@@ -1476,6 +1489,17 @@ export default abstract class VoiceAssistantDevice extends Homey.Device {
         this.logger.info(`OpenAI model quality changed from ${this.currentOpenAiModel} to ${newOpenAiModel}`);
         this.currentOpenAiModel = newOpenAiModel;
         if (this.currentProviderId === 'openai-realtime') {
+          needRestart = true;
+        }
+      }
+
+      // Gemini live model changed: like the OpenAI model, only a reconnect picks
+      // it up. (Text/TTS model changes apply on the next call by themselves.)
+      const newGeminiLiveModel = newSettings.gemini_live_model || '';
+      if (newGeminiLiveModel !== this.currentGeminiLiveModel) {
+        this.logger.info(`Gemini live model changed from '${this.currentGeminiLiveModel}' to '${newGeminiLiveModel}'`);
+        this.currentGeminiLiveModel = newGeminiLiveModel;
+        if (this.currentProviderId === 'gemini-realtime') {
           needRestart = true;
         }
       }

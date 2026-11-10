@@ -41,6 +41,7 @@ class FakeProvider extends EventEmitter {
     closed = 0;
     answer = 'The dishwasher is done.';
     echo = false;
+    failAsk = false;
 
     constructor(public options: any) {
         super();
@@ -61,7 +62,9 @@ class FakeProvider extends EventEmitter {
     }
     sendTextForTextResponse(q: string) {
         this.questions.push(q);
-        setTimeout(() => this.emit('text.done', { text: this.echo ? `re: ${q}` : this.answer }), 1);
+        setTimeout(() => this.emit('text.done', this.failAsk
+            ? { text: 'Error: {"error":{"code":400}}', error: true }
+            : { text: this.echo ? `re: ${q}` : this.answer }), 1);
     }
 }
 
@@ -148,6 +151,15 @@ describe('FlowAssistant', () => {
 
         expect(result).toEqual({ answer: 'The dishwasher is done.', url: 'http://homey/flow_x.mp3', duration: 1 });
         expect(created[0].voicesUsed).toEqual(['echo']);
+    });
+
+    it('a failed ask fails the card instead of speaking the error body', async () => {
+        await assistant.speak('warm up'); // build the provider
+        created[0].failAsk = true;
+        created[0].voicesUsed.length = 0;
+
+        await expect(assistant.askAndSpeak('Which lights are in the office?')).rejects.toThrow(/could not answer/);
+        expect(created[0].voicesUsed).toEqual([]); // nothing was synthesized
     });
 
     it('rebuilds the provider on the next call after a settings save', async () => {

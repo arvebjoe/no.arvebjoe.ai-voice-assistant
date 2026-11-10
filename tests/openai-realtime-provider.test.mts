@@ -432,6 +432,20 @@ describe('OpenAIRealtimeProvider (fake WebSocket harness)', () => {
             expect(body.instructions).toBeDefined();
         });
 
+        it('names the configured language and asks for a verbatim read', async () => {
+            makeProvider();
+            await provider.updateLanguage('no', 'Norwegian');
+            const fetchMock = vi.fn(async () => okFlac());
+            vi.stubGlobal('fetch', fetchMock);
+
+            await provider.textToSpeech('Flink du!');
+
+            const body = JSON.parse((fetchMock.mock.calls[0] as any)[1].body);
+            expect(body.input).toBe('Flink du!');
+            expect(body.instructions).toMatch(/Speak Norwegian/);
+            expect(body.instructions).toMatch(/exactly as written/);
+        });
+
         it('retries once on tts-1 when the project refuses the model, and tells the host', async () => {
             makeProvider();
             const unavailable = vi.fn();

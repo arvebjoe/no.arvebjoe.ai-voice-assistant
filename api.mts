@@ -2,6 +2,7 @@ import { getVoicesForProvider, DEFAULT_VOICE_PROVIDER } from './src/llm/voice-pr
 import { testLocalStage, StageTestRequest, StageTestResult } from './src/llm/providers/local/stage-tester.mjs';
 import { getLmStudioContext, LmStudioContextResult } from './src/llm/providers/local/lmstudio-context.mjs';
 import { claudeModelOptions, ClaudeModelOption } from './src/llm/providers/local/claude-client.mjs';
+import { geminiModelOptions, GeminiModelOptions } from './src/llm/providers/gemini-models.mjs';
 import { OPENAI_COMPAT_PRESETS, OpenAiCompatPreset } from './src/llm/providers/local/openai-compat.mjs';
 import { computeFeatureCosts, FeatureCostReport } from './src/settings/feature-costs.mjs';
 import { sendTestLogLine, RemoteLogTestRequest, RemoteLogTestResult } from './src/helpers/remote-log.mjs';
@@ -76,6 +77,16 @@ export default {
      */
     async getClaudeModels({ body }: { body: { key?: string } }): Promise<{ options: ClaudeModelOption[]; message: string }> {
         return claudeModelOptions(body?.key ?? '');
+    },
+
+    /**
+     * POST /gemini-models { key } — the flash models the given Gemini key can
+     * use, split by role (live / text / tts), for the Gemini section's three
+     * model dropdowns. POST for the same reason as /claude-models (the key must
+     * not ride in a URL). Never throws — each role always has the "" default.
+     */
+    async getGeminiModels({ body }: { body: { key?: string } }): Promise<{ options: GeminiModelOptions; message: string }> {
+        return geminiModelOptions(body?.key ?? '');
     },
 
     /**

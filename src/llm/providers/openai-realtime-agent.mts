@@ -8,6 +8,7 @@ import { InstructionState } from '../instruction-state.mjs';
 import { ReconnectPolicy } from '../reconnect-policy.mjs';
 import { isBlankOrHallucinatedTranscript, isVocabularyEchoTranscript } from '../transcript-hallucinations.mjs';
 import { settingsManager } from '../../settings/settings-manager.mjs';
+import { openAiTtsInstructions } from './tts-steering.mjs';
 
 /**
  * Event/option shapes now live in the provider-agnostic seam (`voice-provider.mts`).
@@ -564,8 +565,11 @@ export class OpenAIRealtimeProvider extends (EventEmitter as new () => TypedEmit
                     voice: this.options.voice,
                     input: text,
                     response_format: "flac", // mp3 | wav | opus | aac | flac | pcm
-                    // Only the gpt-4o-*-tts family takes steering instructions.
-                    ...(model.startsWith("gpt-") ? { instructions: "Speak in a natural, helpful tone suitable for a smart home assistant." } : {}),
+                    // Only the gpt-4o-*-tts family takes steering instructions -
+                    // and only it needs them: it is generative, so without a named
+                    // language and a verbatim rule it guesses the accent and
+                    // sometimes ad-libs words or laughter (see tts-steering.mts).
+                    ...(model.startsWith("gpt-") ? { instructions: openAiTtsInstructions(this.options.languageName) } : {}),
                 }),
             });
             if (r.ok) {

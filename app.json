@@ -87,6 +87,10 @@
       "method": "POST",
       "path": "/claude-models"
     },
+    "getGeminiModels": {
+      "method": "POST",
+      "path": "/gemini-models"
+    },
     "getFeatureCosts": {
       "method": "GET",
       "path": "/feature-costs"

@@ -7,12 +7,23 @@ import { IVoiceProvider, VoiceProviderEvents, VoiceProviderOptions } from "../vo
 import { InstructionState } from "../instruction-state.mjs";
 import { ReconnectPolicy } from "../reconnect-policy.mjs";
 import { pcmToFlacBuffer } from "../../helpers/audio-encoders.mjs";
+import { settingsManager } from "../../settings/settings-manager.mjs";
+import {
+    GeminiModelRole, GEMINI_DEFAULT_MODELS, GEMINI_MODEL_SETTINGS,
+    isGeminiModelGone, isGeminiOverloaded, isGeminiSpeechLanguageRejected, pickGeminiFallback,
+} from "./gemini-models.mjs";
 
-// Models are constants for now (no per-provider model setting yet). Swap here if
-// Google renames/retires a preview model.
-const GEMINI_LIVE_MODEL = "gemini-3.1-flash-live-preview"; // realtime audio session
-const GEMINI_TEXT_MODEL = "gemini-2.5-flash";              // one-shot text Q&A (ask-as-text)
-const GEMINI_TTS_MODEL = "gemini-2.5-flash-preview-tts";   // direct TTS (speak-text)
+// Which model serves each role (live session / text asks / direct TTS) is a
+// user setting with built-in defaults, and a model Google retires is replaced
+// automatically - see gemini-models.mts for why.
+
+/** How many replacement models one call may try before giving up. */
+const MAX_MODEL_FALLBACKS = 2;
+/** How many other models one call may try while the chosen one is overloaded. */
+const MAX_OVERLOAD_STANDINS = 3;
+/** How long a stand-in that answered keeps serving its role before the chosen model is tried again. */
+const OVERLOAD_STANDIN_HOLD_MS = 60_000;
+
 
 // Gemini's native-audio voice if none is configured (or the stored OpenAI voice
 // doesn't map to a Gemini one). Kore is a clear, neutral prebuilt voice.
@@ -170,6 +181,116 @@ export class GeminiLiveProvider extends (EventEmitter as new () => TypedEmitter<
         return this.ai;
     }
 
+    // --- model selection ------------------------------------------------------
+
+    /**
+     * Replacements chosen after Google reported a model gone, per role. Keyed
+     * by the CONFIGURED model they replace, so picking a different model in
+     * settings drops the replacement instead of overriding the user's choice.
+     */
+    private modelFallbacks: Partial<Record<GeminiModelRole, { from: string; to: string }>> = {};
+    /** Live models that failed as gone since the last successful setup (stops loops). */
+    private liveModelsTried = new Set<string>();
+    /** Live models that refused speechConfig.languageCode; connected without it from then on. */
+    private speechLanguageRejected = new Set<string>();
+
+    /** The model the user configured for a role (setting), or the built-in default. */
+    private configuredModel(role: GeminiModelRole): string {
+        const saved = settingsManager.getGlobal<string>(GEMINI_MODEL_SETTINGS[role], "");
+        return (typeof saved === "string" ? saved.trim() : "") || GEMINI_DEFAULT_MODELS[role];
+    }
+
+    /** The model to use for a role right now: the configured one, or its replacement. */
+    modelFor(role: GeminiModelRole): string {
+        const configured = this.configuredModel(role);
+        const fallback = this.modelFallbacks[role];
+        return fallback && fallback.from === configured ? fallback.to : configured;
+    }
+
+    /**
+     * `model` was reported gone: pick the best listed replacement not yet
+     * tried, remember it for this role and tell the host (which notifies the
+     * user once). Returns null when nothing else is available.
+     */
+    private async replaceGoneModel(role: GeminiModelRole, model: string, tried: ReadonlySet<string>): Promise<string | null> {
+        const fallback = await pickGeminiFallback(this.options.apiKey ?? "", role, tried);
+        if (fallback) {
+            this.modelFallbacks[role] = { from: this.configuredModel(role), to: fallback };
+        }
+        this.logger.warn(`Gemini model ${model} (${role}) is no longer available - ${fallback ? `switching to ${fallback}` : "no replacement found"}`);
+        this.emit("model_unavailable", {
+            stage: role === "tts" ? "tts" : role === "live" ? "live" : "llm",
+            model,
+            fallback,
+            reason: "retired",
+        });
+        return fallback;
+    }
+
+    /** The stand-in that last answered for a busy model, reused until `until`. */
+    private overloadStandIn: Partial<Record<GeminiModelRole, { from: string; model: string; until: number }>> = {};
+
+    /** Pause before retrying an overloaded model (static so tests can zero it). */
+    static OVERLOAD_RETRY_MS = 1500;
+
+    /**
+     * Run one generateContent-style call for a role. Two kinds of failure are
+     * recovered, everything else is rethrown:
+     *
+     *  - Model GONE (retired, 404): switch to the best listed replacement for
+     *    good and tell the host - see replaceGoneModel().
+     *  - Model OVERLOADED (503 "high demand" / 429): retry the same model once
+     *    after a short pause, then walk up to MAX_OVERLOAD_STANDINS other
+     *    listed models (lite tier first - it has the headroom) for THIS call
+     *    only. Never notified, and held for just OVERLOAD_STANDIN_HOLD_MS -
+     *    the model is fine, only busy, so the user's choice comes back by itself.
+     */
+    private async withModel<T>(role: GeminiModelRole, run: (model: string) => Promise<T>): Promise<T> {
+        const gone = new Set<string>();
+        const busy = new Set<string>();       // models that answered "overloaded" in this call
+        let retriedSame = false;
+        let standIn: string | null = null;    // this call's model while the chosen one is busy
+        // The chosen model was busy moments ago: go straight to the stand-in
+        // that answered. One ask is several calls (the tool loop), and bouncing
+        // back to the busy model between them costs a retry each time and feeds
+        // it a tool turn another model signed.
+        const held = this.overloadStandIn[role];
+        if (held && held.until > Date.now() && held.from === this.modelFor(role)) {
+            standIn = held.model;
+            busy.add(held.from);
+        }
+        for (;;) {
+            const model = standIn ?? this.modelFor(role);
+            try {
+                const result = await run(model);
+                if (standIn) {
+                    this.overloadStandIn[role] = { from: this.modelFor(role), model: standIn, until: Date.now() + OVERLOAD_STANDIN_HOLD_MS };
+                }
+                return result;
+            } catch (e) {
+                if (!standIn && isGeminiModelGone(e) && gone.size < MAX_MODEL_FALLBACKS) {
+                    gone.add(model);
+                    if (await this.replaceGoneModel(role, model, gone)) continue;
+                    throw e;
+                }
+                // A stand-in that is gone or busy just means "try the next one".
+                if (!isGeminiOverloaded(e) && !(standIn && isGeminiModelGone(e))) throw e;
+                if (!standIn && !retriedSame) {
+                    retriedSame = true;
+                    this.logger.warn(`Gemini model ${model} (${role}) is overloaded - retrying in ${GeminiLiveProvider.OVERLOAD_RETRY_MS} ms`);
+                    await new Promise((resolve) => this.homey.setTimeout(resolve, GeminiLiveProvider.OVERLOAD_RETRY_MS));
+                    continue;
+                }
+                busy.add(model);
+                // busy holds the chosen model plus every stand-in tried so far.
+                if (busy.size > MAX_OVERLOAD_STANDINS) throw e;
+                standIn = await pickGeminiFallback(this.options.apiKey ?? "", role, new Set([...busy, ...gone]), { preferLite: true });
+                if (!standIn) throw e;
+                this.logger.warn(`Gemini model ${model} (${role}) is overloaded - trying ${standIn} for this call`);
+            }
+        }
+    }
+
     private toolsForGemini(): any[] {
         const defs = this.toolManager.getToolDefinitions();
         return [{
@@ -238,21 +359,22 @@ export class GeminiLiveProvider extends (EventEmitter as new () => TypedEmitter<
         await this.instructionState.ensureLoaded(this.instructionParams());
 
         const voiceName = geminiVoiceName(this.options.voice);
-        this.logger.info("Connecting Gemini Live session", "START", { voice: voiceName });
+        const model = this.modelFor("live");
+        this.logger.info("Connecting Gemini Live session", "START", { voice: voiceName, model });
         try {
             this.session = await this.client().live.connect({
-                model: GEMINI_LIVE_MODEL,
+                model,
                 callbacks: {
                     onopen: () => {
+                        // Socket up only - the server has not accepted the setup
+                        // yet and can still close at once (bad model, rejected
+                        // language code). The reconnect backoff is therefore reset
+                        // on setupComplete (onMessage), NOT here: resetting on open
+                        // pinned every retry at "attempt 1 in 1000ms" forever.
                         this.logger.info("Live session opened");
                         this.connected = true;
-                        const wasReconnect = this.reconnect.attemptCount > 0;
-                        this.reconnect.reset(); // Successful connection ends the campaign
                         this.emit("open");
                         this.emit("Healthy");
-                        if (wasReconnect) {
-                            this.emit("reconnected");
-                        }
                     },
                     onmessage: (message: any) => this.onMessage(message),
                     onerror: (e: any) => {
@@ -264,7 +386,9 @@ export class GeminiLiveProvider extends (EventEmitter as new () => TypedEmitter<
                         this.logger.info("Live session closed", undefined, { reason: e?.reason });
                         this.connected = false;
                         this.emit("close", e?.code ?? 1000, String(e?.reason ?? ""));
-                        if (!this.manuallyClosing) this.reconnect.schedule();
+                        // The Live API rejects a retired/unknown model by closing
+                        // the socket with the reason, not by failing connect().
+                        void this.reconnectAfterFailure(model, e);
                     },
                 },
                 config: {
@@ -273,8 +397,11 @@ export class GeminiLiveProvider extends (EventEmitter as new () => TypedEmitter<
                         voiceConfig: { prebuiltVoiceConfig: { voiceName } },
                         // The spoken reply's language. The model picks it from the
                         // conversation on its own, but saying it removes the same
-                        // guess the transcriber was getting wrong.
-                        ...(this.options.languageCode ? { languageCode: this.options.languageCode } : {}),
+                        // guess the transcriber was getting wrong. Native-audio
+                        // models refuse an explicit code (they choose the language
+                        // themselves) - those are remembered and sent none.
+                        ...(this.options.languageCode && !this.speechLanguageRejected.has(model)
+                            ? { languageCode: this.options.languageCode } : {}),
                     },
                     inputAudioTranscription: this.transcriptionConfig(),
                     outputAudioTranscription: {},
@@ -285,8 +412,32 @@ export class GeminiLiveProvider extends (EventEmitter as new () => TypedEmitter<
         } catch (e) {
             this.logger.error("Failed to connect Gemini Live", e);
             this.emit("error", e instanceof Error ? e : new Error(String(e)));
-            if (!this.manuallyClosing) this.reconnect.schedule();
+            await this.reconnectAfterFailure(model, e);
         }
+    }
+
+    /**
+     * Schedule the reconnect after a failed connect or an unexpected close. When
+     * the failure says the live model is gone, switch to a replacement FIRST so
+     * the reconnect uses it - otherwise every attempt would hit the same 404.
+     * Each gone model is tried once per campaign (cleared on a successful open),
+     * so a list of dead models can't loop.
+     */
+    private async reconnectAfterFailure(model: string, failure: any): Promise<void> {
+        if (this.manuallyClosing) return;
+        // "Unsupported language code 'no' for model ...": the model works, it
+        // just won't take a spoken-language code. Drop it for this model and
+        // reconnect - the model then picks the language from the conversation.
+        if (isGeminiSpeechLanguageRejected(failure) && !this.speechLanguageRejected.has(model)) {
+            this.speechLanguageRejected.add(model);
+            this.logger.warn(`Gemini model ${model} does not accept language code '${this.options.languageCode}' - reconnecting without it`);
+        }
+        if (isGeminiModelGone(failure) && !this.liveModelsTried.has(model)) {
+            this.liveModelsTried.add(model);
+            await this.replaceGoneModel("live", model, this.liveModelsTried);
+            if (this.manuallyClosing) return;
+        }
+        this.reconnect.schedule();
     }
 
     close(code = 1000, reason = "client-close"): void {
@@ -342,6 +493,17 @@ export class GeminiLiveProvider extends (EventEmitter as new () => TypedEmitter<
 
     private onMessage(message: any): void {
         try {
+            // The server accepted the session config: only now is the
+            // connection really good, so this is where the campaign ends.
+            if (message?.setupComplete) {
+                this.liveModelsTried.clear();
+                const wasReconnect = this.reconnect.attemptCount > 0;
+                this.reconnect.reset();
+                if (wasReconnect) {
+                    this.emit("reconnected");
+                }
+            }
+
             // Tool calls (function calling)
             const functionCalls = message?.toolCall?.functionCalls;
             if (Array.isArray(functionCalls) && functionCalls.length) {
@@ -489,15 +651,23 @@ export class GeminiLiveProvider extends (EventEmitter as new () => TypedEmitter<
 
             let finalText = "";
             for (let i = 0; i < 5; i++) {
-                const resp: any = await ai.models.generateContent({
-                    model: GEMINI_TEXT_MODEL,
+                const resp: any = await this.withModel("text", (model) => ai.models.generateContent({
+                    model,
                     contents,
                     config: { systemInstruction: this.instructionState.text, tools },
-                });
+                }));
 
                 const fcs: any[] = resp?.functionCalls ?? [];
                 if (fcs.length) {
-                    contents.push({ role: "model", parts: fcs.map((fc) => ({ functionCall: { name: fc.name, args: fc.args } })) });
+                    // Echo the model's turn back VERBATIM. Gemini 3 attaches a
+                    // thoughtSignature to its functionCall parts and rejects the
+                    // follow-up (400 "missing a thought_signature") when the turn
+                    // is rebuilt from name+args alone. The rebuild is only the
+                    // fallback for a response without candidate content.
+                    const modelTurn = resp?.candidates?.[0]?.content;
+                    contents.push(modelTurn?.parts?.length
+                        ? modelTurn
+                        : { role: "model", parts: fcs.map((fc) => ({ functionCall: { name: fc.name, args: fc.args } })) });
                     const respParts: any[] = [];
                     for (const fc of fcs) {
                         this.emit("tool.called", { callId: fc?.id ?? fc?.name, name: fc?.name, args: fc?.args ?? {} });
@@ -515,24 +685,38 @@ export class GeminiLiveProvider extends (EventEmitter as new () => TypedEmitter<
             this.emit("text.done", { text: finalText, type: "gemini.text.done" });
         } catch (e: any) {
             this.logger.error("sendTextForTextResponse failed", e);
-            this.emit("text.done", { text: `Error: ${e?.message ?? e}` });
+            // error: true lets a consumer that would SPEAK the answer (the Flow
+            // assistant) fail instead of reading an error body aloud.
+            this.emit("text.done", { text: `Error: ${e?.message ?? e}`, error: true });
         }
     }
 
     /** Direct TTS -> FLAC (honors the seam's FLAC contract via pcmToFlacBuffer). */
     async textToSpeech(text: string): Promise<Buffer> {
         const ai = this.client();
-        const resp: any = await ai.models.generateContent({
-            model: GEMINI_TTS_MODEL,
+        const resp: any = await this.withModel("tts", (model) => ai.models.generateContent({
+            model,
+            // The bare text and nothing else: Gemini 3.8 TTS treats the text
+            // field as a strictly verbatim transcript, so any steering preamble
+            // is READ ALOUD (it was - see tts-steering.mts). The model detects
+            // the language from the text itself.
             contents: [{ role: "user", parts: [{ text }] }],
             config: {
                 responseModalities: [Modality.AUDIO],
                 speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: geminiVoiceName(this.options.voice) } } },
             },
-        });
+        }));
 
-        const b64: string | undefined = resp?.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-        const pcm = Buffer.from(b64 ?? "", "base64"); // 24 kHz PCM16 mono
+        // The audio is not always the first part, and a refused or filtered
+        // request comes back 200 with no audio at all - say so instead of
+        // encoding zero samples into a silent clip.
+        const parts: any[] = resp?.candidates?.[0]?.content?.parts ?? [];
+        const b64: string | undefined = parts.find((p) => p?.inlineData?.data)?.inlineData?.data;
+        if (!b64) {
+            const why = resp?.candidates?.[0]?.finishReason ?? resp?.promptFeedback?.blockReason ?? "no audio in the response";
+            throw new Error(`Gemini text-to-speech returned no audio (${why})`);
+        }
+        const pcm = Buffer.from(b64, "base64"); // 24 kHz PCM16 mono
         return pcmToFlacBuffer(pcm, { sampleRate: 24000, channels: 1, bitsPerSample: 16 });
     }
 

@@ -5,8 +5,20 @@
 
 export const geminiSessions: FakeLiveSession[] = [];
 
+/** Every generateContent request, in order (model + contents + config). */
+export const generateContentCalls: any[] = [];
+
+const defaultGenerateContent = async (_req: any): Promise<any> => ({ text: 'stub response' });
+let generateContentImpl: (req: any) => Promise<any> = defaultGenerateContent;
+/** Swap in a test's own generateContent (e.g. to 404 a retired model). */
+export function __setGenerateContent(impl: (req: any) => Promise<any>): void {
+    generateContentImpl = impl;
+}
+
 export function __resetGenai(): void {
     geminiSessions.length = 0;
+    generateContentCalls.length = 0;
+    generateContentImpl = defaultGenerateContent;
     FakeLiveSession.failNextConnect = false;
 }
 
@@ -26,7 +38,7 @@ export class FakeLiveSession {
 
     public sent: Array<{ method: string; arg: any }> = [];
     public closed = false;
-    constructor(public callbacks: LiveCallbacks, public config: any) { }
+    constructor(public callbacks: LiveCallbacks, public config: any, public model: string = '') { }
 
     sendRealtimeInput(arg: any) { this.sent.push({ method: 'sendRealtimeInput', arg }); }
     sendClientContent(arg: any) { this.sent.push({ method: 'sendClientContent', arg }); }
@@ -47,19 +59,22 @@ export class GoogleGenAI {
     constructor(cfg: { apiKey?: string }) { this.apiKey = cfg?.apiKey ?? ''; }
 
     live = {
-        connect: async (opts: { callbacks: LiveCallbacks; config: any }) => {
+        connect: async (opts: { model?: string; callbacks: LiveCallbacks; config: any }) => {
             if (FakeLiveSession.failNextConnect) {
                 FakeLiveSession.failNextConnect = false;
                 throw new Error('connect failed');
             }
-            const session = new FakeLiveSession(opts.callbacks, opts.config);
+            const session = new FakeLiveSession(opts.callbacks, opts.config, opts.model ?? '');
             geminiSessions.push(session);
             return session;
         },
     };
 
     models = {
-        generateContent: async (_req: any) => ({ text: 'stub response' }),
+        generateContent: async (req: any) => {
+            generateContentCalls.push(req);
+            return generateContentImpl(req);
+        },
     };
 }
 

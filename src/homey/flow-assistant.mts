@@ -120,8 +120,12 @@ export class FlowAssistant {
             this.clearIdleTimer();
             return job();
         });
-        // A failed call must not wedge later ones.
-        this.queue = run.then(() => undefined, () => undefined).then(() => this.armIdleTimer());
+        // A failed call must not wedge later ones. Log why it failed: the card
+        // shows the error in the Flow editor only, so without this line a
+        // failed announcement leaves no trace in the app log.
+        this.queue = run.then(() => undefined, (err) => {
+            this.logger.warn(`Flow card failed: ${err?.message ?? err}`);
+        }).then(() => this.armIdleTimer());
         return run;
     }
 
@@ -175,7 +179,16 @@ export class FlowAssistant {
             let timeoutId: any = null;
             const done = (msg: any) => {
                 this.homey.clearTimeout(timeoutId);
-                resolve(String(msg?.text ?? ''));
+                // A provider reports a failed ask as text.done with error: true.
+                // Fail the card rather than hand back - or worse, speak - the
+                // raw error body (a Flow once played 17 s of it).
+                if (msg?.error) {
+                    reject(new Error(`The assistant could not answer: ${String(msg?.text ?? '').replace(/^Error:\s*/, '').slice(0, 300)}`));
+                    return;
+                }
+                const text = String(msg?.text ?? '');
+                this.logger.info(`Answer: "${text.slice(0, 200)}"`);
+                resolve(text);
             };
             const fail = (err: any) => {
                 this.homey.clearTimeout(timeoutId);
@@ -226,6 +239,10 @@ export class FlowAssistant {
         // Errors surface on the card that hit them; the provider's own reconnect
         // campaign is not ours to drive, so just keep them out of the crash path.
         provider.on('error', (err) => this.logger.warn('Provider error:', err));
+        // The provider already switched to the fallback; the satellites own the
+        // user notification, so the device-less assistant only logs it.
+        provider.on('model_unavailable', ({ stage, model, fallback, reason }) =>
+            this.logger.warn(`Model ${model} (${stage}) unavailable (${reason ?? 'no_access'}) - ${fallback ? `using ${fallback}` : 'no fallback'}`));
 
         this.provider = provider;
         this.toolManager = toolManager;

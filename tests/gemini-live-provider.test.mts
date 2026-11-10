@@ -5,7 +5,9 @@ vi.mock('@google/genai', () => import('./mocks/mock-genai.mjs'));
 
 import { GeminiLiveProvider } from '../src/llm/providers/gemini-live-provider.mjs';
 import { MockHomey } from './mocks/mock-homey.mjs';
-import { geminiSessions, __resetGenai, FakeLiveSession } from './mocks/mock-genai.mjs';
+import { geminiSessions, __resetGenai, FakeLiveSession, __setGenerateContent, generateContentCalls } from './mocks/mock-genai.mjs';
+import { settingsManager } from '../src/settings/settings-manager.mjs';
+import { __clearGeminiModelCache } from '../src/llm/providers/gemini-models.mjs';
 import { fakeToolManager } from './mocks/mock-tool-manager.mjs';
 
 const tick = () => new Promise(r => setTimeout(r, 0));
@@ -239,5 +241,311 @@ describe('GeminiLiveProvider (fake GenAI harness)', () => {
         geminiSessions[0].__close({ code: 1000, reason: 'client-close' });
         await vi.advanceTimersByTimeAsync(6000);
         expect(geminiSessions.length).toBe(1);
+    });
+
+    it('backs off while sessions open but are closed before setup; resets only after setupComplete', async () => {
+        makeProvider();
+        const attempts: number[] = [];
+        provider.on('reconnecting', (attempt: number) => attempts.push(attempt));
+        await provider.start();
+
+        vi.useFakeTimers();
+        // Socket opens, server closes at once (rejected config) - three times.
+        for (let i = 0; i < 3; i++) {
+            const s = geminiSessions[geminiSessions.length - 1];
+            s.__open();
+            s.__close({ code: 1007, reason: 'rejected config' });
+            await vi.advanceTimersByTimeAsync(10_000);
+        }
+        expect(attempts).toEqual([1, 2, 3]);      // grows, not "attempt 1" forever
+
+        // A session the server accepts ends the campaign.
+        const reconnected = vi.fn();
+        provider.on('reconnected', reconnected);
+        const good = geminiSessions[geminiSessions.length - 1];
+        good.__open();
+        good.__message({ setupComplete: {} });
+        expect(reconnected).toHaveBeenCalledTimes(1);
+
+        good.__close({ code: 1006, reason: 'dropped' });
+        expect(attempts[attempts.length - 1]).toBe(1);
+    });
+
+    it('reconnects without the language code when the model refuses it, keeping the transcription hint', async () => {
+        makeProvider();
+        (provider as any).options.languageCode = 'no';
+        await provider.start();
+        const first = geminiSessions[0];
+        expect(first.config.speechConfig.languageCode).toBe('no');
+
+        vi.useFakeTimers();
+        first.__open();
+        first.__close({ code: 1007, reason: `Unsupported language code 'no' for model models/${first.model}` });
+        await vi.advanceTimersByTimeAsync(5_000);
+
+        const second = geminiSessions[1];
+        expect(second.model).toBe(first.model);
+        expect(second.config.speechConfig.languageCode).toBeUndefined();
+        expect(second.config.inputAudioTranscription.languageHints).toEqual({ languageCodes: ['no'] });
+    });
+
+    describe('model selection and retired-model fallback', () => {
+        const catalog = {
+            models: [
+                { name: 'models/gemini-3.8-flash', supportedGenerationMethods: ['generateContent'] },
+                { name: 'models/gemini-3.8-flash-lite', supportedGenerationMethods: ['generateContent'] },
+                { name: 'models/gemini-3.8-flash-tts', supportedGenerationMethods: ['generateContent'] },
+                { name: 'models/gemini-3.1-flash-live-preview', supportedGenerationMethods: ['bidiGenerateContent'] },
+                { name: 'models/gemini-3.9-flash-live', supportedGenerationMethods: ['bidiGenerateContent'] },
+            ],
+        };
+        const retired = (model: string) => Object.assign(
+            new Error(`{"error":{"code":404,"message":"This model models/${model} is no longer available to new users.","status":"NOT_FOUND"}}`),
+            { status: 404 });
+
+        function withSettings(settings: Record<string, string>): void {
+            settingsManager.reset();
+            const homey = new MockHomey();
+            for (const [k, v] of Object.entries(settings)) homey.setMockSetting(k, v);
+            settingsManager.init(homey as any);
+        }
+
+        beforeEach(() => {
+            __clearGeminiModelCache();
+            vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(catalog), { status: 200 })));
+        });
+        afterEach(() => {
+            vi.unstubAllGlobals();
+            settingsManager.reset();
+        });
+
+        it('uses the configured model per role, the default when unset', async () => {
+            withSettings({ gemini_text_model: 'gemini-3.8-flash-lite' });
+            makeProvider();
+            expect(provider.modelFor('text')).toBe('gemini-3.8-flash-lite');
+            expect(provider.modelFor('tts')).toBe('gemini-3.8-flash-tts');
+
+            await provider.start();
+            expect(geminiSessions[0].model).toBe('gemini-3.1-flash-live-preview');
+        });
+
+        it('a retired text model is replaced, the ask still answers, the host is told once', async () => {
+            withSettings({ gemini_text_model: 'gemini-2.5-flash' });
+            makeProvider();
+            __setGenerateContent(async (req) => {
+                if (req.model === 'gemini-2.5-flash') throw retired('gemini-2.5-flash');
+                return { text: `answer from ${req.model}` };
+            });
+            const unavailable = vi.fn();
+            const done = vi.fn();
+            provider.on('model_unavailable', unavailable);
+            provider.on('text.done', done);
+
+            await provider.sendTextForTextResponse('hei');
+
+            expect(done).toHaveBeenCalledWith(expect.objectContaining({ text: 'answer from gemini-3.8-flash' }));
+            expect(unavailable).toHaveBeenCalledWith({ stage: 'llm', model: 'gemini-2.5-flash', fallback: 'gemini-3.8-flash', reason: 'retired' });
+
+            // Sticky: the next ask goes straight to the replacement.
+            generateContentCalls.length = 0;
+            await provider.sendTextForTextResponse('igjen');
+            expect(generateContentCalls.map(c => c.model)).toEqual(['gemini-3.8-flash']);
+            expect(unavailable).toHaveBeenCalledTimes(1);
+        });
+
+        it('a different model picked in settings drops the replacement', async () => {
+            withSettings({ gemini_text_model: 'gemini-2.5-flash' });
+            makeProvider();
+            __setGenerateContent(async (req) => {
+                if (req.model === 'gemini-2.5-flash') throw retired('gemini-2.5-flash');
+                return { text: 'ok' };
+            });
+            await provider.sendTextForTextResponse('hei');
+            expect(provider.modelFor('text')).toBe('gemini-3.8-flash');
+
+            settingsManager.reset();
+            const homey = new MockHomey();
+            homey.setMockSetting('gemini_text_model', 'gemini-3.8-flash-lite');
+            settingsManager.init(homey as any);
+            expect(provider.modelFor('text')).toBe('gemini-3.8-flash-lite');
+        });
+
+        it('a tool turn is echoed back verbatim, thought signature included', async () => {
+            withSettings({});
+            makeProvider();
+            const modelTurn = { role: 'model', parts: [{ functionCall: { name: 'get_time', args: {} }, thoughtSignature: 'sig-abc' }] };
+            let calls = 0;
+            __setGenerateContent(async () => (++calls === 1
+                ? { functionCalls: [{ name: 'get_time', args: {} }], candidates: [{ content: modelTurn }] }
+                : { text: 'It is 12:00.' }));
+            const done = vi.fn();
+            provider.on('text.done', done);
+
+            await provider.sendTextForTextResponse('what time is it?');
+
+            // The follow-up request carries the model's own turn, not a rebuild.
+            expect(generateContentCalls[1].contents[1]).toBe(modelTurn);
+            expect(generateContentCalls[1].contents[2].parts[0].functionResponse.name).toBe('get_time');
+            expect(done).toHaveBeenCalledWith(expect.objectContaining({ text: 'It is 12:00.' }));
+        });
+
+        it('speaks the bare text - no steering preamble for the TTS model to read aloud', async () => {
+            withSettings({});
+            makeProvider();
+            __setGenerateContent(async () => ({ candidates: [{ content: { parts: [{ inlineData: { data: '' } }] } }] }));
+
+            await provider.textToSpeech('Flink du!').catch(() => undefined); // empty PCM may not encode; the request is what matters
+
+            expect(generateContentCalls[0].contents).toEqual([{ role: 'user', parts: [{ text: 'Flink du!' }] }]);
+        });
+
+        it('a failed ask is flagged so a consumer can refuse to speak it', async () => {
+            withSettings({});
+            makeProvider();
+            __setGenerateContent(async () => { throw Object.assign(new Error('boom'), { status: 400 }); });
+            const done = vi.fn();
+            provider.on('text.done', done);
+
+            await provider.sendTextForTextResponse('hei');
+
+            expect(done).toHaveBeenCalledWith({ text: 'Error: boom', error: true });
+        });
+
+        it('other errors are neither retried nor treated as a retired model', async () => {
+            withSettings({});
+            makeProvider();
+            __setGenerateContent(async () => { throw Object.assign(new Error('Internal error'), { status: 500 }); });
+            const unavailable = vi.fn();
+            provider.on('model_unavailable', unavailable);
+
+            await expect(provider.textToSpeech('hei')).rejects.toThrow(/Internal error/);
+            expect(unavailable).not.toHaveBeenCalled();
+            expect(generateContentCalls).toHaveLength(1);
+        });
+
+        describe('overloaded model (503 high demand)', () => {
+            const overloaded = () => Object.assign(
+                new Error('{"error":{"code":503,"message":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.","status":"UNAVAILABLE"}}'),
+                { status: 503 });
+            const saved = GeminiLiveProvider.OVERLOAD_RETRY_MS;
+            beforeEach(() => { GeminiLiveProvider.OVERLOAD_RETRY_MS = 0; });
+            afterEach(() => { GeminiLiveProvider.OVERLOAD_RETRY_MS = saved; });
+
+            it('retries the same model once and succeeds', async () => {
+                withSettings({});
+                makeProvider();
+                let calls = 0;
+                __setGenerateContent(async (req) => {
+                    if (++calls === 1) throw overloaded();
+                    return { text: `answer from ${req.model}` };
+                });
+                const done = vi.fn();
+                provider.on('text.done', done);
+
+                await provider.sendTextForTextResponse('hei');
+
+                expect(generateContentCalls.map(c => c.model)).toEqual(['gemini-3.8-flash', 'gemini-3.8-flash']);
+                expect(done).toHaveBeenCalledWith(expect.objectContaining({ text: 'answer from gemini-3.8-flash' }));
+            });
+
+            it('still busy: answers from another listed model for this call only, no notification', async () => {
+                withSettings({});
+                makeProvider();
+                __setGenerateContent(async (req) => {
+                    if (req.model === 'gemini-3.8-flash') throw overloaded();
+                    return { text: `answer from ${req.model}` };
+                });
+                const done = vi.fn();
+                const unavailable = vi.fn();
+                provider.on('text.done', done);
+                provider.on('model_unavailable', unavailable);
+
+                await provider.sendTextForTextResponse('hei');
+
+                expect(generateContentCalls.map(c => c.model)).toEqual(['gemini-3.8-flash', 'gemini-3.8-flash', 'gemini-3.8-flash-lite']);
+                expect(done).toHaveBeenCalledWith(expect.objectContaining({ text: 'answer from gemini-3.8-flash-lite' }));
+                expect(unavailable).not.toHaveBeenCalled();
+                // Not sticky: the user's model is still the one in use.
+                expect(provider.modelFor('text')).toBe('gemini-3.8-flash');
+            });
+
+            it('walks several stand-ins, lite tier first, until one answers', async () => {
+                const gen = ['generateContent'];
+                vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+                    models: [
+                        { name: 'models/gemini-3.8-flash', supportedGenerationMethods: gen },
+                        { name: 'models/gemini-3.7-flash', supportedGenerationMethods: gen },
+                        { name: 'models/gemini-3.7-flash-lite', supportedGenerationMethods: gen },
+                        { name: 'models/gemini-3.1-flash', supportedGenerationMethods: gen },
+                    ],
+                }), { status: 200 })));
+                withSettings({});
+                makeProvider();
+                __setGenerateContent(async (req) => {
+                    if (req.model !== 'gemini-3.1-flash') throw overloaded();
+                    return { text: `answer from ${req.model}` };
+                });
+                const done = vi.fn();
+                provider.on('text.done', done);
+
+                await provider.sendTextForTextResponse('hei');
+
+                expect(generateContentCalls.map(c => c.model)).toEqual(
+                    ['gemini-3.8-flash', 'gemini-3.8-flash', 'gemini-3.7-flash-lite', 'gemini-3.7-flash', 'gemini-3.1-flash']);
+                expect(done).toHaveBeenCalledWith(expect.objectContaining({ text: 'answer from gemini-3.1-flash' }));
+            });
+
+            it('keeps the stand-in for the following calls instead of bouncing back to the busy model', async () => {
+                withSettings({});
+                makeProvider();
+                __setGenerateContent(async (req) => {
+                    if (req.model === 'gemini-3.8-flash') throw overloaded();
+                    return { text: 'ok' };
+                });
+                await provider.sendTextForTextResponse('hei');
+                generateContentCalls.length = 0;
+
+                await provider.sendTextForTextResponse('igjen');
+
+                expect(generateContentCalls.map(c => c.model)).toEqual(['gemini-3.8-flash-lite']);
+            });
+
+            it('an empty speech response is an error, not a silent clip', async () => {
+                withSettings({});
+                makeProvider();
+                __setGenerateContent(async () => ({ candidates: [{ finishReason: 'OTHER', content: { parts: [] } }] }));
+
+                await expect(provider.textToSpeech('hei')).rejects.toThrow("returned no audio (OTHER)");
+            });
+
+            it('gives up with the error when every model is busy', async () => {
+                withSettings({});
+                makeProvider();
+                __setGenerateContent(async () => { throw overloaded(); });
+                const done = vi.fn();
+                provider.on('text.done', done);
+
+                await provider.sendTextForTextResponse('hei');
+
+                expect(generateContentCalls).toHaveLength(3);
+                expect(done).toHaveBeenCalledWith(expect.objectContaining({ text: expect.stringMatching(/high demand/) }));
+            });
+        });
+
+        it('a live session closed for a retired model reconnects on the replacement', async () => {
+            withSettings({});
+            makeProvider();
+            const unavailable = vi.fn();
+            provider.on('model_unavailable', unavailable);
+            await provider.start();
+            expect(geminiSessions[0].model).toBe('gemini-3.1-flash-live-preview');
+
+            geminiSessions[0].__close({ code: 1008, reason: 'models/gemini-3.1-flash-live-preview is not found for API version v1beta, or is not supported for bidiGenerateContent' });
+            await vi.waitFor(() => expect(unavailable).toHaveBeenCalled());
+            await vi.waitFor(() => expect(geminiSessions.length).toBe(2), { timeout: 8000 });
+
+            expect(unavailable).toHaveBeenCalledWith({ stage: 'live', model: 'gemini-3.1-flash-live-preview', fallback: 'gemini-3.9-flash-live', reason: 'retired' });
+            expect(geminiSessions[1].model).toBe('gemini-3.9-flash-live');
+        }, 10_000);
     });
 });
